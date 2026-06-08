@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['contracts-*', 'v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (8 + 9 — global.json drives the SDK pin)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Tessio.Verifier.sln
+
+      - name: Build
+        run: dotnet build Tessio.Verifier.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test Tessio.Verifier.sln --no-build --configuration Release --logger "trx;LogFileName=test-results.trx"
+
+      - name: Pack
+        run: dotnet pack Tessio.Verifier.sln --no-build --configuration Release --output ./artifacts
+
+      - name: Upload packages
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkgs
+          path: artifacts/*.nupkg
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'

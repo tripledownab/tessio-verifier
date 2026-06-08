@@ -1,0 +1,11 @@
+<Project>
+  <Import Project="../Directory.Build.props" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Underscore-separated test names (Method_State_Expected) are a near-universal xUnit convention.
+         CA1861 (constant array arg) is noisy in single-use assertion calls. -->
+    <NoWarn>$(NoWarn);CA1707;CA1861</NoWarn>
+  </PropertyGroup>
+
+</Project>

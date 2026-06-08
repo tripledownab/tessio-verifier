@@ -1,0 +1,35 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Missing-XML-comment warning is noisy on internal types; surface as info, not error. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Label="NuGet metadata">
+    <Version>0.1.0</Version>
+    <Authors>Triple Down AB</Authors>
+    <Company>Triple Down AB</Company>
+    <Product>Tessio.Verifier</Product>
+    <Copyright>Copyright (c) Triple Down AB</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/tripledownab/tessio-verifier</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/tripledownab/tessio-verifier</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>eudi;wallet;openid4vp;sd-jwt-vc;verifier;eidas</PackageTags>
+    <Description>Open-source .NET / ASP.NET Core verifier for the EU Digital Identity (EUDI) Wallet — OpenID4VP 1.0 + SD-JWT VC, relying-party side.</Description>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+</Project>
