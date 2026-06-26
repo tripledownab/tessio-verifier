@@ -1,0 +1,83 @@
+name: site
+
+on:
+  push:
+    branches: [main]
+    # Rebuild when the site sources, the contracts (DocFX scans them for XML docs),
+    # or this workflow itself change.
+    paths:
+      - 'site/**'
+      - 'src/**'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Avoid concurrent deploys clobbering each other.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (8 + 9 — global.json pins driver)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+          global-json-file: global.json
+
+      - name: Install DocFX as global tool
+        run: dotnet tool install -g docfx
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site/web/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+        working-directory: site/web
+
+      - name: Build DocFX (API reference → site/api-docs/_site)
+        run: |
+          docfx metadata site/api-docs/docfx.json
+          docfx build site/api-docs/docfx.json
+
+      - name: Build Astro (marketing landing → site/web/dist)
+        run: npm run build
+        working-directory: site/web
+
+      - name: Merge DocFX output under /docs
+        run: |
+          rm -rf site/web/dist/docs
+          cp -r site/api-docs/_site site/web/dist/docs
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

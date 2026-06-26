@@ -1,0 +1,284 @@
+---
+import Base from '../layouts/Base.astro';
+
+const installCmd = 'dotnet add package Tessio.Verifier.AspNetCore';
+
+const quickstart = `var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddTessioVerifier(options =>
+{
+    options.Mode = VerifierMode.Demo;          // local-only flow, no real wallet needed
+    options.RequestedClaims = ["age_over_18"]; // selective disclosure: ask only for what you need
+});
+
+var app = builder.Build();
+app.MapTessioVerifier();                       // request-init, wallet-callback, result-stream
+app.MapGet("/", () => Results.Content(
+    """<a href="/verify/start">Start a verification</a>""", "text/html"));
+
+app.Run();`;
+
+const features = [
+  {
+    title: 'Native to .NET',
+    body: 'DI extensions, minimal APIs, Azure-friendly. No translation from Kotlin or Rust. The code looks like the rest of your stack.',
+  },
+  {
+    title: 'Demo mode included',
+    body: 'No production wallets yet? Run a full verification flow locally today. Swap to MOCK or TEST fixtures when you need them.',
+  },
+  {
+    title: 'HAIP-aligned',
+    body: 'OpenID4VP 1.0, SD-JWT VC with `dc+sd-jwt`, DCQL queries, JAR-signed requests, JWE responses. Built to the EUDI profile that matters.',
+  },
+  {
+    title: 'Pluggable trust',
+    body: 'A clean `ITrustListResolver` seam. Use the dev resolver to iterate; swap to the managed 27-state trust layer when you go live.',
+  },
+];
+
+const standards = [
+  { name: 'OpenID4VP 1.0', href: 'https://openid.net/specs/openid-4-verifiable-presentations-1_0.html' },
+  { name: 'SD-JWT VC', href: 'https://datatracker.ietf.org/doc/html/draft-ietf-oauth-sd-jwt-vc' },
+  { name: 'OAuth JAR (RFC 9101)', href: 'https://www.rfc-editor.org/rfc/rfc9101' },
+  { name: 'EUDI ARF', href: 'https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework' },
+  { name: 'Regulation (EU) 2024/1183', href: 'https://eur-lex.europa.eu/eli/reg/2024/1183/oj' },
+  { name: 'ETSI TS 119 475 (WRPAC)', href: 'https://www.etsi.org/' },
+];
+
+const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
+---
+
+<Base>
+  <header
+    class="sticky top-0 z-10 backdrop-blur-md border-b"
+    style="background-color: color-mix(in srgb, var(--color-bg) 85%, transparent); border-color: var(--color-border);"
+  >
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
+        <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="6" fill="var(--color-accent)" />
+          <path d="M9 11h14M9 16h14M9 21h9" stroke="white" stroke-width="2.5" stroke-linecap="round" />
+          <circle cx="22" cy="21" r="3" fill="none" stroke="white" stroke-width="2.5" />
+        </svg>
+        <span>Tessio.Verifier</span>
+      </a>
+      <nav class="flex items-center gap-6 text-sm">
+        <a href="/docs/" class="hover:opacity-70 transition-opacity">Docs</a>
+        <a href={repoUrl} class="hover:opacity-70 transition-opacity" target="_blank" rel="noopener">GitHub</a>
+        <a
+          href={`${repoUrl}/releases`}
+          target="_blank"
+          rel="noopener"
+          class="px-3 py-1.5 rounded-md text-white text-xs font-medium"
+          style="background-color: var(--color-accent);"
+        >
+          0.1.0 · contracts-only
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="flex-1">
+    <!-- Hero -->
+    <section class="max-w-6xl mx-auto px-6 pt-20 pb-16 md:pt-32 md:pb-24">
+      <div class="max-w-3xl">
+        <p class="text-sm font-medium uppercase tracking-widest mb-6" style="color: var(--color-accent);">
+          EU Digital Identity Wallet · .NET
+        </p>
+        <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.05] mb-6">
+          Verify EUDI Wallet credentials<br />
+          <span style="color: var(--color-text-muted);">from your .NET backend.</span>
+        </h1>
+        <p class="text-lg md:text-xl leading-relaxed max-w-2xl mb-10" style="color: var(--color-text-muted);">
+          Open-source ASP.NET Core verifier for <strong style="color: var(--color-text);">OpenID4VP 1.0</strong> +
+          <strong style="color: var(--color-text);">SD-JWT VC</strong>. Native DI wiring, demo mode included, and a
+          clean trust seam for when you go to production.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          <a
+            href={repoUrl}
+            target="_blank"
+            rel="noopener"
+            class="px-5 py-3 rounded-md font-medium text-white transition-opacity hover:opacity-90"
+            style="background-color: var(--color-accent);"
+          >
+            View on GitHub →
+          </a>
+          <a
+            href="#quickstart"
+            class="px-5 py-3 rounded-md font-medium border transition-colors"
+            style="border-color: var(--color-border);"
+          >
+            Read the quickstart
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Install -->
+    <section class="max-w-6xl mx-auto px-6 pb-16" id="install">
+      <div
+        class="rounded-xl border p-6 md:p-8"
+        style="background-color: var(--color-bg-elevated); border-color: var(--color-border);"
+      >
+        <p class="text-xs font-medium uppercase tracking-widest mb-3" style="color: var(--color-text-muted);">
+          Install
+        </p>
+        <div class="flex items-center justify-between gap-4 flex-wrap">
+          <code class="text-sm md:text-base font-mono" style="color: var(--color-text);">
+            <span style="color: var(--color-accent);">$</span> {installCmd}
+          </code>
+          <button
+            type="button"
+            data-copy={installCmd}
+            class="copy-btn px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
+            style="border-color: var(--color-border); color: var(--color-text-muted);"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quickstart code sample -->
+    <section class="max-w-6xl mx-auto px-6 pb-24" id="quickstart">
+      <h2 class="text-3xl font-bold tracking-tight mb-3">Five-minute quickstart</h2>
+      <p class="mb-8 text-lg" style="color: var(--color-text-muted);">
+        Wire one ASP.NET Core endpoint, run, and watch a verified <code class="font-mono text-sm">age_over_18</code>
+        claim come back over Server-Sent Events. No production wallet required.
+      </p>
+      <div
+        class="rounded-xl border overflow-hidden"
+        style="background-color: var(--color-code-bg); border-color: var(--color-code-border);"
+      >
+        <div
+          class="px-4 py-2 text-xs font-mono border-b flex items-center justify-between"
+          style="border-color: var(--color-code-border); color: var(--color-text-muted);"
+        >
+          <span>Program.cs</span>
+          <button
+            type="button"
+            data-copy={quickstart}
+            class="copy-btn hover:opacity-70 transition-opacity"
+          >
+            Copy
+          </button>
+        </div>
+        <pre class="p-6 overflow-x-auto text-sm leading-relaxed font-mono"><code>{quickstart}</code></pre>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="max-w-6xl mx-auto px-6 pb-24" id="features">
+      <h2 class="text-3xl font-bold tracking-tight mb-12">Why a .NET-native verifier?</h2>
+      <div class="grid gap-6 md:grid-cols-2">
+        {
+          features.map((f) => (
+            <div
+              class="rounded-xl border p-6"
+              style="background-color: var(--color-bg-elevated); border-color: var(--color-border);"
+            >
+              <h3 class="text-lg font-semibold tracking-tight mb-2">{f.title}</h3>
+              <p class="text-sm leading-relaxed" style="color: var(--color-text-muted);">
+                {f.body}
+              </p>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+
+    <!-- Roadmap callout -->
+    <section class="max-w-6xl mx-auto px-6 pb-24">
+      <div
+        class="rounded-xl border-l-4 p-6 md:p-8"
+        style="background-color: var(--color-bg-elevated); border-left-color: var(--color-accent); border-color: var(--color-border);"
+      >
+        <p class="text-xs font-medium uppercase tracking-widest mb-3" style="color: var(--color-accent);">
+          Status
+        </p>
+        <h3 class="text-2xl font-bold tracking-tight mb-3">0.1.0 — contracts only</h3>
+        <p class="text-base leading-relaxed mb-4" style="color: var(--color-text-muted);">
+          This release publishes the frozen public contracts
+          (<a href={`${repoUrl}/releases/tag/contracts-v0`} target="_blank" rel="noopener" class="underline" style="color: var(--color-accent);">contracts-v0</a>).
+          The verification core, OpenID4VP protocol, ASP.NET Core integration, and sample app are being implemented in
+          parallel workstreams. The quickstart above shows the shape they're targeting for v0.1 final.
+        </p>
+        <p class="text-sm" style="color: var(--color-text-muted);">
+          Mandatory acceptance under Regulation (EU) 2024/1183 lands <strong style="color: var(--color-text);">6 December 2027</strong>.
+          We're shipping this before then so .NET shops aren't left translating from Kotlin.
+        </p>
+      </div>
+    </section>
+
+    <!-- Standards -->
+    <section class="max-w-6xl mx-auto px-6 pb-24">
+      <h2 class="text-3xl font-bold tracking-tight mb-3">Built on the standards</h2>
+      <p class="mb-8 text-lg" style="color: var(--color-text-muted);">
+        No proprietary protocols. The credentials Tessio verifies are the same ones every EUDI Wallet emits.
+      </p>
+      <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        {
+          standards.map((s) => (
+            <a
+              href={s.href}
+              target="_blank"
+              rel="noopener"
+              class="px-4 py-3 rounded-md border text-sm font-medium hover:opacity-70 transition-opacity flex items-center justify-between"
+              style="border-color: var(--color-border);"
+            >
+              <span>{s.name}</span>
+              <span style="color: var(--color-text-muted);">↗</span>
+            </a>
+          ))
+        }
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t" style="border-color: var(--color-border);">
+    <div
+      class="max-w-6xl mx-auto px-6 py-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-6"
+    >
+      <div>
+        <p class="font-semibold tracking-tight">Tessio.Verifier</p>
+        <p class="text-sm mt-1" style="color: var(--color-text-muted);">
+          Open-source under Apache-2.0. Maintained by Triple Down AB.
+        </p>
+      </div>
+      <nav class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <a href={repoUrl} target="_blank" rel="noopener" class="hover:opacity-70">Source</a>
+        <a href={`${repoUrl}/issues`} target="_blank" rel="noopener" class="hover:opacity-70">Issues</a>
+        <a href={`${repoUrl}/releases`} target="_blank" rel="noopener" class="hover:opacity-70">Releases</a>
+        <a href="/docs/" class="hover:opacity-70">Documentation</a>
+        <a
+          href="https://opensource.org/licenses/Apache-2.0"
+          target="_blank"
+          rel="noopener"
+          class="hover:opacity-70"
+          >License</a
+        >
+      </nav>
+    </div>
+  </footer>
+</Base>
+
+<script>
+  // Copy-to-clipboard buttons
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('.copy-btn')) {
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+        const original = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(() => {
+          btn.textContent = original;
+        }, 1500);
+      } catch {
+        /* clipboard unavailable — ignore */
+      }
+    });
+  }
+</script>

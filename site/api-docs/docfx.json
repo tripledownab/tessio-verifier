@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../../src",
+          "files": [
+            "Tessio.Verifier.Core/Tessio.Verifier.Core.csproj",
+            "Tessio.Verifier.Trust/Tessio.Verifier.Trust.csproj",
+            "Tessio.Verifier.OpenId4Vp/Tessio.Verifier.OpenId4Vp.csproj",
+            "Tessio.Verifier.AspNetCore/Tessio.Verifier.AspNetCore.csproj"
+          ]
+        }
+      ],
+      "dest": "api",
+      "includePrivateMembers": false,
+      "disableGitFeatures": false,
+      "disableDefaultFilter": false,
+      "noRestore": false,
+      "namespaceLayout": "flattened",
+      "memberLayout": "samePage",
+      "allowCompilationErrors": false,
+      "properties": {
+        "TargetFramework": "net8.0"
+      }
+    }
+  ],
+  "build": {
+    "content": [
+      { "files": ["**/*.{md,yml}"], "exclude": ["_site/**"] }
+    ],
+    "resource": [
+      { "files": ["images/**"] }
+    ],
+    "output": "_site",
+    "template": ["default", "modern"],
+    "globalMetadata": {
+      "_appName": "Tessio.Verifier",
+      "_appTitle": "Tessio.Verifier API reference",
+      "_appFooter": "Apache-2.0 · Triple Down AB · <a href=\"/\">tessio.verifier home</a>",
+      "_enableSearch": true,
+      "_disableContribution": true,
+      "_appLogoPath": "https://verifier.tessio.eu/favicon.svg",
+      "_appFaviconPath": "https://verifier.tessio.eu/favicon.svg"
+    },
+    "sitemap": {
+      "baseUrl": "https://verifier.tessio.eu/api"
+    }
+  }
+}
