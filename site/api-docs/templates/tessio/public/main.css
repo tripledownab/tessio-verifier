@@ -1,0 +1,386 @@
+/*
+ * main.css — DocFX → Tessio brand bridge.
+ *
+ * Loaded LAST in the template chain (default,modern,tessio), so these rules
+ * override DocFX's Bootstrap 5 defaults. Tokens mirror site/web/src/styles/
+ * tessio-design.css 1:1 so the API ref and the landing read as one site.
+ *
+ * Strategy: we cannot rewrite DocFX's Bootstrap markup, but we can re-skin it
+ * — overriding the Bootstrap CSS variables it consumes, then layering brand
+ * rules (typography, spacing, navbar, logo, code blocks) on top.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* ----------------------------------------------------------------------------
+   Token bridge — Bootstrap variables → Tessio palette
+---------------------------------------------------------------------------- */
+
+:root,
+[data-bs-theme="light"] {
+  --bs-body-bg: #ffffff;
+  --bs-body-color: #0a0a0a;
+  --bs-body-color-rgb: 10, 10, 10;
+  --bs-secondary-color: #525252;
+  --bs-secondary-bg: #fafafa;
+  --bs-tertiary-bg: #fafafa;
+  --bs-emphasis-color: #0a0a0a;
+  --bs-border-color: #e5e5e5;
+  --bs-border-color-translucent: #e5e5e5;
+  --bs-link-color: #0033a0;
+  --bs-link-color-rgb: 0, 51, 160;
+  --bs-link-hover-color: #002280;
+  --bs-link-hover-color-rgb: 0, 34, 128;
+  --bs-code-color: #0a0a0a;
+  --bs-heading-color: #0a0a0a;
+
+  --tessio-accent: #0033a0;
+  --tessio-accent-hover: #002280;
+  --tessio-elevated: #fafafa;
+  --tessio-code-bg: #f5f5f5;
+  --tessio-text-muted: #525252;
+}
+
+[data-bs-theme="dark"] {
+  --bs-body-bg: #0a0a0a;
+  --bs-body-color: #fafafa;
+  --bs-body-color-rgb: 250, 250, 250;
+  --bs-secondary-color: #a3a3a3;
+  --bs-secondary-bg: #111111;
+  --bs-tertiary-bg: #111111;
+  --bs-emphasis-color: #fafafa;
+  --bs-border-color: #262626;
+  --bs-border-color-translucent: #262626;
+  --bs-link-color: #60a5fa;
+  --bs-link-color-rgb: 96, 165, 250;
+  --bs-link-hover-color: #93c5fd;
+  --bs-code-color: #fafafa;
+  --bs-heading-color: #fafafa;
+
+  --tessio-accent: #60a5fa;
+  --tessio-accent-hover: #93c5fd;
+  --tessio-elevated: #111111;
+  --tessio-code-bg: #161616;
+  --tessio-text-muted: #a3a3a3;
+}
+
+/* ----------------------------------------------------------------------------
+   Typography
+---------------------------------------------------------------------------- */
+
+html,
+body {
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Helvetica, Arial, sans-serif !important;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+}
+
+code,
+pre,
+kbd,
+samp,
+.lang-csharp,
+.text-monospace,
+[class*="language-"] {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, monospace !important;
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif !important;
+  letter-spacing: -0.015em;
+  font-weight: 700;
+  color: var(--bs-heading-color);
+}
+
+h1, .h1 {
+  font-weight: 800;
+  font-size: 2.25rem;
+  margin-bottom: 1rem;
+  letter-spacing: -0.02em;
+}
+
+h2, .h2 {
+  font-size: 1.5rem;
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+h3, .h3 {
+  font-size: 1.125rem;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+p {
+  line-height: 1.65;
+}
+
+/* ----------------------------------------------------------------------------
+   Layout — wider container, more breathing room
+---------------------------------------------------------------------------- */
+
+.container-xxl {
+  max-width: 1280px !important;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+main.container-xxl {
+  padding-top: 2rem;
+  padding-bottom: 4rem;
+}
+
+article {
+  max-width: 64rem;
+}
+
+/* ----------------------------------------------------------------------------
+   Header / navbar — match the landing's sticky translucent header
+---------------------------------------------------------------------------- */
+
+header.bg-body,
+header {
+  background-color: color-mix(in srgb, var(--bs-body-bg) 85%, transparent) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--bs-border-color) !important;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar {
+  --bs-navbar-padding-y: 1rem;
+  --bs-navbar-brand-padding-y: 0;
+  --bs-navbar-brand-margin-end: 1.5rem;
+  --bs-navbar-brand-font-size: 1rem;
+  --bs-navbar-brand-color: var(--bs-body-color);
+  --bs-navbar-brand-hover-color: var(--bs-body-color);
+}
+
+.navbar-brand {
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+  gap: 0.5rem;
+}
+
+/* Logo — DocFX has NO #logo rule, so the SVG was rendering unconstrained.
+   Force a tight icon-sized box that matches the landing's 24px mark. */
+#logo,
+.navbar-brand #logo,
+.navbar-brand img,
+.navbar-brand svg {
+  width: 24px !important;
+  height: 24px !important;
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+
+/* DocFX adds a generic img margin that throws off vertical alignment */
+.navbar img {
+  margin-bottom: 0 !important;
+}
+
+/* Search box — round it and align with brand */
+.navbar .search input.form-control {
+  border-radius: 6px;
+  border: 1px solid var(--bs-border-color);
+  background-color: var(--tessio-elevated);
+  font-size: 0.875rem;
+}
+
+/* ----------------------------------------------------------------------------
+   Table of contents — secondary panel
+---------------------------------------------------------------------------- */
+
+.toc {
+  padding-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.toc a {
+  color: var(--tessio-text-muted);
+  text-decoration: none;
+}
+
+.toc a:hover {
+  color: var(--bs-body-color);
+}
+
+.toc a.active,
+.toc .active > a {
+  color: var(--tessio-accent) !important;
+  font-weight: 600;
+}
+
+/* "In this article" affix on the right */
+.affix ul > li > a {
+  color: var(--tessio-text-muted);
+  text-decoration: none;
+}
+
+.affix ul > li > a:hover {
+  color: var(--bs-body-color);
+}
+
+.affix ul > li.active > a {
+  color: var(--tessio-accent);
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------------------------
+   Code — inline + blocks
+---------------------------------------------------------------------------- */
+
+:not(pre) > code {
+  background-color: var(--tessio-code-bg);
+  border: 1px solid var(--bs-border-color);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-size: 0.875em;
+  color: var(--bs-code-color);
+}
+
+pre {
+  background-color: var(--tessio-code-bg) !important;
+  border: 1px solid var(--bs-border-color) !important;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin: 1.25rem 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+pre > code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ----------------------------------------------------------------------------
+   Jumplists (Classes / Interfaces / Methods sections)
+---------------------------------------------------------------------------- */
+
+dl.jumplist {
+  margin: 1rem 0 2rem;
+}
+
+dl.jumplist > dt {
+  margin-top: 1.25rem;
+  font-weight: 600;
+}
+
+dl.jumplist > dt > a {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.9375rem;
+  color: var(--tessio-accent);
+  text-decoration: none;
+}
+
+dl.jumplist > dt > a:hover {
+  text-decoration: underline;
+}
+
+dl.jumplist > dd {
+  color: var(--tessio-text-muted);
+  margin-left: 0;
+  margin-top: 0.25rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+/* ----------------------------------------------------------------------------
+   Member parameter tables and signatures
+---------------------------------------------------------------------------- */
+
+.parameters,
+.typeparameters {
+  margin: 1rem 0 2rem;
+}
+
+.parameters > dt,
+.typeparameters > dt {
+  margin-top: 0.75rem;
+  font-weight: 600;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.875rem;
+}
+
+.parameters > dd,
+.typeparameters > dd {
+  color: var(--tessio-text-muted);
+  margin-left: 0;
+  font-size: 0.9375rem;
+}
+
+.codewrapper,
+.codewrapper pre,
+.api-decl,
+.decl,
+.decalaration {
+  background-color: var(--tessio-elevated) !important;
+  border: 1px solid var(--bs-border-color) !important;
+  border-radius: 12px;
+  padding: 1rem 1.25rem !important;
+  font-size: 0.875rem;
+}
+
+/* ----------------------------------------------------------------------------
+   Links + buttons — EU-blue accent everywhere
+---------------------------------------------------------------------------- */
+
+a {
+  color: var(--tessio-accent);
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+a:hover {
+  color: var(--tessio-accent-hover);
+  opacity: 0.85;
+}
+
+article a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.btn-primary {
+  --bs-btn-bg: var(--tessio-accent);
+  --bs-btn-border-color: var(--tessio-accent);
+  --bs-btn-hover-bg: var(--tessio-accent-hover);
+  --bs-btn-hover-border-color: var(--tessio-accent-hover);
+}
+
+/* Focus ring — same as landing */
+:focus-visible {
+  outline: 2px solid var(--tessio-accent) !important;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ----------------------------------------------------------------------------
+   Footer — flush with the landing's
+---------------------------------------------------------------------------- */
+
+footer {
+  background-color: var(--bs-body-bg);
+  border-top: 1px solid var(--bs-border-color);
+  color: var(--tessio-text-muted);
+  font-size: 0.875rem;
+  padding: 2rem 0;
+  margin-top: 4rem;
+}
+
+footer a {
+  color: var(--tessio-accent);
+}

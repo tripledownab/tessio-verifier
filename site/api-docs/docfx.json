@@ -31,18 +31,18 @@
       { "files": ["**/*.{md,yml}"], "exclude": ["_site/**"] }
     ],
     "resource": [
-      { "files": ["images/**"] }
+      { "files": ["images/**", "favicon.svg", "logo.svg"] }
     ],
     "output": "_site",
-    "template": ["default", "modern"],
+    "template": ["default", "modern", "templates/tessio"],
     "globalMetadata": {
       "_appName": "Tessio.Verifier",
       "_appTitle": "Tessio.Verifier API reference",
       "_appFooter": "Apache-2.0 · Triple Down AB · <a href=\"/\">tessio.verifier home</a>",
       "_enableSearch": true,
       "_disableContribution": true,
-      "_appLogoPath": "https://verifier.tessio.eu/favicon.svg",
-      "_appFaviconPath": "https://verifier.tessio.eu/favicon.svg"
+      "_appLogoPath": "logo.svg",
+      "_appFaviconPath": "favicon.svg"
     },
     "sitemap": {
       "baseUrl": "https://verifier.tessio.eu/api"
