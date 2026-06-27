@@ -1,53 +1,12 @@
+/*
+ * global.css — Tailwind entry point for this site.
+ *
+ * Design tokens, base typography, and palette live in tessio-design.css
+ * (a future shared package). Add site-specific overrides BELOW the imports.
+ */
+
 @import "tailwindcss";
+@import "./tessio-design.css";
 
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-
-  --color-bg: #ffffff;
-  --color-bg-elevated: #fafafa;
-  --color-text: #0a0a0a;
-  --color-text-muted: #525252;
-  --color-border: #e5e5e5;
-  --color-accent: #0033a0;
-  --color-accent-hover: #002280;
-  --color-code-bg: #f5f5f5;
-  --color-code-border: #e5e5e5;
-}
-
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-bg: #0a0a0a;
-    --color-bg-elevated: #111111;
-    --color-text: #fafafa;
-    --color-text-muted: #a3a3a3;
-    --color-border: #262626;
-    --color-accent: #60a5fa;
-    --color-accent-hover: #93c5fd;
-    --color-code-bg: #161616;
-    --color-code-border: #262626;
-  }
-}
-
-html {
-  background-color: var(--color-bg);
-  color: var(--color-text);
-}
-
-body {
-  font-family: var(--font-sans);
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-code, pre {
-  font-family: var(--font-mono);
-}
-
-/* Tasteful focus ring */
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
+/* --- site-specific styles (verifier.tessio.eu) --- */
+/* nothing yet — site is using design tokens only */
