@@ -86,6 +86,41 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Callback_UnparseableResponse_IsResponseInvalid()
+    {
+        var processor = _provider.GetRequiredService<WalletCallbackProcessor>();
+        var response = new WalletResponseData
+        {
+            ContentType = "application/x-www-form-urlencoded",
+            Form = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["vp_token"] = new[] { "{}" }, // empty vp_token object → parser rejects
+                ["state"] = new[] { "s" },
+            },
+            Body = ReadOnlyMemory<byte>.Empty,
+        };
+
+        Assert.Equal(CallbackOutcome.ResponseInvalid, await processor.ProcessAsync(response, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Callback_MissingState_IsResponseInvalid()
+    {
+        var processor = _provider.GetRequiredService<WalletCallbackProcessor>();
+        var response = new WalletResponseData
+        {
+            ContentType = "application/x-www-form-urlencoded",
+            Form = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["vp_token"] = new[] { """{"credential":["a.b.c~"]}""" },
+            },
+            Body = ReadOnlyMemory<byte>.Empty,
+        };
+
+        Assert.Equal(CallbackOutcome.ResponseInvalid, await processor.ProcessAsync(response, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Callback_TamperedPresentation_CompletesSessionAsInvalid()
     {
         var store = _provider.GetRequiredService<InMemorySessionStore>();
