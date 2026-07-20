@@ -12,7 +12,9 @@ internal static class DemoRequestOptionsFactory
     // SPEC: SD-JWT VC credential format identifier is "dc+sd-jwt" (not the legacy "vc+sd-jwt");
     // media type application/dc+sd-jwt, per draft-ietf-oauth-sd-jwt-vc.
     private const string SdJwtVcFormat = "dc+sd-jwt";
-    private const string DefaultVct = "https://demo-issuer.tessio.dev/vct/identity";
+
+    /// <summary>Credential type used when <see cref="VerifierOptions.ExpectedVct"/> is unset.</summary>
+    internal const string DefaultVct = "https://demo-issuer.tessio.dev/vct/identity";
 
     public static PresentationRequestOptions Create(VerifierOptions options, Uri responseUri)
     {

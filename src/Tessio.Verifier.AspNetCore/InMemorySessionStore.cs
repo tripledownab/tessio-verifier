@@ -12,6 +12,7 @@ namespace Tessio.Verifier.AspNetCore;
 public sealed class InMemorySessionStore : ISessionStore
 {
     private readonly ConcurrentDictionary<string, SessionEntry> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _sessionIdByState = new(StringComparer.Ordinal);
     private readonly IPresentationRequestBuilder _requestBuilder;
     private readonly TimeProvider _clock;
 
@@ -41,7 +42,23 @@ public sealed class InMemorySessionStore : ISessionStore
         };
 
         _sessions[session.SessionId] = new SessionEntry(session);
+        if (request.State is { } state)
+        {
+            _sessionIdByState[state] = session.SessionId;
+        }
+
         return session;
+    }
+
+    /// <summary>
+    /// Finds the session correlated with an OpenID4VP <c>state</c> value from a wallet response.
+    /// </summary>
+    internal Task<VerificationSession?> FindByStateAsync(string state, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return _sessionIdByState.TryGetValue(state, out var sessionId)
+            ? GetAsync(sessionId, ct)
+            : Task.FromResult<VerificationSession?>(null);
     }
 
     /// <inheritdoc />

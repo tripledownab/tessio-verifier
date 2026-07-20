@@ -50,10 +50,19 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         var requestOptions = DemoRequestOptionsFactory.Create(options, responseUri);
         var session = await store.CreateAsync(requestOptions, http.RequestAborted).ConfigureAwait(false);
 
-        if (options.Mode == VerifierMode.Demo)
+        switch (options.Mode)
         {
-            var queue = http.RequestServices.GetRequiredService<DemoCompletionQueue>();
-            await queue.EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
+            case VerifierMode.Demo:
+                await http.RequestServices.GetRequiredService<DemoCompletionQueue>()
+                    .EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
+                break;
+            case VerifierMode.Mock or VerifierMode.Test:
+                // Test mode currently behaves like Mock; conformance fixtures land in a later slice.
+                await http.RequestServices.GetRequiredService<MockWalletQueue>()
+                    .EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
+                break;
+            default:
+                break; // Live wallets respond via the callback on their own schedule.
         }
 
         var html = RenderStartPage(session.SessionId, prefix, options.Mode, session.Request.AuthorizationRequestUri.ToString());
@@ -153,18 +162,41 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
 
     private static async Task CallbackAsync(HttpContext http)
     {
-        // Live wallet callback (direct_post / direct_post.jwt) requires the OpenID4VP response parser and the
-        // Core verifier, which are not part of this DEMO slice. DEMO mode completes without a callback.
-        http.Response.StatusCode = StatusCodes.Status501NotImplemented;
+        // SPEC: OpenID4VP 1.0 §8.2 — wallets POST application/x-www-form-urlencoded to response_uri.
+        if (!http.Request.HasFormContentType)
+        {
+            http.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await http.Response.WriteAsJsonAsync(
+                new { error = "invalid_request", message = "Expected an application/x-www-form-urlencoded wallet response." },
+                SerializerOptions, http.RequestAborted).ConfigureAwait(false);
+            return;
+        }
+
+        var form = await http.Request.ReadFormAsync(http.RequestAborted).ConfigureAwait(false);
+        var response = new Tessio.Verifier.OpenId4Vp.WalletResponseData
+        {
+            ContentType = http.Request.ContentType ?? "application/x-www-form-urlencoded",
+            Form = form.ToDictionary(
+                static f => f.Key,
+                static f => (IReadOnlyList<string>)f.Value.Where(v => v is not null).Cast<string>().ToArray(),
+                StringComparer.Ordinal),
+            Body = ReadOnlyMemory<byte>.Empty,
+        };
+
+        var processor = http.RequestServices.GetRequiredService<WalletCallbackProcessor>();
+        var outcome = await processor.ProcessAsync(response, http.RequestAborted).ConfigureAwait(false);
+
+        (http.Response.StatusCode, var error) = outcome switch
+        {
+            CallbackOutcome.Completed => (StatusCodes.Status200OK, (string?)null),
+            CallbackOutcome.UnknownSession => (StatusCodes.Status400BadRequest, "unknown_session"),
+            CallbackOutcome.SessionNotPending => (StatusCodes.Status409Conflict, "session_not_pending"),
+            _ => (StatusCodes.Status400BadRequest, "invalid_response"),
+        };
+
         await http.Response.WriteAsJsonAsync(
-            new
-            {
-                error = "wallet_callback_unavailable",
-                message = "Live wallet callback needs Tessio.Verifier.OpenId4Vp response parsing and " +
-                          "Tessio.Verifier.Core verification (not wired in this build). DEMO mode completes automatically.",
-            },
-            SerializerOptions,
-            http.RequestAborted).ConfigureAwait(false);
+            error is null ? new { status = "accepted" } : (object)new { error },
+            SerializerOptions, http.RequestAborted).ConfigureAwait(false);
     }
 
     private static async Task WriteEventAsync(HttpContext http, string eventName, VerificationSession session)
