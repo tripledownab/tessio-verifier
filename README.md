@@ -6,7 +6,7 @@
 [![NuGet](https://img.shields.io/nuget/v/Tessio.Verifier.AspNetCore.svg)](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Verify credentials presented by EUDI Wallets — over **OpenID4VP 1.0**, for **SD-JWT VC** credentials — directly from your .NET backend. Native to ASP.NET Core and Azure, with a built-in **demo mode** so you can run a full verification flow today, before any production wallet ships.
+Verify credentials presented by EUDI Wallets directly from your .NET backend, over **OpenID4VP 1.0** with **SD-JWT VC** credentials. Native to ASP.NET Core and Azure, with a built-in **demo mode** so you can run a full verification flow today, before any production wallet ships.
 
 > Relying-party (verifier) side only. This library never acts as a wallet or an issuer.
 
@@ -70,7 +70,7 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 
 ## Going to production
 
-Live verification against real wallets also requires a **registered Relying Party** and a **WRPAC** (Wallet Relying Party Access Certificate) from a Qualified Trust Service Provider, plus maintained EU trust lists. This library handles the protocol and credential verification; the trust and compliance layer is provided separately (see `docs/production.md`). Relying parties do **not** need their own HSM/QSCD — the QTSP holds those.
+Live verification against real wallets also requires a **registered Relying Party** and a **WRPAC** (Wallet Relying Party Access Certificate) from a Qualified Trust Service Provider, plus maintained EU trust lists. This library handles the protocol and credential verification. The trust and compliance layer is provided separately (see `docs/production.md`). Relying parties do **not** need their own HSM/QSCD, since the QTSP holds those.
 
 ## Standards
 
