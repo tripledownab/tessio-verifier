@@ -21,6 +21,15 @@ public sealed class WalletResponseParser : IPresentationResponseParser
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<PresentedCredential>> ParseAsync(
+        WalletResponseData response, CancellationToken ct = default) =>
+        (await ParseDetailedAsync(response, ct).ConfigureAwait(false)).Credentials;
+
+    /// <summary>
+    /// Parses the response including the <c>state</c> needed for session correlation. Prefer this
+    /// over <see cref="ParseAsync"/> when hosting the wallet callback: for <c>direct_post.jwt</c>
+    /// the state travels inside the encrypted JWT.
+    /// </summary>
+    public async Task<ParsedWalletResponse> ParseDetailedAsync(
         WalletResponseData response, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(response);
@@ -33,21 +42,29 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         }
 
         string vpTokenJson;
+        string? state;
         if (response.Form.TryGetValue("response", out var jwtValues))
         {
             // direct_post.jwt: the whole authorization response rides inside one (encrypted) JWT.
-            vpTokenJson = await ExtractVpTokenFromResponseJwtAsync(SingleValue(jwtValues, "response")).ConfigureAwait(false);
+            (vpTokenJson, state) = await UnwrapResponseJwtAsync(SingleValue(jwtValues, "response")).ConfigureAwait(false);
         }
         else if (response.Form.TryGetValue("vp_token", out var vpValues))
         {
             vpTokenJson = SingleValue(vpValues, "vp_token");
+            state = response.Form.TryGetValue("state", out var stateValues)
+                ? SingleValue(stateValues, "state")
+                : null;
         }
         else
         {
             throw new WalletResponseException("The wallet response carries neither 'vp_token' nor 'response'.");
         }
 
-        return ExtractCredentials(vpTokenJson);
+        return new ParsedWalletResponse
+        {
+            Credentials = ExtractCredentials(vpTokenJson),
+            State = state,
+        };
     }
 
     private static string SingleValue(IReadOnlyList<string> values, string name) =>
@@ -55,7 +72,7 @@ public sealed class WalletResponseParser : IPresentationResponseParser
             ? values[0]
             : throw new WalletResponseException($"The '{name}' form parameter must appear exactly once (found {values.Count}).");
 
-    private async Task<string> ExtractVpTokenFromResponseJwtAsync(string responseJwt)
+    private async Task<(string VpTokenJson, string? State)> UnwrapResponseJwtAsync(string responseJwt)
     {
         if (_options.ResponseDecryptionKey is null)
         {
@@ -86,7 +103,9 @@ public sealed class WalletResponseParser : IPresentationResponseParser
             throw new WalletResponseException("The decrypted wallet response carries no vp_token claim.");
         }
 
-        return vpToken as string ?? JsonSerializer.Serialize(vpToken);
+        var state = result.Claims.TryGetValue("state", out var stateValue) ? stateValue as string : null;
+        var vpTokenJson = vpToken as string ?? JsonSerializer.Serialize(vpToken);
+        return (vpTokenJson, state);
     }
 
     private List<PresentedCredential> ExtractCredentials(string vpTokenJson)
