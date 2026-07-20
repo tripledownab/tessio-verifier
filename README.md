@@ -10,7 +10,7 @@ Verify credentials presented by EUDI Wallets — over **OpenID4VP 1.0**, for **S
 
 > Relying-party (verifier) side only. This library never acts as a wallet or an issuer.
 
-> **Status — DEMO mode works on `main`.** The `AddTessioVerifier` / `MapTessioVerifier` quickstart below runs end-to-end today: session management, SSE result streaming, and demo-mode auto-completion are implemented and tested. The 0.1.0 packages on NuGet are still contracts-only (`contracts-v0`); the SD-JWT VC verification core and the OpenID4VP protocol layer (which power **Mock**/**Test** modes and live wallets) are in active development. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
+> **Status: demo mode works on `main`.** The quickstart below runs end to end. Sessions, the SSE result stream and demo auto-completion are implemented and tested. So is the SD-JWT VC verification core, which passes the RFC 9901 spec vectors. Next up is the OpenID4VP protocol layer. That's the piece that powers **Mock** and **Test** modes and, later, live wallets. Note that the 0.1.0 packages on NuGet still only contain the frozen contracts (`contracts-v0`). Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
 
 ## Why this exists
 
@@ -55,9 +55,9 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 
 ## Modes
 
-- **Demo** — auto-completes in seconds; for showcases and first-run experience. **Available now.**
-- **Mock** — canned wallet responses; for predictable integration tests. *Lands with the verification core.*
-- **Test** — full protocol compliance against fixtures; for conformance work. *Lands with the protocol layer.*
+- **Demo**: auto-completes in seconds, for showcases and first-run experience. Available now.
+- **Mock**: canned wallet responses for predictable integration tests. Lands with the protocol layer.
+- **Test**: full protocol runs against fixtures, for conformance work. Lands with the protocol layer.
 
 ## Packages
 
