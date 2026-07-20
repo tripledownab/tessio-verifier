@@ -33,7 +33,7 @@ const features = [
   },
   {
     title: 'Pluggable trust',
-    body: 'A clean `ITrustListResolver` seam. Use the dev resolver to iterate; swap to the managed 27-state trust layer when you go live.',
+    body: 'A clean `ITrustListResolver` seam. Use the dev resolver to iterate, then swap to the managed 27-state trust layer when you go live.',
   },
 ];
 
@@ -92,7 +92,7 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
         </h1>
         <p class="text-lg md:text-xl leading-relaxed max-w-2xl mb-10" style="color: var(--color-text-muted);">
           Open-source ASP.NET Core verifier for <strong style="color: var(--color-text);">OpenID4VP 1.0</strong> +
-          <strong style="color: var(--color-text);">SD-JWT VC</strong>. Native DI wiring, demo mode included, and a
+          <strong style="color: var(--color-text);">SD-JWT VC</strong>. Native DI wiring, demo mode included and a
           clean trust seam for when you go to production.
         </p>
         <div class="flex flex-wrap gap-3">
@@ -145,7 +145,7 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
     <section class="max-w-6xl mx-auto px-6 pb-24" id="quickstart">
       <h2 class="text-3xl font-bold tracking-tight mb-3">Five-minute quickstart</h2>
       <p class="mb-8 text-lg" style="color: var(--color-text-muted);">
-        Wire one ASP.NET Core endpoint, run, and watch a verified <code class="font-mono text-sm">age_over_18</code>
+        Wire one ASP.NET Core endpoint, run it and watch a verified <code class="font-mono text-sm">age_over_18</code>
         claim come back over Server-Sent Events. No production wallet required.
       </p>
       <div
@@ -198,15 +198,14 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
         <p class="text-xs font-medium uppercase tracking-widest mb-3" style="color: var(--color-accent);">
           Status
         </p>
-        <h3 class="text-2xl font-bold tracking-tight mb-3">On main — demo mode and the verification core</h3>
+        <h3 class="text-2xl font-bold tracking-tight mb-3">Demo mode works today</h3>
         <p class="text-base leading-relaxed mb-4" style="color: var(--color-text-muted);">
-          The quickstart above runs end-to-end today: <code>AddTessioVerifier</code> / <code>MapTessioVerifier</code>,
-          session management, SSE result streaming, and demo-mode auto-completion are implemented and tested.
-          The SD-JWT VC verification core — selective disclosure, key binding, and both issuer key-resolution
-          mechanisms, tested against the RFC 9901 spec vectors — is on main too. The OpenID4VP protocol layer
-          (which powers Mock/Test modes and live wallets) is next; the public API stays frozen at
-          (<a href={`${repoUrl}/releases/tag/contracts-v0`} target="_blank" rel="noopener" class="underline" style="color: var(--color-accent);">contracts-v0</a>).
-          The 0.1.0 NuGet packages are still contracts-only until the next release.
+          The quickstart above runs end to end on main. Sessions, the SSE result stream and demo
+          auto-completion are all implemented and tested. So is the SD-JWT VC verification core, which
+          passes the RFC 9901 spec vectors. Next up is the OpenID4VP protocol layer. That's the piece
+          that powers Mock and Test modes and, eventually, live wallets. The public API stays frozen at
+          <a href={`${repoUrl}/releases/tag/contracts-v0`} target="_blank" rel="noopener" class="underline" style="color: var(--color-accent);">contracts-v0</a>.
+          Note that the 0.1.0 packages on NuGet still only contain the contracts.
         </p>
         <p class="text-sm" style="color: var(--color-text-muted);">
           Mandatory acceptance under Regulation (EU) 2024/1183 lands <strong style="color: var(--color-text);">6 December 2027</strong>.
