@@ -5,9 +5,12 @@ title: Tessio.Verifier API reference
 
 # Tessio.Verifier API reference
 
-The frozen public contracts for verifying EU Digital Identity (EUDI) Wallet credentials in ASP.NET Core.
+The public API for verifying EU Digital Identity (EUDI) Wallet credentials in ASP.NET Core — the frozen
+contracts plus the implementation surface as it lands (`SdJwtVcVerifier`, demo-mode hosting, the in-memory
+session store).
 
-Pinned to tag **[`contracts-v0`](https://github.com/tripledownab/tessio-verifier/releases/tag/contracts-v0)**.
+The contracts are frozen at tag **[`contracts-v0`](https://github.com/tripledownab/tessio-verifier/releases/tag/contracts-v0)**;
+everything else follows [releases](https://github.com/tripledownab/tessio-verifier/releases).
 
 ## Packages
 
