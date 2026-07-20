@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (8 + 9)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Tessio.Verifier.sln
+
+      - name: Build
+        run: dotnet build Tessio.Verifier.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test Tessio.Verifier.sln --no-build --configuration Release
+
+      - name: Pack
+        run: dotnet pack Tessio.Verifier.sln --no-build --configuration Release --output ./release-artifacts
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-nupkgs
+          path: release-artifacts/*.*nupkg
+
+      - name: Push to NuGet
+        if: env.NUGET_API_KEY != ''
+        run: >
+          dotnet nuget push "release-artifacts/*.nupkg"
+          --api-key "$NUGET_API_KEY"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+
+      - name: NuGet publish skipped
+        if: env.NUGET_API_KEY == ''
+        run: echo "::warning::NUGET_API_KEY secret is not configured; packages were built but not published. Add the secret and re-run this workflow to publish."
