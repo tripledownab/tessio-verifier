@@ -73,7 +73,7 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
           class="px-3 py-1.5 rounded-md text-white text-xs font-medium"
           style="background-color: var(--color-accent);"
         >
-          0.1.0 · contracts-only
+          main · demo mode works
         </a>
       </nav>
     </div>
@@ -198,12 +198,15 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
         <p class="text-xs font-medium uppercase tracking-widest mb-3" style="color: var(--color-accent);">
           Status
         </p>
-        <h3 class="text-2xl font-bold tracking-tight mb-3">0.1.0 — contracts only</h3>
+        <h3 class="text-2xl font-bold tracking-tight mb-3">On main — demo mode and the verification core</h3>
         <p class="text-base leading-relaxed mb-4" style="color: var(--color-text-muted);">
-          This release publishes the frozen public contracts
+          The quickstart above runs end-to-end today: <code>AddTessioVerifier</code> / <code>MapTessioVerifier</code>,
+          session management, SSE result streaming, and demo-mode auto-completion are implemented and tested.
+          The SD-JWT VC verification core — selective disclosure, key binding, and both issuer key-resolution
+          mechanisms, tested against the RFC 9901 spec vectors — is on main too. The OpenID4VP protocol layer
+          (which powers Mock/Test modes and live wallets) is next; the public API stays frozen at
           (<a href={`${repoUrl}/releases/tag/contracts-v0`} target="_blank" rel="noopener" class="underline" style="color: var(--color-accent);">contracts-v0</a>).
-          The verification core, OpenID4VP protocol, ASP.NET Core integration, and sample app are being implemented in
-          parallel workstreams. The quickstart above shows the shape they're targeting for v0.1 final.
+          The 0.1.0 NuGet packages are still contracts-only until the next release.
         </p>
         <p class="text-sm" style="color: var(--color-text-muted);">
           Mandatory acceptance under Regulation (EU) 2024/1183 lands <strong style="color: var(--color-text);">6 December 2027</strong>.
