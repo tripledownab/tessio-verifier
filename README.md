@@ -10,7 +10,7 @@ Verify credentials presented by EUDI Wallets — over **OpenID4VP 1.0**, for **S
 
 > Relying-party (verifier) side only. This library never acts as a wallet or an issuer.
 
-> **Status — 0.1.0 (contracts-only).** This release publishes the frozen public contracts (`contracts-v0`). The `AddTessioVerifier` / `MapTessioVerifier` wiring shown in the quickstart below lands in **v0.1 final** when the verification core, OpenID4VP protocol, ASP.NET Core integration, and sample-app workstreams merge. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
+> **Status — DEMO mode works on `main`.** The `AddTessioVerifier` / `MapTessioVerifier` quickstart below runs end-to-end today: session management, SSE result streaming, and demo-mode auto-completion are implemented and tested. The 0.1.0 packages on NuGet are still contracts-only (`contracts-v0`); the SD-JWT VC verification core and the OpenID4VP protocol layer (which power **Mock**/**Test** modes and live wallets) are in active development. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
 
 ## Why this exists
 
@@ -51,13 +51,13 @@ app.MapGet("/", () => Results.Content(
 app.Run();
 ```
 
-Run it, open the page, start a verification, and DEMO mode returns a verified `age_over_18` claim over Server-Sent Events. Swap `VerifierMode.Demo` for `Mock` or `Test` to work against fixtures.
+Run it, open the page, start a verification, and DEMO mode returns a verified `age_over_18` claim over Server-Sent Events.
 
 ## Modes
 
-- **Demo** — auto-completes in seconds; for showcases and first-run experience.
-- **Mock** — canned wallet responses; for predictable integration tests.
-- **Test** — full protocol compliance against fixtures; for conformance work.
+- **Demo** — auto-completes in seconds; for showcases and first-run experience. **Available now.**
+- **Mock** — canned wallet responses; for predictable integration tests. *Lands with the verification core.*
+- **Test** — full protocol compliance against fixtures; for conformance work. *Lands with the protocol layer.*
 
 ## Packages
 
