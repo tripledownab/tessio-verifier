@@ -108,6 +108,26 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         await http.Response.WriteAsync(html, http.RequestAborted).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Renders the authorization request URI as an SVG QR code for cross-device scanning. Returns an
+    /// empty string when the payload exceeds QR capacity (huge by-value JARs); the page then shows
+    /// the URI only. Keep requests scannable with by-reference delivery (see docs/going-live.md).
+    /// </summary>
+    internal static string RenderQrCode(string payload)
+    {
+        try
+        {
+            using var generator = new QRCoder.QRCodeGenerator();
+            using var data = generator.CreateQrCode(payload, QRCoder.QRCodeGenerator.ECCLevel.L);
+            return new QRCoder.SvgQRCode(data).GetGraphic(
+                4, "#000000", "#ffffff", sizingMode: QRCoder.SvgQRCode.SizingMode.ViewBoxAttribute);
+        }
+        catch (QRCoder.Exceptions.DataTooLongException)
+        {
+            return string.Empty;
+        }
+    }
+
     private static async Task ServeRequestObjectAsync(string requestId, HttpContext http)
     {
         var store = http.RequestServices.GetRequiredService<RequestObjectStore>();
@@ -276,6 +296,9 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             .Replace("__STATUS_URL__", $"{prefix}/{sessionId}", StringComparison.Ordinal)
             .Replace("__SESSION_ID__", WebUtility.HtmlEncode(sessionId), StringComparison.Ordinal)
             .Replace("__MODE__", WebUtility.HtmlEncode(mode.ToString()), StringComparison.Ordinal)
+            .Replace("__QR_SVG__", RenderQrCode(authorizationRequestUri), StringComparison.Ordinal)
+            // In Live mode scanning IS the flow; open the request section by default.
+            .Replace("__DETAILS_OPEN__", mode == VerifierMode.Live ? "open" : "", StringComparison.Ordinal)
             .Replace("__AUTH_URI__", WebUtility.HtmlEncode(authorizationRequestUri), StringComparison.Ordinal);
 
     private const string StartPageTemplate = """
@@ -295,6 +318,8 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             .status.fail { background: #c6282822; color: #c62828; }
             code { word-break: break-all; font-size: .8rem; }
             .req { background: #8881; padding: .75rem; border-radius: .5rem; }
+            .qr { margin: .75rem 0; }
+            .qr svg { width: 240px; height: 240px; display: block; background: #fff; padding: 8px; border-radius: .5rem; }
             table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
             td { border-bottom: 1px solid #8883; padding: .35rem .5rem; }
             td:first-child { font-weight: 600; width: 40%; }
@@ -306,8 +331,9 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
           <p>Session <code>__SESSION_ID__</code></p>
           <div id="status" class="status pending">Starting…</div>
           <div id="claims"></div>
-          <details>
+          <details __DETAILS_OPEN__>
             <summary>Authorization request (scan with a wallet)</summary>
+            <div class="qr">__QR_SVG__</div>
             <p class="req"><code>__AUTH_URI__</code></p>
             <p><a href="__STATUS_URL__">Raw status JSON</a></p>
           </details>

@@ -13,6 +13,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- QR rendering for the built-in start page (SVG renderer, cross-platform). MIT, no transitive deps. -->
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Tessio.Verifier.AspNetCore.Tests" />
   </ItemGroup>
 
