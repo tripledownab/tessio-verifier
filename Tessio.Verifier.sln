@@ -21,6 +21,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessio.Verifier.OpenId4Vp.T
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessio.Verifier.AspNetCore.Tests", "tests\Tessio.Verifier.AspNetCore.Tests\Tessio.Verifier.AspNetCore.Tests.csproj", "{E6D594A9-C55F-4E7F-A2EB-EB0E21F198C1}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{2D1B570B-8A7F-405D-98D1-83DD686C2C0F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessio.Verifier.Core.Mdoc", "src\Tessio.Verifier.Core.Mdoc\Tessio.Verifier.Core.Mdoc.csproj", "{E8C66210-2E5B-4991-AB7D-FC24C23FA55C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{BB0B5E83-6DF5-4388-8F76-CC553C351520}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessio.Verifier.Core.Mdoc.Tests", "tests\Tessio.Verifier.Core.Mdoc.Tests\Tessio.Verifier.Core.Mdoc.Tests.csproj", "{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -66,5 +74,17 @@ Global
 		{E6D594A9-C55F-4E7F-A2EB-EB0E21F198C1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E6D594A9-C55F-4E7F-A2EB-EB0E21F198C1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E6D594A9-C55F-4E7F-A2EB-EB0E21F198C1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E8C66210-2E5B-4991-AB7D-FC24C23FA55C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E8C66210-2E5B-4991-AB7D-FC24C23FA55C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E8C66210-2E5B-4991-AB7D-FC24C23FA55C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E8C66210-2E5B-4991-AB7D-FC24C23FA55C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E8C66210-2E5B-4991-AB7D-FC24C23FA55C} = {2D1B570B-8A7F-405D-98D1-83DD686C2C0F}
+		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB} = {BB0B5E83-6DF5-4388-8F76-CC553C351520}
 	EndGlobalSection
 EndGlobal
