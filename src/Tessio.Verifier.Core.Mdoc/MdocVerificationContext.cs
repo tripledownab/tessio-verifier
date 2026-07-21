@@ -12,4 +12,22 @@ public sealed record MdocVerificationContext
     /// When null, the docType check is skipped.
     /// </summary>
     public string? ExpectedDocType { get; init; }
+
+    /// <summary>
+    /// The <c>client_id</c> of the request this presentation answers, including any client
+    /// identifier prefix. First element of the session transcript's handover info.
+    /// </summary>
+    public string? ClientId { get; init; }
+
+    /// <summary>The nonce of the request. Second element of the handover info.</summary>
+    public string? Nonce { get; init; }
+
+    /// <summary>
+    /// RFC 7638 SHA-256 thumbprint of the verifier's response-encryption JWK, when the response was
+    /// encrypted; null for unencrypted responses. Third element of the handover info.
+    /// </summary>
+    public byte[]? EncryptionKeyThumbprint { get; init; }
+
+    /// <summary>The <c>response_uri</c> of the request. Fourth element of the handover info.</summary>
+    public string? ResponseUri { get; init; }
 }

@@ -62,6 +62,24 @@ internal sealed class MdocTestBuilder : IDisposable
     /// <summary>Signs the MSO with this key instead of the DS certificate's key (signature mismatch).</summary>
     public ECDsa? SignerKeyOverride { get; set; }
 
+    /// <summary>Session parameters the device signature binds to (the wallet's view of the request).</summary>
+    public string ClientId { get; set; } = "x509_san_dns:verifier.test";
+
+    public string Nonce { get; set; } = "test-nonce";
+
+    public byte[]? EncryptionKeyThumbprint { get; set; }
+
+    public string ResponseUri { get; set; } = "https://verifier.test/callback";
+
+    /// <summary>Whether to emit the deviceSigned structure. Default true.</summary>
+    public bool IncludeDeviceAuth { get; set; } = true;
+
+    /// <summary>Signs deviceAuth with this key instead of the MSO's device key (holder mismatch).</summary>
+    public ECDsa? DeviceSignerOverride { get; set; }
+
+    /// <summary>Emits a deviceMac instead of a deviceSignature.</summary>
+    public bool UseDeviceMac { get; set; }
+
     /// <summary>Builds a DeviceResponse and returns it base64url-encoded (the vp_token form).</summary>
     public string BuildBase64Url() => Base64UrlEncoder.Encode(Build());
 
@@ -86,7 +104,7 @@ internal sealed class MdocTestBuilder : IDisposable
         w.WriteTextString("1.0");
         w.WriteTextString("documents");
         w.WriteStartArray(1);
-        w.WriteStartMap(2);
+        w.WriteStartMap(IncludeDeviceAuth ? 3 : 2);
         w.WriteTextString("docType");
         w.WriteTextString(DocType);
         w.WriteTextString("issuerSigned");
@@ -105,12 +123,45 @@ internal sealed class MdocTestBuilder : IDisposable
         w.WriteTextString("issuerAuth");
         w.WriteEncodedValue(issuerAuth);
         w.WriteEndMap();
+        if (IncludeDeviceAuth)
+        {
+            WriteDeviceSigned(w);
+        }
+
         w.WriteEndMap();
         w.WriteEndArray();
         w.WriteTextString("status");
         w.WriteInt32(0);
         w.WriteEndMap();
         return w.Encode();
+    }
+
+    private void WriteDeviceSigned(CborWriter w)
+    {
+        // DeviceNameSpacesBytes = #6.24(bstr .cbor {}) — remote presentations disclose nothing device-signed.
+        var emptyMap = new CborWriter(CborConformanceMode.Lax);
+        emptyMap.WriteStartMap(0);
+        emptyMap.WriteEndMap();
+        var nameSpacesBytes = new CborWriter(CborConformanceMode.Lax);
+        nameSpacesBytes.WriteTag((CborTag)24);
+        nameSpacesBytes.WriteByteString(emptyMap.Encode());
+        var encodedNameSpaces = nameSpacesBytes.Encode();
+
+        var transcript = SessionTranscriptBuilder.Build(ClientId, Nonce, EncryptionKeyThumbprint, ResponseUri);
+        var deviceAuthBytes = DeviceAuthVerifier.BuildDeviceAuthenticationBytes(transcript, DocType, encodedNameSpaces);
+        var signature = CoseSign1Message.SignDetached(
+            deviceAuthBytes, new CoseSigner(DeviceSignerOverride ?? _deviceKey, HashAlgorithmName.SHA256));
+
+        w.WriteTextString("deviceSigned");
+        w.WriteStartMap(2);
+        w.WriteTextString("nameSpaces");
+        w.WriteEncodedValue(encodedNameSpaces);
+        w.WriteTextString("deviceAuth");
+        w.WriteStartMap(1);
+        w.WriteTextString(UseDeviceMac ? "deviceMac" : "deviceSignature");
+        w.WriteEncodedValue(signature); // for the MAC case only presence matters; the verifier rejects it first
+        w.WriteEndMap();
+        w.WriteEndMap();
     }
 
     private static byte[] EncodeIssuerSignedItem(long digestId, string name, object? value)
