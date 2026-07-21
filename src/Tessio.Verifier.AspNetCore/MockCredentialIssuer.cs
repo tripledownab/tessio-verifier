@@ -31,6 +31,9 @@ internal sealed class MockCredentialIssuer : IDisposable
             DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
     }
 
+    /// <summary>The issuer's self-signed certificate, pinned as the dev trust anchor.</summary>
+    public X509Certificate2 Certificate => _certificate;
+
     /// <summary>
     /// Issues a presentation for the requested claims, bound to the session's nonce and the
     /// verifier's audience: <c>&lt;issuer-jwt&gt;~&lt;disclosures…&gt;~&lt;kb-jwt&gt;</c>.

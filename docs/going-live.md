@@ -29,6 +29,8 @@ options.Mode = VerifierMode.Live;
 
 In `Live` mode a started session stays pending until a wallet posts to the callback endpoint or the session lifetime (`options.SessionLifetime`, default 5 minutes) runs out. Everything else is identical to Mock mode, which is the point: Mock exercises the exact pipeline a live wallet hits.
 
+Live mode also checks the configuration at startup and refuses to run with the demo request builder or the dev trust list still registered, so a demo configuration cannot quietly face real wallets. No demo, mock or test background services are hosted in Live mode.
+
 The endpoints `MapTessioVerifier` exposes (default prefix `/verify`):
 
 | Endpoint | Role |
@@ -113,13 +115,25 @@ Point it at `{your host}{route prefix}/request`. `MapTessioVerifier` already ser
 
 ## 4. Supply a real trust list
 
-The default resolver trusts only the built-in demo and mock issuers, so real credentials will verify but report `Trusted = false` and fail. Register your own resolver before `AddTessioVerifier`.
+The default resolver trusts only the built-in demo and mock issuers, so real credentials will verify but report `Trusted = false` and fail. Live mode refuses to start with the default in place; register your own resolver before `AddTessioVerifier`.
 
-From a JSON document of the form `{"trusted_issuers": ["https://issuer.example", ...]}`, on disk or at an HTTPS URL:
+How much you need to configure depends on how issuers prove their keys:
+
+- **Issuer metadata** (`iss` HTTPS URI): the identifier is proven by control of the issuer's domain, so listing the identifier is enough.
+- **X.509 (`x5c` header)**: the signing key comes from the presented certificate, so the identifier proves nothing on its own. Anyone can put a trusted issuer's name in a self-signed certificate. `StaticTrustListResolver` therefore requires the chain to anchor on a certificate you configure, and rejects x5c credentials when no anchors are set.
 
 ```csharp
 using Tessio.Verifier.Trust;
 
+builder.Services.AddSingleton<ITrustListResolver>(new StaticTrustListResolver(
+    ["https://pid-issuer.example.de"],
+    source: "my-trust-list",
+    trustAnchors: [rootCertificate]));   // CA roots or pinned issuer certificates
+```
+
+For metadata-only issuers a plain identifier list works, loaded from a JSON document of the form `{"trusted_issuers": ["https://issuer.example", ...]}` on disk or at an HTTPS URL:
+
+```csharp
 builder.Services.AddSingleton<ITrustListResolver>(
     await TrustListLoader.LoadAsync("trusted-issuers.json"));
 ```
@@ -211,7 +225,7 @@ Verifying real EUDI wallets in production also requires registering as a relying
 - [ ] `SignedPresentationRequestBuilder` with your certificate's key (HSM or Key Vault via `CryptoProviderFactory`)
 - [ ] `ClientId` set to your registered identifier with its prefix
 - [ ] `RequestUriBase` set so QR codes stay small
-- [ ] Real `ITrustListResolver` registered
+- [ ] Real `ITrustListResolver` registered, with trust anchors for issuers that use x5c
 - [ ] Multi-instance: `IStateCorrelatingSessionStore` over shared storage
 - [ ] Multi-instance: `ResponseEncryptionKeyProvider` built from one persisted key
 - [ ] Callback endpoint reachable over HTTPS from the public internet
