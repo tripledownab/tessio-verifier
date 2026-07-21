@@ -34,6 +34,9 @@ public static class TessioVerifierServiceCollectionExtensions
 
         services.Configure(configure);
 
+        // No-op when the host already configured logging; makes ILogger<T> resolvable otherwise.
+        services.AddLogging();
+
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<DemoCompletionQueue>();
         services.TryAddSingleton<MockWalletQueue>();

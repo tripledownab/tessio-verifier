@@ -215,6 +215,10 @@ builder.Services.AddSingleton<ICredentialVerifier>(sp => new SdJwtVcVerifier(
 
 Verification results carry stable error codes (`nonce_mismatch`, `untrusted_issuer`, `credential_revoked` and so on) in `VerificationResult.Errors`, so your application logic and your logs can branch on codes rather than messages.
 
+## Observability
+
+The pipeline logs through `Microsoft.Extensions.Logging`, so whatever your host configures (console, Application Insights, OpenTelemetry) picks it up with no extra wiring. Session creation logs under `Tessio.Verifier.Sessions`; callback handling logs under the `WalletCallbackProcessor` category. Every rejected wallet response logs a warning with the cause (parse failure, missing or unknown state, replay) and every completion logs the verification outcome with its error codes. Disclosed claims and credential contents are never logged.
+
 ## What the library does not cover
 
 Verifying real EUDI wallets in production also requires registering as a relying party in your member state and holding a Wallet Relying Party Access Certificate (WRPAC) from a Qualified Trust Service Provider, plus maintained EU trust lists. See [docs/production.md](https://github.com/tripledownab/tessio-verifier/blob/main/docs/production.md) for that landscape. The library covers the protocol and the credential verification; the registration and trust layer is yours or a provider's.

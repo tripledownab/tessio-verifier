@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tessio.Verifier.Core;
 using Tessio.Verifier.OpenId4Vp;
@@ -24,15 +25,18 @@ internal sealed class WalletCallbackProcessor
     private readonly ICredentialVerifier _verifier;
     private readonly IStateCorrelatingSessionStore _store;
     private readonly VerifierOptions _options;
+    private readonly ILogger<WalletCallbackProcessor> _logger;
 
     public WalletCallbackProcessor(
         WalletResponseParser parser,
         ICredentialVerifier verifier,
         ISessionStore store,
-        IOptions<VerifierOptions> options)
+        IOptions<VerifierOptions> options,
+        ILogger<WalletCallbackProcessor> logger)
     {
         _parser = parser;
         _verifier = verifier;
+        _logger = logger;
         // Wallet responses carry only `state` as a correlation handle, so the callback path cannot
         // work against a store that has no state index.
         _store = store as IStateCorrelatingSessionStore ?? throw new InvalidOperationException(
@@ -49,8 +53,9 @@ internal sealed class WalletCallbackProcessor
         {
             parsed = await _parser.ParseDetailedAsync(response, ct).ConfigureAwait(false);
         }
-        catch (WalletResponseException)
+        catch (WalletResponseException e)
         {
+            Log.CallbackParseFailed(_logger, e);
             return CallbackOutcome.ResponseInvalid;
         }
 
@@ -58,17 +63,20 @@ internal sealed class WalletCallbackProcessor
         // handle; a response without a known state is rejected (replay / stray callback protection).
         if (parsed.State is null)
         {
+            Log.CallbackMissingState(_logger);
             return CallbackOutcome.ResponseInvalid;
         }
 
         var session = await _store.FindByStateAsync(parsed.State, ct).ConfigureAwait(false);
         if (session is null)
         {
+            Log.CallbackUnknownState(_logger, parsed.State);
             return CallbackOutcome.UnknownSession;
         }
 
         if (session.Status != VerificationSessionStatus.Pending)
         {
+            Log.CallbackNotPending(_logger, session.SessionId, session.Status);
             return CallbackOutcome.SessionNotPending; // Sessions complete exactly once (replay protection).
         }
 
@@ -94,6 +102,17 @@ internal sealed class WalletCallbackProcessor
         }
 
         await _store.CompleteAsync(session.SessionId, outcome!, ct).ConfigureAwait(false);
+
+        if (outcome!.IsValid)
+        {
+            Log.VerificationSucceeded(_logger, session.SessionId, outcome.Issuer.Identifier, outcome.Issuer.KeyResolutionMethod);
+        }
+        else
+        {
+            Log.VerificationFailed(_logger, session.SessionId, outcome.Issuer.Identifier,
+                string.Join(",", outcome.Errors.Select(e => e.Code)));
+        }
+
         return CallbackOutcome.Completed;
     }
 }
