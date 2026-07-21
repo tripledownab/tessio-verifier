@@ -28,7 +28,8 @@
   ],
   "build": {
     "content": [
-      { "files": ["**/*.{md,yml}"], "exclude": ["_site/**"] }
+      { "files": ["**/*.{md,yml}"], "exclude": ["_site/**"] },
+      { "src": "../../docs", "files": ["going-live.md"], "dest": "guides" }
     ],
     "resource": [
       { "files": ["images/**", "favicon.svg", "logo.svg"] }
