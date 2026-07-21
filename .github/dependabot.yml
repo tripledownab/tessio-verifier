@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # NuGet dependencies. Microsoft.IdentityModel patches matter for a verifier; check often.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      identitymodel:
+        patterns:
+          - "Microsoft.IdentityModel.*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Marketing site (Astro).
+  - package-ecosystem: npm
+    directory: /site/web
+    schedule:
+      interval: monthly

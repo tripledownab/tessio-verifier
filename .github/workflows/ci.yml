@@ -9,7 +9,13 @@ on:
 
 jobs:
   build-test-pack:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows coverage matters: most consuming .NET shops run Windows, and the
+        # X.509 SAN handling in Core has platform-dependent formatting.
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +40,7 @@ jobs:
         run: dotnet pack Tessio.Verifier.sln --no-build --configuration Release --output ./artifacts
 
       - name: Upload packages
-        if: success()
+        if: success() && matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: nupkgs
@@ -44,5 +50,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.os }}
           path: '**/TestResults/*.trx'
