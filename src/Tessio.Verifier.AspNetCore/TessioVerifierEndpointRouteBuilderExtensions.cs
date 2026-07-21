@@ -158,8 +158,8 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
 
         try
         {
-            var inMemory = http.RequestServices.GetService<InMemorySessionStore>();
-            if (inMemory is not null)
+            // The in-memory store supports push-based waiting; other stores are polled.
+            if (store is InMemorySessionStore inMemory)
             {
                 return await inMemory.WaitForTerminalAsync(sessionId, deadline.Token).ConfigureAwait(false);
             }

@@ -22,18 +22,23 @@ internal sealed class WalletCallbackProcessor
 {
     private readonly WalletResponseParser _parser;
     private readonly ICredentialVerifier _verifier;
-    private readonly InMemorySessionStore _store;
+    private readonly IStateCorrelatingSessionStore _store;
     private readonly VerifierOptions _options;
 
     public WalletCallbackProcessor(
         WalletResponseParser parser,
         ICredentialVerifier verifier,
-        InMemorySessionStore store,
+        ISessionStore store,
         IOptions<VerifierOptions> options)
     {
         _parser = parser;
         _verifier = verifier;
-        _store = store;
+        // Wallet responses carry only `state` as a correlation handle, so the callback path cannot
+        // work against a store that has no state index.
+        _store = store as IStateCorrelatingSessionStore ?? throw new InvalidOperationException(
+            $"The registered {nameof(ISessionStore)} ({store.GetType().Name}) does not implement " +
+            $"{nameof(IStateCorrelatingSessionStore)}, which the wallet callback endpoint requires " +
+            "to correlate responses by OpenID4VP 'state'. Implement that interface on your store.");
         _options = options.Value;
     }
 

@@ -9,7 +9,7 @@ namespace Tessio.Verifier.AspNetCore;
 /// Default in-memory <see cref="ISessionStore"/>. Suitable for a single-process app, the demo, and tests.
 /// Production deployments swap in a distributed store (Redis, SQL, …).
 /// </summary>
-public sealed class InMemorySessionStore : ISessionStore
+public sealed class InMemorySessionStore : IStateCorrelatingSessionStore
 {
     /// <summary>
     /// How long a session stays readable after <see cref="VerificationSession.ExpiresAt"/> before it
@@ -57,10 +57,8 @@ public sealed class InMemorySessionStore : ISessionStore
         return session;
     }
 
-    /// <summary>
-    /// Finds the session correlated with an OpenID4VP <c>state</c> value from a wallet response.
-    /// </summary>
-    internal Task<VerificationSession?> FindByStateAsync(string state, CancellationToken ct = default)
+    /// <inheritdoc />
+    public Task<VerificationSession?> FindByStateAsync(string state, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(state);
         return _sessionIdByState.TryGetValue(state, out var sessionId)

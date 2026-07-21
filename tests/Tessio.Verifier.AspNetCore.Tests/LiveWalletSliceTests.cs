@@ -150,6 +150,70 @@ public class LiveWalletSliceTests
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/verify/request/no-such-id")).StatusCode);
     }
 
+    // ---- Live mode ----------------------------------------------------------------------------
+
+    [Fact]
+    public async Task LiveMode_SessionWaitsForWallet_ThenCallbackCompletes()
+    {
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var host = new HostBuilder()
+            .ConfigureWebHost(web => web
+                .UseTestServer()
+                .ConfigureServices(services =>
+                {
+                    services.AddSingleton<IPresentationRequestBuilder>(new SignedPresentationRequestBuilder(
+                        new PresentationRequestBuilderOptions
+                        {
+                            SigningCredentials = new SigningCredentials(
+                                new ECDsaSecurityKey(signingKey), SecurityAlgorithms.EcdsaSha256),
+                        }));
+                    services.AddRouting();
+                    services.AddTessioVerifier(options =>
+                    {
+                        options.Mode = VerifierMode.Live;
+                        options.ResponseMode = ResponseMode.DirectPost;
+                    });
+                })
+                .Configure(app => app.UseRouting().UseEndpoints(e => e.MapTessioVerifier())))
+            .Start();
+        var client = host.GetTestClient();
+
+        var startHtml = await client.GetStringAsync("/verify/start");
+        var sessionId = ExtractSessionId(startHtml);
+
+        // No built-in actor completes Live sessions; the session waits for a wallet.
+        var store = host.Services.GetRequiredService<InMemorySessionStore>();
+        var pending = await store.GetAsync(sessionId);
+        Assert.Equal(VerificationSessionStatus.Pending, pending!.Status);
+
+        // A wallet responds through the callback endpoint (simulated with the mock issuer's credential).
+        var issuer = host.Services.GetRequiredService<MockCredentialIssuer>();
+        var options = host.Services.GetRequiredService<IOptions<VerifierOptions>>().Value;
+        var presentation = issuer.IssuePresentation(
+            ["age_over_18"], DemoRequestOptionsFactory.DefaultVct, pending.Request.Nonce, options.ClientId);
+
+        var response = await client.PostAsync("/verify/callback", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["vp_token"] = $$"""{"credential":["{{presentation}}"]}""",
+                ["state"] = pending.Request.State!,
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var terminal = await store.GetAsync(sessionId);
+        Assert.Equal(VerificationSessionStatus.Completed, terminal!.Status);
+        Assert.True(terminal.Result!.IsValid,
+            string.Join("; ", terminal.Result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    }
+
+    private static string ExtractSessionId(string startHtml)
+    {
+        var marker = "Session <code>";
+        var start = startHtml.IndexOf(marker, StringComparison.Ordinal) + marker.Length;
+        var end = startHtml.IndexOf("</code>", start, StringComparison.Ordinal);
+        return startHtml[start..end];
+    }
+
     private static string ExtractRequestUri(string startHtml)
     {
         // The authorization URI on the page carries request_uri=<url-encoded>; decode the local path.
