@@ -13,13 +13,15 @@ public enum VerifierMode
     Demo = 0,
 
     /// <summary>
-    /// Returns canned wallet responses for predictable integration tests. Reserved for a later slice;
-    /// currently behaves like <see cref="Demo"/> until the OpenID4VP response path is wired.
+    /// A built-in mock wallet issues freshly signed SD-JWT VC credentials and posts them through the
+    /// full protocol pipeline (encrypted responses included). For integration tests; runs offline.
     /// </summary>
     Mock = 1,
 
     /// <summary>
-    /// Full protocol compliance against fixtures / conformance vectors. Reserved for a later slice.
+    /// Replays the pinned RFC 9901 conformance vector (the specification's German PID example)
+    /// through the real verifier and completes the session with the actual result. Proves the
+    /// verifier against immutable, specification-published bytes; runs offline.
     /// </summary>
     Test = 2,
 }

@@ -55,9 +55,9 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 
 ## Modes
 
-- **Demo**: auto-completes in seconds, for showcases and first-run experience. Available now.
-- **Mock**: a built-in mock wallet posts real signed credentials through the full verification pipeline. Available now.
-- **Test**: full protocol runs against conformance fixtures. Currently behaves like Mock; fixtures land next.
+- **Demo**: auto-completes in seconds, for showcases and first-run experience.
+- **Mock**: a built-in mock wallet posts freshly signed credentials through the full verification pipeline, encrypted responses included.
+- **Test**: replays the RFC 9901 conformance vector (the spec's German PID example) through the real verifier, so you see the verifier agree with the specification's own bytes.
 
 ## Packages
 
