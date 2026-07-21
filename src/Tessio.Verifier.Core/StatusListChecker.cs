@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -9,25 +10,34 @@ namespace Tessio.Verifier.Core;
 /// <summary>
 /// Resolves and enforces a credential's <c>status</c> claim against a Token Status List: fetches the
 /// status list token, validates it (typ, signature, sub↔uri binding, expiry), decompresses the
-/// bitstring, and maps the referenced index to a verification outcome.
+/// bitstring, and maps the referenced index to a verification outcome. Validated lists are cached
+/// per uri for min(cache duration, the token's <c>ttl</c> claim, its <c>exp</c>); failures are
+/// never cached, so an unresolvable status stays fail-closed on every attempt.
 /// </summary>
 // SPEC: draft-ietf-oauth-status-list-18 — §6.2 (status claim), §5.1 (status list token in JWT
-// format), §8.3 (Relying Party validation rules), §4.1/§4.2 (bit packing and compression).
+// format), §8.3 (Relying Party validation rules), §4.1/§4.2 (bit packing and compression),
+// §11.2 (ttl-driven caching).
 internal sealed class StatusListChecker
 {
     private const string StatusListTyp = "statuslist+jwt";
 
+    private sealed record CachedList(int Bits, byte[] List, string Issuer, DateTimeOffset Until);
+
+    private readonly ConcurrentDictionary<string, CachedList> _cache = new(StringComparer.Ordinal);
     private readonly HttpClient _httpClient;
     private readonly IssuerKeyResolver _keyResolver;
     private readonly TimeProvider _clock;
     private readonly TimeSpan _clockSkew;
+    private readonly TimeSpan _cacheDuration;
 
-    public StatusListChecker(HttpClient httpClient, IssuerKeyResolver keyResolver, TimeProvider clock, TimeSpan clockSkew)
+    public StatusListChecker(
+        HttpClient httpClient, IssuerKeyResolver keyResolver, TimeProvider clock, TimeSpan clockSkew, TimeSpan cacheDuration)
     {
         _httpClient = httpClient;
         _keyResolver = keyResolver;
         _clock = clock;
         _clockSkew = clockSkew;
+        _cacheDuration = cacheDuration;
     }
 
     /// <summary>
@@ -61,6 +71,13 @@ internal sealed class StatusListChecker
         if (idx < 0 || uri is null)
         {
             return [Error(ErrorCodes.StatusInvalid, "The status claim carries no valid status_list.idx/uri.")];
+        }
+
+        if (_cache.TryGetValue(uri, out var cached)
+            && cached.Until > _clock.GetUtcNow()
+            && string.Equals(cached.Issuer, credentialIssuer, StringComparison.Ordinal))
+        {
+            return EvaluateIndex(cached.Bits, cached.List, idx);
         }
 
         string statusListJwt;
@@ -146,18 +163,17 @@ internal sealed class StatusListChecker
         }
 
         // SPEC: §8.3 — when exp is present, an expired status list token MUST be rejected.
+        DateTimeOffset? expiresAt = null;
         if (token.TryGetClaim("exp", out var expClaim)
-            && long.TryParse(expClaim.Value, System.Globalization.CultureInfo.InvariantCulture, out var expSeconds)
-            && _clock.GetUtcNow() - _clockSkew >= DateTimeOffset.FromUnixTimeSeconds(expSeconds))
+            && long.TryParse(expClaim.Value, System.Globalization.CultureInfo.InvariantCulture, out var expSeconds))
         {
-            return [Error(ErrorCodes.StatusUnresolvable, "The status list token is expired; current status is unknown.")];
+            expiresAt = DateTimeOffset.FromUnixTimeSeconds(expSeconds);
+            if (_clock.GetUtcNow() - _clockSkew >= expiresAt)
+            {
+                return [Error(ErrorCodes.StatusUnresolvable, "The status list token is expired; current status is unknown.")];
+            }
         }
 
-        return ExtractStatus(token, idx);
-    }
-
-    private static List<VerificationError> ExtractStatus(JsonWebToken token, long idx)
-    {
         // SPEC: §4.2 — status_list: { "bits": 1|2|4|8, "lst": base64url(zlib-deflate(bytes)) }.
         using var payloadDoc = JsonDocument.Parse(Base64UrlEncoder.Decode(token.EncodedPayload));
         if (!payloadDoc.RootElement.TryGetProperty("status_list", out var statusListProp)
@@ -184,15 +200,61 @@ internal sealed class StatusListChecker
             return [Error(ErrorCodes.StatusInvalid, "The status list bitstring could not be decompressed.")];
         }
 
+        CacheList(token, uri, credentialIssuer, bits, decompressed, expiresAt);
+        return EvaluateIndex(bits, decompressed, idx);
+    }
+
+    /// <summary>
+    /// Caches the validated, decompressed list. Lifetime is the configured cache duration, shortened
+    /// by the token's <c>ttl</c> claim (the issuer's cache ceiling, SPEC §11.2) and capped by its
+    /// <c>exp</c>. A non-positive lifetime disables caching for this list.
+    /// </summary>
+    private void CacheList(
+        JsonWebToken token, string uri, string credentialIssuer, int bits, byte[] list, DateTimeOffset? expiresAt)
+    {
+        var lifetime = _cacheDuration;
+        if (token.TryGetClaim("ttl", out var ttlClaim)
+            && long.TryParse(ttlClaim.Value, System.Globalization.CultureInfo.InvariantCulture, out var ttlSeconds)
+            && TimeSpan.FromSeconds(ttlSeconds) < lifetime)
+        {
+            lifetime = TimeSpan.FromSeconds(ttlSeconds);
+        }
+
+        var now = _clock.GetUtcNow();
+        var until = now + lifetime;
+        if (expiresAt is { } exp && exp < until)
+        {
+            until = exp;
+        }
+
+        if (until <= now)
+        {
+            return;
+        }
+
+        // Opportunistic eviction keeps the cache bounded to live lists (one entry per status uri).
+        foreach (var (key, entry) in _cache)
+        {
+            if (entry.Until <= now)
+            {
+                _cache.TryRemove(key, out _);
+            }
+        }
+
+        _cache[uri] = new CachedList(bits, list, credentialIssuer, until);
+    }
+
+    private static List<VerificationError> EvaluateIndex(int bits, byte[] list, long idx)
+    {
         // SPEC: §4.1 — blocks are packed into bytes starting at the least significant bit.
         var byteIndex = idx * bits / 8;
-        if (byteIndex >= decompressed.Length)
+        if (byteIndex >= list.Length)
         {
             return [Error(ErrorCodes.StatusInvalid, $"Status index {idx} is outside the status list.")];
         }
 
         var shift = (int)(idx * bits % 8);
-        var value = (decompressed[byteIndex] >> shift) & ((1 << bits) - 1);
+        var value = (list[byteIndex] >> shift) & ((1 << bits) - 1);
 
         // SPEC: §7.1 — registered status values.
         return value switch

@@ -43,7 +43,8 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         _options = options ?? new SdJwtVcVerifierOptions();
         _keyResolver = new IssuerKeyResolver(httpClient ?? DefaultHttpClient);
         _clock = clock ?? TimeProvider.System;
-        _statusChecker = new StatusListChecker(httpClient ?? DefaultHttpClient, _keyResolver, _clock, _options.ClockSkew);
+        _statusChecker = new StatusListChecker(
+            httpClient ?? DefaultHttpClient, _keyResolver, _clock, _options.ClockSkew, _options.StatusListCacheDuration);
     }
 
     /// <inheritdoc />
