@@ -29,4 +29,13 @@ public sealed class SdJwtVcVerifierOptions
     /// </summary>
     // SPEC: draft-ietf-oauth-status-list §8.3 — Relying Parties validate the referenced status.
     public bool CheckStatus { get; set; } = true;
+
+    /// <summary>
+    /// How long a validated status list may be served from cache before refetching. This is the
+    /// ceiling: the token's own <c>ttl</c> claim shortens it and its <c>exp</c> caps it. Defaults to
+    /// 5 minutes — the window in which a freshly revoked credential could still verify. Set to
+    /// <see cref="TimeSpan.Zero"/> to fetch on every verification.
+    /// </summary>
+    // SPEC: draft-ietf-oauth-status-list §11.2 — ttl drives Relying Party caching.
+    public TimeSpan StatusListCacheDuration { get; set; } = TimeSpan.FromMinutes(5);
 }

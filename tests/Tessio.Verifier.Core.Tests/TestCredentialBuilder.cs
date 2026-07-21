@@ -214,7 +214,8 @@ internal sealed class TestCredentialBuilder : IDisposable
     /// and zlib-deflate compressed per draft-ietf-oauth-status-list §4.1/§4.2.
     /// </summary>
     public string BuildStatusListToken(
-        string uri, int bits, byte[] statuses, long? exp = null, string typ = "statuslist+jwt", string? sub = null)
+        string uri, int bits, byte[] statuses, long? exp = null, string typ = "statuslist+jwt", string? sub = null,
+        long? ttl = null)
     {
         var packed = new byte[(statuses.Length * bits + 7) / 8];
         for (var i = 0; i < statuses.Length; i++)
@@ -247,6 +248,11 @@ internal sealed class TestCredentialBuilder : IDisposable
         if (exp is { } expValue)
         {
             claims["exp"] = expValue;
+        }
+
+        if (ttl is { } ttlValue)
+        {
+            claims["ttl"] = ttlValue;
         }
 
         var payload = JsonSerializer.Serialize(claims);
