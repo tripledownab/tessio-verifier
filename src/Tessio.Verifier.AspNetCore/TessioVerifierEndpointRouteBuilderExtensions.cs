@@ -34,6 +34,24 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         var options = endpoints.ServiceProvider.GetRequiredService<IOptions<VerifierOptions>>().Value;
         var prefix = NormalizePrefix(routePrefix ?? options.RoutePrefix);
 
+        // Fail fast rather than let a demo configuration face real wallets. See docs/going-live.md.
+        if (options.Mode == VerifierMode.Live)
+        {
+            if (endpoints.ServiceProvider.GetRequiredService<IPresentationRequestBuilder>() is DemoPresentationRequestBuilder)
+            {
+                throw new InvalidOperationException(
+                    "VerifierMode.Live requires signed requests: register a SignedPresentationRequestBuilder " +
+                    "as IPresentationRequestBuilder before AddTessioVerifier. Wallets reject the unsigned demo requests.");
+            }
+
+            if (endpoints.ServiceProvider.GetRequiredService<Tessio.Verifier.Trust.ITrustListResolver>() is DevDefaultTrustListResolver)
+            {
+                throw new InvalidOperationException(
+                    "VerifierMode.Live requires a real trust list: the default resolver trusts only the built-in " +
+                    "demo and mock issuers. Register an ITrustListResolver before AddTessioVerifier.");
+            }
+        }
+
         endpoints.MapGet($"{prefix}/start", (HttpContext http) => StartAsync(http, prefix));
         endpoints.MapGet($"{prefix}/request/{{requestId}}", (string requestId, HttpContext http) => ServeRequestObjectAsync(requestId, http));
         endpoints.MapGet($"{prefix}/{{sessionId}}", (string sessionId, HttpContext http) => GetStatusAsync(sessionId, http));

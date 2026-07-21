@@ -167,6 +167,12 @@ public class LiveWalletSliceTests
                             SigningCredentials = new SigningCredentials(
                                 new ECDsaSecurityKey(signingKey), SecurityAlgorithms.EcdsaSha256),
                         }));
+                    // Live mode rejects the dev default trust list; pin the simulated wallet's issuer.
+                    services.AddSingleton<Tessio.Verifier.Trust.ITrustListResolver>(sp =>
+                        new Tessio.Verifier.Trust.StaticTrustListResolver(
+                            [MockCredentialIssuer.Issuer],
+                            source: "live-test",
+                            trustAnchors: [sp.GetRequiredService<MockCredentialIssuer>().Certificate]));
                     services.AddRouting();
                     services.AddTessioVerifier(options =>
                     {

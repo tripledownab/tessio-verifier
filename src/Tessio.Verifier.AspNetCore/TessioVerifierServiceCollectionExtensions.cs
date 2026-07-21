@@ -50,8 +50,8 @@ public static class TessioVerifierServiceCollectionExtensions
             ResponseDecryptionKey = sp.GetRequiredService<ResponseEncryptionKeyProvider>().DecryptionKey,
         }));
         services.TryAddSingleton<IPresentationResponseParser>(sp => sp.GetRequiredService<WalletResponseParser>());
-        services.TryAddSingleton<ITrustListResolver>(new StaticTrustListResolver(
-            [MockCredentialIssuer.Issuer, "https://demo-issuer.tessio.dev"], source: "tessio-dev-defaults"));
+        services.TryAddSingleton<ITrustListResolver>(sp =>
+            new DevDefaultTrustListResolver(sp.GetRequiredService<MockCredentialIssuer>()));
         services.TryAddSingleton<ICredentialVerifier>(sp => new SdJwtVcVerifier(
             sp.GetRequiredService<ITrustListResolver>(),
             clock: sp.GetRequiredService<TimeProvider>()));
@@ -62,9 +62,24 @@ public static class TessioVerifierServiceCollectionExtensions
 
         services.TryAddSingleton<TestFixtureQueue>();
 
-        services.AddHostedService<DemoCompletionService>();
-        services.AddHostedService<MockWalletService>();
-        services.AddHostedService<TestFixtureService>();
+        // Only the mode's own engine runs: a Live deployment hosts no demo, mock or test services.
+        var probe = new VerifierOptions();
+        configure(probe);
+        switch (probe.Mode)
+        {
+            case VerifierMode.Demo:
+                services.AddHostedService<DemoCompletionService>();
+                break;
+            case VerifierMode.Mock:
+                services.AddHostedService<MockWalletService>();
+                break;
+            case VerifierMode.Test:
+                services.AddHostedService<TestFixtureService>();
+                break;
+            case VerifierMode.Live:
+            default:
+                break;
+        }
 
         return services;
     }
