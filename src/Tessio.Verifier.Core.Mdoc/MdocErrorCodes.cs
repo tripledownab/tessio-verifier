@@ -9,6 +9,27 @@ public static class MdocErrorCodes
     /// <summary>Malformed base64url, CBOR or a missing required element (shared code with Core).</summary>
     public const string StructureInvalid = "structure_invalid";
 
+    /// <summary>The credential is not an mdoc (shared code with Core).</summary>
+    public const string FormatUnsupported = "format_unsupported";
+
+    /// <summary>The COSE signature algorithm is not on the allowlist (shared code with Core).</summary>
+    public const string AlgorithmNotAllowed = "algorithm_not_allowed";
+
+    /// <summary>The issuerAuth signature does not verify (shared code with Core).</summary>
+    public const string SignatureInvalid = "signature_invalid";
+
+    /// <summary>The Document Signer key could not be resolved from x5chain (shared code with Core).</summary>
+    public const string IssuerKeyUnresolvable = "issuer_key_unresolvable";
+
+    /// <summary>The issuer does not chain to a configured trust anchor (shared code with Core).</summary>
+    public const string IssuerUntrusted = "issuer_untrusted";
+
+    /// <summary>The MSO validity window has passed (shared code with Core).</summary>
+    public const string CredentialExpired = "credential_expired";
+
+    /// <summary>The MSO validity window has not started (shared code with Core).</summary>
+    public const string CredentialNotYetValid = "credential_not_yet_valid";
+
     /// <summary>A disclosed item's digest does not appear in the MSO's valueDigests.</summary>
     public const string DigestMismatch = "mdoc_digest_mismatch";
 

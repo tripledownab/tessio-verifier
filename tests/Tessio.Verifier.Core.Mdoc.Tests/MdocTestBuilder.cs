@@ -59,6 +59,9 @@ internal sealed class MdocTestBuilder : IDisposable
     /// <summary>Mutates one encoded item after digest computation, to model tampering.</summary>
     public Func<byte[], string, byte[]>? TamperItem { get; set; }
 
+    /// <summary>Signs the MSO with this key instead of the DS certificate's key (signature mismatch).</summary>
+    public ECDsa? SignerKeyOverride { get; set; }
+
     /// <summary>Builds a DeviceResponse and returns it base64url-encoded (the vp_token form).</summary>
     public string BuildBase64Url() => Base64UrlEncoder.Encode(Build());
 
@@ -188,7 +191,7 @@ internal sealed class MdocTestBuilder : IDisposable
         payload.WriteTag((CborTag)24);
         payload.WriteByteString(mso.Encode());
 
-        var signer = new CoseSigner(_dsKey, HashAlgorithmName.SHA256);
+        var signer = new CoseSigner(SignerKeyOverride ?? _dsKey, HashAlgorithmName.SHA256);
         // SPEC: RFC 9360 — x5chain at header label 33; DS certificate first, then the chain.
         signer.UnprotectedHeaders.Add(new CoseHeaderLabel(33), CoseHeaderValue.FromEncodedValue(EncodeChain()));
         return CoseSign1Message.SignEmbedded(payload.Encode(), signer);
