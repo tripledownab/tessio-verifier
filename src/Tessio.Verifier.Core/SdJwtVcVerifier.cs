@@ -24,6 +24,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
     private readonly ITrustListResolver _trustListResolver;
     private readonly SdJwtVcVerifierOptions _options;
     private readonly IssuerKeyResolver _keyResolver;
+    private readonly StatusListChecker _statusChecker;
     private readonly TimeProvider _clock;
 
     /// <summary>Creates a verifier.</summary>
@@ -42,6 +43,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         _options = options ?? new SdJwtVcVerifierOptions();
         _keyResolver = new IssuerKeyResolver(httpClient ?? DefaultHttpClient);
         _clock = clock ?? TimeProvider.System;
+        _statusChecker = new StatusListChecker(httpClient ?? DefaultHttpClient, _keyResolver, _clock, _options.ClockSkew);
     }
 
     /// <inheritdoc />
@@ -142,6 +144,12 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         CheckVct(processed, vctIsPlain, context, errors);
         CheckTimeClaims(processed, errors);
         await CheckKeyBindingAsync(presentation, processed, context, errors, ct).ConfigureAwait(false);
+
+        // SPEC: draft-ietf-oauth-status-list §8.3 — enforce the status claim when present (revocation).
+        if (_options.CheckStatus)
+        {
+            errors.AddRange(await _statusChecker.CheckAsync(processed, resolution.Issuer, ct).ConfigureAwait(false));
+        }
 
         // 9. Issuer trust via the pluggable trust seam.
         var trust = await _trustListResolver.ResolveAsync(resolution.Issuer, resolution.CertificateChain, ct).ConfigureAwait(false);
