@@ -63,6 +63,9 @@ internal sealed class TestCredentialBuilder : IDisposable
     /// <summary>When set, the issuer JWT carries this x5c chain instead of using metadata resolution.</summary>
     public X509Certificate2? Certificate { get; private set; }
 
+    /// <summary>When set, the credential carries a status claim referencing a Token Status List.</summary>
+    public (long Idx, string Uri)? Status { get; set; }
+
     /// <summary>Overrides the sd_hash input; null computes the correct value.</summary>
     public string? SdHashOverride { get; set; }
 
@@ -124,6 +127,15 @@ internal sealed class TestCredentialBuilder : IDisposable
         if (SdAlg is not null)
         {
             payload["_sd_alg"] = SdAlg;
+        }
+
+        if (Status is { } status)
+        {
+            // SPEC: draft-ietf-oauth-status-list §6.2 — the referenced-token status claim.
+            payload["status"] = new Dictionary<string, object>
+            {
+                ["status_list"] = new Dictionary<string, object> { ["idx"] = status.Idx, ["uri"] = status.Uri },
+            };
         }
 
         if (IncludeCnf)
@@ -195,6 +207,51 @@ internal sealed class TestCredentialBuilder : IDisposable
         });
 
         return withoutKb + SignJwt(kbPayload, new ECDsaSecurityKey(_holderEcdsa), "kb+jwt", x5c: null);
+    }
+
+    /// <summary>
+    /// Builds a signed Token Status List JWT for the given per-index status values, packed LSB-first
+    /// and zlib-deflate compressed per draft-ietf-oauth-status-list §4.1/§4.2.
+    /// </summary>
+    public string BuildStatusListToken(
+        string uri, int bits, byte[] statuses, long? exp = null, string typ = "statuslist+jwt", string? sub = null)
+    {
+        var packed = new byte[(statuses.Length * bits + 7) / 8];
+        for (var i = 0; i < statuses.Length; i++)
+        {
+            packed[i * bits / 8] |= (byte)(statuses[i] << (i * bits % 8));
+        }
+
+        byte[] compressed;
+        using (var output = new MemoryStream())
+        {
+            using (var zlib = new System.IO.Compression.ZLibStream(output, System.IO.Compression.CompressionMode.Compress, leaveOpen: true))
+            {
+                zlib.Write(packed);
+            }
+
+            compressed = output.ToArray();
+        }
+
+        var claims = new Dictionary<string, object>
+        {
+            ["iss"] = Issuer,
+            ["sub"] = sub ?? uri,
+            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["status_list"] = new Dictionary<string, object>
+            {
+                ["bits"] = bits,
+                ["lst"] = Base64UrlEncoder.Encode(compressed),
+            },
+        };
+        if (exp is { } expValue)
+        {
+            claims["exp"] = expValue;
+        }
+
+        var payload = JsonSerializer.Serialize(claims);
+
+        return SignJwt(payload, new ECDsaSecurityKey(_issuerEcdsa), typ, x5c: null);
     }
 
     public static string MakeDisclosure(string name, object? value) =>

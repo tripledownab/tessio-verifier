@@ -21,4 +21,12 @@ public sealed class SdJwtVcVerifierOptions
     /// (the Microsoft.IdentityModel ecosystem default).
     /// </summary>
     public TimeSpan ClockSkew { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Whether to resolve and enforce the credential's <c>status</c> claim (Token Status List) when
+    /// present. Defaults to true — a revoked or suspended credential fails verification. Turn off
+    /// only for offline scenarios where the status host is unreachable by design.
+    /// </summary>
+    // SPEC: draft-ietf-oauth-status-list §8.3 — Relying Parties validate the referenced status.
+    public bool CheckStatus { get; set; } = true;
 }

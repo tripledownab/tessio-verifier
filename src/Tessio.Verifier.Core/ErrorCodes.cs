@@ -32,4 +32,9 @@ internal static class ErrorCodes
     public const string SdHashMismatch = "sd_hash_mismatch";
     public const string ConfirmationKeyMissing = "confirmation_key_missing";
     public const string IssuerUntrusted = "issuer_untrusted";
+    public const string StatusInvalid = "status_invalid";
+    public const string StatusUnresolvable = "status_unresolvable";
+    public const string CredentialRevoked = "credential_revoked";
+    public const string CredentialSuspended = "credential_suspended";
+    public const string CredentialStatusUnknown = "credential_status_unknown";
 }
