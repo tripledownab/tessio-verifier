@@ -11,6 +11,12 @@ namespace Tessio.Verifier.AspNetCore;
 /// </summary>
 public sealed class InMemorySessionStore : ISessionStore
 {
+    /// <summary>
+    /// How long a session stays readable after <see cref="VerificationSession.ExpiresAt"/> before it
+    /// is evicted. Gives result-page clients time to read a terminal state.
+    /// </summary>
+    private static readonly TimeSpan EvictionRetention = TimeSpan.FromMinutes(15);
+
     private readonly ConcurrentDictionary<string, SessionEntry> _sessions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _sessionIdByState = new(StringComparer.Ordinal);
     private readonly IPresentationRequestBuilder _requestBuilder;
@@ -29,6 +35,7 @@ public sealed class InMemorySessionStore : ISessionStore
     public async Task<VerificationSession> CreateAsync(PresentationRequestOptions options, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+        EvictStaleSessions();
 
         var request = await _requestBuilder.BuildAsync(options, ct).ConfigureAwait(false);
         var session = new VerificationSession
@@ -104,6 +111,28 @@ public sealed class InMemorySessionStore : ISessionStore
         }
 
         return await entry.Terminal.Task.WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes sessions past their expiry plus a retention window, so a long-running process does not
+    /// grow without bound. Runs opportunistically on every create; O(n) over live sessions, which is
+    /// fine at the scale an in-memory store is meant for.
+    /// </summary>
+    private void EvictStaleSessions()
+    {
+        var cutoff = _clock.GetUtcNow() - EvictionRetention;
+        foreach (var (sessionId, entry) in _sessions)
+        {
+            var session = entry.Current;
+            if (session.ExpiresAt < cutoff)
+            {
+                _sessions.TryRemove(sessionId, out _);
+                if (session.Request.State is { } state)
+                {
+                    _sessionIdByState.TryRemove(state, out _);
+                }
+            }
+        }
     }
 
     private VerificationSession EvaluateExpiry(SessionEntry entry)
