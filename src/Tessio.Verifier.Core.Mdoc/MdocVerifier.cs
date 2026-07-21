@@ -10,8 +10,9 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// into <see cref="VerificationResult.Errors"/> with stable codes.
 /// </summary>
 /// <remarks>
-/// Device authentication (the holder's signature over the OpenID4VP session transcript) lands with
-/// the session-transcript milestone and is not yet enforced.
+/// Device authentication verifies the holder's signature over the OpenID4VP session transcript
+/// (Annex B.2.6.1), built from the context's client_id, nonce, encryption key thumbprint and
+/// response_uri. Required by default (<see cref="MdocVerifierOptions.RequireDeviceAuth"/>).
 /// </remarks>
 public sealed class MdocVerifier
 {
@@ -116,6 +117,7 @@ public sealed class MdocVerifier
         }
 
         errors.AddRange(DigestVerifier.Verify(document, mso));
+        errors.AddRange(VerifyDeviceAuth(document, mso, context));
 
         var trust = await _trustListResolver.ResolveAsync(resolution.Issuer, resolution.CertificateChain, ct)
             .ConfigureAwait(false);
@@ -153,6 +155,29 @@ public sealed class MdocVerifier
             Issuer = issuer,
             Errors = [],
         };
+    }
+
+    private List<VerificationError> VerifyDeviceAuth(
+        ParsedDocument document, MobileSecurityObject mso, MdocVerificationContext context)
+    {
+        if (!_options.RequireDeviceAuth && document.DeviceSigned is null)
+        {
+            return [];
+        }
+
+        if (context.ClientId is null || context.Nonce is null || context.ResponseUri is null)
+        {
+            return [new VerificationError
+            {
+                Code = MdocErrorCodes.DeviceAuthInvalid,
+                Message = "The verification context lacks the session transcript inputs "
+                    + "(ClientId, Nonce, ResponseUri); device authentication cannot be verified.",
+            }];
+        }
+
+        var sessionTranscript = SessionTranscriptBuilder.Build(
+            context.ClientId, context.Nonce, context.EncryptionKeyThumbprint, context.ResponseUri);
+        return DeviceAuthVerifier.Verify(document, mso, sessionTranscript);
     }
 
     /// <summary>Disclosed claims keyed by namespace, each value a map of element name to value.</summary>

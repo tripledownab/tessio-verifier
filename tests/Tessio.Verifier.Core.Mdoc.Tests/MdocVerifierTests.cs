@@ -19,8 +19,17 @@ public sealed class MdocVerifierTests : IDisposable
     private static PresentedCredential Credential(MdocTestBuilder builder, string format = MdocVerifier.Format) =>
         new() { Format = format, RawValue = builder.BuildBase64Url() };
 
-    private static MdocVerificationContext Context(string? docType = MdocTestBuilder.DefaultDocType) =>
-        new() { ExpectedDocType = docType };
+    private MdocVerificationContext Context(string? docType = MdocTestBuilder.DefaultDocType) => ContextFor(_builder, docType);
+
+    private static MdocVerificationContext ContextFor(MdocTestBuilder builder, string? docType = MdocTestBuilder.DefaultDocType) =>
+        new()
+        {
+            ExpectedDocType = docType,
+            ClientId = builder.ClientId,
+            Nonce = builder.Nonce,
+            EncryptionKeyThumbprint = builder.EncryptionKeyThumbprint,
+            ResponseUri = builder.ResponseUri,
+        };
 
     [Fact]
     public async Task ValidMdoc_Verifies_WithNamespacedClaims()
@@ -46,7 +55,7 @@ public sealed class MdocVerifierTests : IDisposable
         var verifier = new MdocVerifier(new StaticTrustListResolver(
             [spoof.DsCertificate.Subject], source: "mdoc-test", trustAnchors: [_builder.IacaCertificate]));
 
-        var result = await verifier.VerifyAsync(Credential(spoof), Context());
+        var result = await verifier.VerifyAsync(Credential(spoof), ContextFor(spoof));
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.Code == MdocErrorCodes.IssuerUntrusted);
