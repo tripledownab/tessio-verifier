@@ -80,8 +80,26 @@ public sealed class WalletResponseParser : IPresentationResponseParser
                 "Received a direct_post.jwt response but no ResponseDecryptionKey is configured.");
         }
 
+        JsonWebToken jwe;
+        try
+        {
+            jwe = new JsonWebToken(responseJwt);
+        }
+        catch (ArgumentException)
+        {
+            throw new WalletResponseException("The direct_post.jwt response is not a well-formed JWT/JWE.");
+        }
+
         // SPEC: OpenID4VP 1.0 §8.3 — the response JWT is encrypted to the verifier's client_metadata
         // key (JARM). HAIP profiles it as encrypted-only, so no wallet signature is required here.
+        // ECDH-ES (what HAIP wallets send) needs our own receive side; IdentityModel only ships the
+        // sender half. Everything else (dir, RSA-OAEP, …) goes through the library handler.
+        if (EcdhEsJweDecryptor.CanHandle(jwe))
+        {
+            var plaintext = EcdhEsJweDecryptor.Decrypt(jwe, _options.ResponseDecryptionKey);
+            return ExtractResponseClaims(NormalizeDecryptedPayload(plaintext));
+        }
+
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(responseJwt, new TokenValidationParameters
         {
             ValidateIssuer = false,
@@ -105,6 +123,44 @@ public sealed class WalletResponseParser : IPresentationResponseParser
 
         var state = result.Claims.TryGetValue("state", out var stateValue) ? stateValue as string : null;
         var vpTokenJson = vpToken as string ?? JsonSerializer.Serialize(vpToken);
+        return (vpTokenJson, state);
+    }
+
+    /// <summary>
+    /// A decrypted response is either the response-parameter JSON directly, or a nested (typically
+    /// unsigned — the JWE's AEAD provides integrity) JWT whose payload carries the parameters.
+    /// </summary>
+    private static string NormalizeDecryptedPayload(string plaintext)
+    {
+        if (plaintext.TrimStart().StartsWith('{'))
+        {
+            return plaintext;
+        }
+
+        try
+        {
+            return Base64UrlEncoder.Decode(new JsonWebToken(plaintext).EncodedPayload);
+        }
+        catch (ArgumentException)
+        {
+            throw new WalletResponseException("The decrypted wallet response is neither JSON nor a nested JWT.");
+        }
+    }
+
+    private static (string VpTokenJson, string? State) ExtractResponseClaims(string payloadJson)
+    {
+        using var document = JsonDocument.Parse(payloadJson);
+        if (!document.RootElement.TryGetProperty("vp_token", out var vpToken))
+        {
+            throw new WalletResponseException("The decrypted wallet response carries no vp_token claim.");
+        }
+
+        var state = document.RootElement.TryGetProperty("state", out var stateProp)
+                    && stateProp.ValueKind == JsonValueKind.String
+            ? stateProp.GetString()
+            : null;
+
+        var vpTokenJson = vpToken.ValueKind == JsonValueKind.String ? vpToken.GetString()! : vpToken.GetRawText();
         return (vpTokenJson, state);
     }
 
