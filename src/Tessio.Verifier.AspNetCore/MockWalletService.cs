@@ -29,7 +29,7 @@ internal sealed class MockWalletQueue
 internal sealed class MockWalletService : BackgroundService
 {
     private readonly MockWalletQueue _queue;
-    private readonly InMemorySessionStore _store;
+    private readonly ISessionStore _store;
     private readonly WalletCallbackProcessor _processor;
     private readonly MockCredentialIssuer _issuer;
     private readonly ResponseEncryptionKeyProvider _encryptionKeys;
@@ -37,7 +37,7 @@ internal sealed class MockWalletService : BackgroundService
 
     public MockWalletService(
         MockWalletQueue queue,
-        InMemorySessionStore store,
+        ISessionStore store,
         WalletCallbackProcessor processor,
         MockCredentialIssuer issuer,
         ResponseEncryptionKeyProvider encryptionKeys,

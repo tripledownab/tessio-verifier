@@ -30,10 +30,10 @@ internal sealed class TestFixtureQueue
 internal sealed class TestFixtureService : BackgroundService
 {
     private readonly TestFixtureQueue _queue;
-    private readonly InMemorySessionStore _store;
+    private readonly ISessionStore _store;
     private readonly SdJwtVcVerifier _verifier;
 
-    public TestFixtureService(TestFixtureQueue queue, InMemorySessionStore store)
+    public TestFixtureService(TestFixtureQueue queue, ISessionStore store)
     {
         _queue = queue;
         _store = store;

@@ -24,4 +24,11 @@ public enum VerifierMode
     /// verifier against immutable, specification-published bytes; runs offline.
     /// </summary>
     Test = 2,
+
+    /// <summary>
+    /// Real wallets: a started session stays pending until a wallet responds via the callback
+    /// endpoint (or the session expires). Requires a signed request builder and a real trust list;
+    /// see <c>docs/going-live.md</c> for the full setup.
+    /// </summary>
+    Live = 3,
 }

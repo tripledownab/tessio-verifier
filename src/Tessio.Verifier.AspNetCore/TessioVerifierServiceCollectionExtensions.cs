@@ -21,7 +21,9 @@ public static class TessioVerifierServiceCollectionExtensions
     /// All services are registered with <c>TryAdd</c>: register your own
     /// <see cref="ITrustListResolver"/>, <see cref="ISessionStore"/>, or
     /// <see cref="IPresentationRequestBuilder"/> before calling this method to replace a default.
-    /// The default trust list contains only the built-in demo and mock issuers.
+    /// A replacement session store must implement <see cref="IStateCorrelatingSessionStore"/> for the
+    /// wallet callback endpoint to correlate responses. The default trust list contains only the
+    /// built-in demo and mock issuers. See <c>docs/going-live.md</c> for the full live-mode setup.
     /// </remarks>
     /// <param name="services">The service collection.</param>
     /// <param name="configure">Configures <see cref="VerifierOptions"/> (mode, requested claims, …).</param>
