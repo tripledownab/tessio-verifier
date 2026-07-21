@@ -1,5 +1,7 @@
 - name: API reference
   href: api/
+- name: Going live
+  href: ../../docs/going-live.md
 - name: GitHub
   href: https://github.com/tripledownab/tessio-verifier
 - name: ↩︎ Home

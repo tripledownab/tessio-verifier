@@ -25,4 +25,5 @@ Everything else follows [releases](https://github.com/tripledownab/tessio-verifi
 
 - New to OpenID4VP / SD-JWT VC? Read the [marketing landing](https://verifier.tessio.eu/) first.
 - Building a verifier? `dotnet add package Tessio.Verifier.AspNetCore` and follow the [README quickstart](https://github.com/tripledownab/tessio-verifier#quickstart--5-minutes-demo-mode).
+- Moving from Demo/Mock to real wallets? The [going-live guide](../../docs/going-live.md) walks through signed requests, trust lists, session stores and response encryption.
 - Plugging your own session store or trust list? Browse [API reference](xref:Tessio.Verifier.AspNetCore.ISessionStore) for the relevant interface.

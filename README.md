@@ -10,7 +10,7 @@ Verify credentials presented by EUDI Wallets directly from your .NET backend, ov
 
 > Relying-party (verifier) side only. This library never acts as a wallet or an issuer.
 
-> **Status: the full pipeline runs on `main`.** The quickstart below works end to end, and **Mock** mode now exercises the real protocol path: a built-in mock wallet issues a signed SD-JWT VC, the OpenID4VP layer parses the response and the verification core checks signature, disclosures, key binding and trust. The core passes the RFC 9901 spec vectors. What remains for v0.1 is conformance fixtures for **Test** mode and live-wallet hardening. Version 0.1.3 is [on NuGet](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore) now. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
+> **Status: the full pipeline runs on `main`.** The quickstart below works end to end. **Mock** mode exercises the real protocol path with a built-in wallet, **Test** mode replays the RFC 9901 conformance vector through the real verifier and **Live** mode waits for real wallets on the callback endpoint (see the [going-live guide](docs/going-live.md)). Version 0.1.3 is [on NuGet](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore) now. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
 
 ## Why this exists
 
@@ -58,6 +58,7 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 - **Demo**: auto-completes in seconds, for showcases and first-run experience.
 - **Mock**: a built-in mock wallet posts freshly signed credentials through the full verification pipeline, encrypted responses included.
 - **Test**: replays the RFC 9901 conformance vector (the spec's German PID example) through the real verifier, so you see the verifier agree with the specification's own bytes.
+- **Live**: sessions wait for real wallets on the callback endpoint. [docs/going-live.md](docs/going-live.md) covers the setup: signed requests, trust lists, session stores and response encryption.
 
 ## Packages
 
@@ -70,7 +71,7 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 
 ## Going to production
 
-Live verification against real wallets also requires a **registered Relying Party** and a **WRPAC** (Wallet Relying Party Access Certificate) from a Qualified Trust Service Provider, plus maintained EU trust lists. This library handles the protocol and credential verification. The trust and compliance layer is provided separately (see `docs/production.md`). Relying parties do **not** need their own HSM/QSCD, since the QTSP holds those.
+[docs/going-live.md](docs/going-live.md) walks through the code side: signed requests (Key Vault/HSM included), real trust lists, distributed session stores and shared response-encryption keys. Beyond the code, live verification against real wallets requires a **registered Relying Party** and a **WRPAC** (Wallet Relying Party Access Certificate) from a Qualified Trust Service Provider, plus maintained EU trust lists. This library handles the protocol and credential verification. The trust and compliance layer is provided separately (see `docs/production.md`). Relying parties do **not** need their own HSM/QSCD, since the QTSP holds those.
 
 ## Standards
 
