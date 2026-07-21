@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Tessio.Verifier.OpenId4Vp;
 
 namespace Tessio.Verifier.AspNetCore;
 
@@ -34,6 +35,7 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         var prefix = NormalizePrefix(routePrefix ?? options.RoutePrefix);
 
         endpoints.MapGet($"{prefix}/start", (HttpContext http) => StartAsync(http, prefix));
+        endpoints.MapGet($"{prefix}/request/{{requestId}}", (string requestId, HttpContext http) => ServeRequestObjectAsync(requestId, http));
         endpoints.MapGet($"{prefix}/{{sessionId}}", (string sessionId, HttpContext http) => GetStatusAsync(sessionId, http));
         endpoints.MapGet($"{prefix}/{{sessionId}}/stream", (string sessionId, HttpContext http) => StreamAsync(sessionId, http));
         endpoints.MapPost($"{prefix}/callback", CallbackAsync);
@@ -47,8 +49,19 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         var store = http.RequestServices.GetRequiredService<ISessionStore>();
 
         var responseUri = new Uri($"{http.Request.Scheme}://{http.Request.Host}{prefix}/callback");
-        var requestOptions = DemoRequestOptionsFactory.Create(options, responseUri);
+        var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
+            ? http.RequestServices.GetRequiredService<ResponseEncryptionKeyProvider>().PublicJwk
+            : null;
+        var requestOptions = DemoRequestOptionsFactory.Create(options, responseUri, encryptionJwk);
         var session = await store.CreateAsync(requestOptions, http.RequestAborted).ConfigureAwait(false);
+
+        // By-reference delivery: host the signed JAR where the wallet will fetch it.
+        if (session.Request is PresentationRequest.ByReference byReference)
+        {
+            var requestId = byReference.RequestUri.Segments[^1].TrimEnd('/');
+            http.RequestServices.GetRequiredService<RequestObjectStore>()
+                .Put(requestId, byReference.SignedRequestObject, byReference.ExpiresAt);
+        }
 
         switch (options.Mode)
         {
@@ -68,6 +81,21 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         var html = RenderStartPage(session.SessionId, prefix, options.Mode, session.Request.AuthorizationRequestUri.ToString());
         http.Response.ContentType = "text/html; charset=utf-8";
         await http.Response.WriteAsync(html, http.RequestAborted).ConfigureAwait(false);
+    }
+
+    private static async Task ServeRequestObjectAsync(string requestId, HttpContext http)
+    {
+        var store = http.RequestServices.GetRequiredService<RequestObjectStore>();
+        var requestObject = store.Get(requestId);
+        if (requestObject is null)
+        {
+            http.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        // SPEC: RFC 9101 §4 — the request object is served as application/oauth-authz-req+jwt.
+        http.Response.ContentType = "application/oauth-authz-req+jwt";
+        await http.Response.WriteAsync(requestObject, http.RequestAborted).ConfigureAwait(false);
     }
 
     private static async Task GetStatusAsync(string sessionId, HttpContext http)

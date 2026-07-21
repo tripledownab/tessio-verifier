@@ -36,12 +36,17 @@ public static class TessioVerifierServiceCollectionExtensions
         services.TryAddSingleton<DemoCompletionQueue>();
         services.TryAddSingleton<MockWalletQueue>();
         services.TryAddSingleton<MockCredentialIssuer>();
+        services.TryAddSingleton<ResponseEncryptionKeyProvider>();
+        services.TryAddSingleton<RequestObjectStore>();
 
         // Default (demo) request builder — swap in SignedPresentationRequestBuilder for live wallets.
         services.TryAddSingleton<IPresentationRequestBuilder, DemoPresentationRequestBuilder>();
 
         // The real verification pipeline: response parsing (OpenID4VP) + credential verification (Core).
-        services.TryAddSingleton<WalletResponseParser>();
+        services.TryAddSingleton(sp => new WalletResponseParser(new WalletResponseParserOptions
+        {
+            ResponseDecryptionKey = sp.GetRequiredService<ResponseEncryptionKeyProvider>().DecryptionKey,
+        }));
         services.TryAddSingleton<IPresentationResponseParser>(sp => sp.GetRequiredService<WalletResponseParser>());
         services.TryAddSingleton<ITrustListResolver>(new StaticTrustListResolver(
             [MockCredentialIssuer.Issuer, "https://demo-issuer.tessio.dev"], source: "tessio-dev-defaults"));
