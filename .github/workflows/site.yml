@@ -4,10 +4,11 @@ on:
   push:
     branches: [main]
     # Rebuild when the site sources, the contracts (DocFX scans them for XML docs),
-    # or this workflow itself change.
+    # the guides (DocFX pulls docs/going-live.md into the site) or this workflow change.
     paths:
       - 'site/**'
       - 'src/**'
+      - 'docs/**'
       - '.github/workflows/site.yml'
   workflow_dispatch:
 
