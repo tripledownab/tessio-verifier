@@ -10,7 +10,7 @@ Verify credentials presented by EUDI Wallets directly from your .NET backend, ov
 
 > Relying-party (verifier) side only. This library never acts as a wallet or an issuer.
 
-> **Status: the full pipeline runs on `main`.** The quickstart below works end to end. **Mock** mode exercises the real protocol path with a built-in wallet, **Test** mode replays the RFC 9901 conformance vector through the real verifier and **Live** mode waits for real wallets on the callback endpoint (see the [going-live guide](docs/going-live.md)). Version 0.1.3 is [on NuGet](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore) now. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
+> **Status: the full pipeline runs on `main`.** The quickstart below works end to end. **Mock** mode exercises the real protocol path with a built-in wallet, **Test** mode replays the RFC 9901 conformance vector through the real verifier and **Live** mode waits for real wallets on the callback endpoint (see the [going-live guide](docs/going-live.md)). Version 0.1.4 is [on NuGet](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore) now. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
 
 ## Why this exists
 
