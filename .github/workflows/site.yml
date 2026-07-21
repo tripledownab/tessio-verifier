@@ -74,7 +74,7 @@ jobs:
             sed -i "s|</head>|${UMAMI_TAG}</head>|" {} +
 
       - name: Configure Pages (auto-enable if not already)
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
         with:
           enablement: true
 
