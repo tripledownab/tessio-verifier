@@ -58,8 +58,11 @@ public static class TessioVerifierServiceCollectionExtensions
         services.TryAddSingleton<InMemorySessionStore>();
         services.TryAddSingleton<ISessionStore>(sp => sp.GetRequiredService<InMemorySessionStore>());
 
+        services.TryAddSingleton<TestFixtureQueue>();
+
         services.AddHostedService<DemoCompletionService>();
         services.AddHostedService<MockWalletService>();
+        services.AddHostedService<TestFixtureService>();
 
         return services;
     }

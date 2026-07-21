@@ -69,9 +69,12 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
                 await http.RequestServices.GetRequiredService<DemoCompletionQueue>()
                     .EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
                 break;
-            case VerifierMode.Mock or VerifierMode.Test:
-                // Test mode currently behaves like Mock; conformance fixtures land in a later slice.
+            case VerifierMode.Mock:
                 await http.RequestServices.GetRequiredService<MockWalletQueue>()
+                    .EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
+                break;
+            case VerifierMode.Test:
+                await http.RequestServices.GetRequiredService<TestFixtureQueue>()
                     .EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
                 break;
             default:
