@@ -73,7 +73,7 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
           class="px-3 py-1.5 rounded-md text-white text-xs font-medium"
           style="background-color: var(--color-accent);"
         >
-          main · demo mode works
+          v0.1.1 on NuGet
         </a>
       </nav>
     </div>
@@ -198,14 +198,14 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
         <p class="text-xs font-medium uppercase tracking-widest mb-3" style="color: var(--color-accent);">
           Status
         </p>
-        <h3 class="text-2xl font-bold tracking-tight mb-3">Demo mode works today</h3>
+        <h3 class="text-2xl font-bold tracking-tight mb-3">v0.1.1 is on NuGet</h3>
         <p class="text-base leading-relaxed mb-4" style="color: var(--color-text-muted);">
-          The quickstart above runs end to end on main. Sessions, the SSE result stream and demo
-          auto-completion are all implemented and tested. So is the SD-JWT VC verification core, which
-          passes the RFC 9901 spec vectors. Next up is the OpenID4VP protocol layer. That's the piece
-          that powers Mock and Test modes and, eventually, live wallets. The public API stays frozen at
+          Install the package and the quickstart above runs end to end. The SD-JWT VC verification
+          core passes the RFC 9901 spec vectors. The OpenID4VP layer signs requests and parses both
+          plain and encrypted wallet responses. Mock mode pushes a real signed credential through the
+          whole pipeline, so you can integration-test before any wallet exists. Conformance fixtures
+          for Test mode come next. The public API stays frozen at
           <a href={`${repoUrl}/releases/tag/contracts-v0`} target="_blank" rel="noopener" class="underline" style="color: var(--color-accent);">contracts-v0</a>.
-          Note that the 0.1.0 packages on NuGet still only contain the contracts.
         </p>
         <p class="text-sm" style="color: var(--color-text-muted);">
           Mandatory acceptance under Regulation (EU) 2024/1183 lands <strong style="color: var(--color-text);">6 December 2027</strong>.
