@@ -101,7 +101,7 @@ Set `options.ClientId` to your registered identifier with its client-identifier 
 
 ## 3. Deliver the request by reference
 
-By default the signed request object is embedded in the `openid4vp://` URI. That URI becomes a QR code in cross-device flows, and a multi-kilobyte JAR makes a dense, slow-to-scan code. Set `RequestUriBase` and the wallet fetches the JAR over HTTPS instead:
+By default the signed request object is embedded in the `openid4vp://` URI. The start page renders that URI as a QR code for cross-device scanning, and a multi-kilobyte by-value JAR makes a dense code or exceeds QR capacity entirely (the page then shows the URI without a code). Set `RequestUriBase` and the wallet fetches the JAR over HTTPS instead, keeping the QR small:
 
 ```csharp
 new PresentationRequestBuilderOptions
