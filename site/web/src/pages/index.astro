@@ -25,11 +25,11 @@ const features = [
   },
   {
     title: 'Demo mode included',
-    body: 'No production wallets yet? Run a full verification flow locally today. Swap to MOCK or TEST fixtures when you need them.',
+    body: 'No production wallets yet? Demo auto-completes locally, Mock issues real signed credentials through the whole pipeline, Test replays the RFC 9901 spec vector and Live waits for real wallets.',
   },
   {
     title: 'HAIP-aligned',
-    body: 'OpenID4VP 1.0, SD-JWT VC with `dc+sd-jwt`, DCQL queries, JAR-signed requests, JWE responses. Built to the EUDI profile that matters.',
+    body: 'OpenID4VP 1.0, SD-JWT VC with `dc+sd-jwt`, mdoc in preview, DCQL queries, JAR-signed requests, encrypted responses. Built to the EUDI profile that matters.',
   },
   {
     title: 'Pluggable trust',
@@ -41,6 +41,7 @@ const standards = [
   { name: 'OpenID4VP 1.0', href: 'https://openid.net/specs/openid-4-verifiable-presentations-1_0.html' },
   { name: 'SD-JWT VC', href: 'https://datatracker.ietf.org/doc/html/draft-ietf-oauth-sd-jwt-vc' },
   { name: 'OAuth JAR (RFC 9101)', href: 'https://www.rfc-editor.org/rfc/rfc9101' },
+  { name: 'ISO/IEC 18013-5 (mdoc)', href: 'https://www.iso.org/standard/69084.html' },
   { name: 'EUDI ARF', href: 'https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework' },
   { name: 'Regulation (EU) 2024/1183', href: 'https://eur-lex.europa.eu/eli/reg/2024/1183/oj' },
   { name: 'ETSI TS 119 475 (WRPAC)', href: 'https://www.etsi.org/' },
@@ -73,7 +74,7 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
           class="px-3 py-1.5 rounded-md text-white text-xs font-medium"
           style="background-color: var(--color-accent);"
         >
-          v0.1.3 on NuGet
+          v0.1.5 on NuGet
         </a>
       </nav>
     </div>
@@ -92,8 +93,8 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
         </h1>
         <p class="text-lg md:text-xl leading-relaxed max-w-2xl mb-10" style="color: var(--color-text-muted);">
           Open-source ASP.NET Core verifier for <strong style="color: var(--color-text);">OpenID4VP 1.0</strong> +
-          <strong style="color: var(--color-text);">SD-JWT VC</strong>. Native DI wiring, demo mode included and a
-          clean trust seam for when you go to production.
+          <strong style="color: var(--color-text);">SD-JWT VC</strong>, with mdoc (mDL) verification in preview.
+          Native DI wiring, demo mode included and a clean trust seam for when you go to production.
         </p>
         <div class="flex flex-wrap gap-3">
           <a
@@ -198,13 +199,14 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
         <p class="text-xs font-medium uppercase tracking-widest mb-3" style="color: var(--color-accent);">
           Status
         </p>
-        <h3 class="text-2xl font-bold tracking-tight mb-3">v0.1.3 is on NuGet</h3>
+        <h3 class="text-2xl font-bold tracking-tight mb-3">v0.1.5 is on NuGet, mdoc verification in preview</h3>
         <p class="text-base leading-relaxed mb-4" style="color: var(--color-text-muted);">
-          Install the package and the quickstart above runs end to end. The SD-JWT VC verification
-          core passes the RFC 9901 spec vectors. The OpenID4VP layer signs requests and parses both
-          plain and encrypted wallet responses. Mock mode pushes a real signed credential through the
-          whole pipeline, so you can integration-test before any wallet exists. Conformance fixtures
-          for Test mode come next. The public API stays frozen at
+          Install the package and the quickstart above runs end to end. The SD-JWT VC core passes the
+          RFC 9901 spec vectors and Test mode replays the specification's own example through the real
+          verifier. Live mode serves real wallets with signed requests, encrypted responses and a QR
+          start page; the going-live guide covers the path there. Both verification pipelines are
+          fuzz-tested. The v0.2 preview verifies ISO mobile documents (mso_mdoc) and agrees byte for
+          byte with the ISO 18013-5 worked example. The public API stays frozen at
           <a href={`${repoUrl}/releases/tag/contracts-v0`} target="_blank" rel="noopener" class="underline" style="color: var(--color-accent);">contracts-v0</a>.
         </p>
         <p class="text-sm" style="color: var(--color-text-muted);">
