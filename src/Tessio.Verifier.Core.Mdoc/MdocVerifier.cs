@@ -56,6 +56,12 @@ public sealed class MdocVerifier
         {
             return Failure(e.Code, e.Message);
         }
+        catch (System.Security.Cryptography.CryptographicException e)
+        {
+            // Contract-level net: platform crypto layers throw OS-specific subtypes on malformed
+            // key material. Verification returns a result; it never throws on bad input.
+            return Failure(MdocErrorCodes.StructureInvalid, $"The presentation carries unusable cryptographic material: {e.Message}");
+        }
     }
 
     private async Task<VerificationResult> VerifyCoreAsync(
