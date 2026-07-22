@@ -63,6 +63,25 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         {
             return Invalid(e.ToError());
         }
+        catch (InvalidOperationException e)
+        {
+            // Contract-level net: IdentityModel's claim accessors throw lazily on payloads whose
+            // strings are not valid UTF-8. Verification returns a result; it never throws on input.
+            return Invalid(new VerificationError
+            {
+                Code = ErrorCodes.StructureInvalid,
+                Message = $"The credential payload is malformed: {e.Message}",
+            });
+        }
+        catch (System.Security.Cryptography.CryptographicException e)
+        {
+            // Same net for platform crypto layers rejecting malformed key material (OS-specific subtypes).
+            return Invalid(new VerificationError
+            {
+                Code = ErrorCodes.IssuerKeyUnresolvable,
+                Message = $"The credential carries unusable cryptographic material: {e.Message}",
+            });
+        }
     }
 
     private async Task<VerificationResult> VerifyCoreAsync(
