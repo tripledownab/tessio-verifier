@@ -69,6 +69,15 @@ internal sealed class TestCredentialBuilder : IDisposable
     /// <summary>Overrides the sd_hash input; null computes the correct value.</summary>
     public string? SdHashOverride { get; set; }
 
+    /// <summary>When set, the KB-JWT acknowledges these transaction_data strings (sha-256 hashes).</summary>
+    public List<string>? TransactionData { get; set; }
+
+    /// <summary>Raw transaction_data_hashes to emit instead of computing them (for negatives).</summary>
+    public List<string>? TransactionDataHashesOverride { get; set; }
+
+    /// <summary>When set, the KB-JWT declares this transaction_data_hashes_alg.</summary>
+    public string? TransactionDataHashesAlg { get; set; }
+
     public ECDsaSecurityKey IssuerPublicKey => new(ECDsa.Create(_issuerEcdsa.ExportParameters(false)));
 
     /// <summary>Creates a self-signed ES256 certificate whose SAN DNS matches the issuer host, and switches to x5c mode.</summary>
@@ -198,13 +207,26 @@ internal sealed class TestCredentialBuilder : IDisposable
 
         // SPEC: RFC 9901 §4.3 — KB-JWT over aud, nonce, iat, and sd_hash of the presented part.
         var sdHash = Base64UrlEncoder.Encode(SHA256.HashData(Encoding.ASCII.GetBytes(SdHashOverride ?? withoutKb)));
-        var kbPayload = JsonSerializer.Serialize(new Dictionary<string, object>
+        var kbClaims = new Dictionary<string, object>
         {
             ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             ["aud"] = KbAudience,
             ["nonce"] = KbNonce,
             ["sd_hash"] = sdHash,
-        });
+        };
+        var hashes = TransactionDataHashesOverride
+            ?? TransactionData?.Select(td => Base64UrlEncoder.Encode(SHA256.HashData(Encoding.ASCII.GetBytes(td)))).ToList();
+        if (hashes is not null)
+        {
+            kbClaims["transaction_data_hashes"] = hashes;
+        }
+
+        if (TransactionDataHashesAlg is not null)
+        {
+            kbClaims["transaction_data_hashes_alg"] = TransactionDataHashesAlg;
+        }
+
+        var kbPayload = JsonSerializer.Serialize(kbClaims);
 
         return withoutKb + SignJwt(kbPayload, new ECDsaSecurityKey(_holderEcdsa), "kb+jwt", x5c: null);
     }

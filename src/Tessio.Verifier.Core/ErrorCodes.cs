@@ -38,4 +38,7 @@ public static class ErrorCodes
     public const string CredentialRevoked = "credential_revoked";
     public const string CredentialSuspended = "credential_suspended";
     public const string CredentialStatusUnknown = "credential_status_unknown";
+    public const string TransactionDataMissing = "transaction_data_missing";
+    public const string TransactionDataHashMismatch = "transaction_data_hash_mismatch";
+    public const string TransactionDataAlgUnsupported = "transaction_data_alg_unsupported";
 }

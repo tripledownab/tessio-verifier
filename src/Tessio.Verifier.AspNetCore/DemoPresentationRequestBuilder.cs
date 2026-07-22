@@ -75,6 +75,11 @@ internal sealed class DemoPresentationRequestBuilder : IPresentationRequestBuild
             payload["state"] = options.State;
         }
 
+        if (options.TransactionDataJson is not null)
+        {
+            payload["transaction_data"] = JsonNode.Parse(options.TransactionDataJson);
+        }
+
         if (options.ClientMetadataJson is not null)
         {
             payload["client_metadata"] = JsonNode.Parse(options.ClientMetadataJson);

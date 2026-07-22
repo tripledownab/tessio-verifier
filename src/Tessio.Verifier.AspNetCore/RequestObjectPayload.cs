@@ -11,6 +11,36 @@ namespace Tessio.Verifier.AspNetCore;
 /// </summary>
 internal static class RequestObjectPayload
 {
+    /// <summary>The base64url transaction_data strings from the request object, or null.</summary>
+    public static IReadOnlyList<string>? TryGetTransactionData(string requestObject)
+    {
+        var parts = requestObject.Split('.');
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var payload = JsonDocument.Parse(Base64UrlEncoder.DecodeBytes(parts[1]));
+            if (!payload.RootElement.TryGetProperty("transaction_data", out var td)
+                || td.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var entries = td.EnumerateArray()
+                .Where(static e => e.ValueKind == JsonValueKind.String)
+                .Select(static e => e.GetString()!)
+                .ToList();
+            return entries.Count > 0 ? entries : null;
+        }
+        catch (Exception e) when (e is FormatException or JsonException)
+        {
+            return null;
+        }
+    }
+
     public static string? TryGetResponseUri(string requestObject)
     {
         var parts = requestObject.Split('.');

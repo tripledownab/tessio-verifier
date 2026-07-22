@@ -48,9 +48,20 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
     }
 
     /// <inheritdoc />
+    public Task<VerificationResult> VerifyAsync(
+        PresentedCredential credential,
+        VerificationContext context,
+        CancellationToken ct = default) => VerifyAsync(credential, context, transactionData: null, ct);
+
+    /// <summary>
+    /// Verifies a credential that must additionally acknowledge transaction data: the KB-JWT's
+    /// <c>transaction_data_hashes</c> must match <paramref name="transactionData"/> exactly.
+    /// </summary>
+    // SPEC: OpenID4VP 1.0 Annex B.3.3.1.
     public async Task<VerificationResult> VerifyAsync(
         PresentedCredential credential,
         VerificationContext context,
+        TransactionDataExpectation? transactionData,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(credential);
@@ -58,7 +69,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
 
         try
         {
-            return await VerifyCoreAsync(credential, context, ct).ConfigureAwait(false);
+            return await VerifyCoreAsync(credential, context, transactionData, ct).ConfigureAwait(false);
         }
         catch (SdJwtProcessingException e)
         {
@@ -88,6 +99,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
     private async Task<VerificationResult> VerifyCoreAsync(
         PresentedCredential credential,
         VerificationContext context,
+        TransactionDataExpectation? transactionData,
         CancellationToken ct)
     {
         // 1. Format identifier. SPEC: OpenID4VP/SD-JWT VC format is "dc+sd-jwt" (not "vc+sd-jwt").
@@ -163,7 +175,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         var errors = new List<VerificationError>();
         CheckVct(processed, vctIsPlain, context, errors);
         CheckTimeClaims(processed, errors);
-        await CheckKeyBindingAsync(presentation, processed, context, errors, ct).ConfigureAwait(false);
+        await CheckKeyBindingAsync(presentation, processed, context, transactionData, errors, ct).ConfigureAwait(false);
 
         // SPEC: draft-ietf-oauth-status-list §8.3 — enforce the status claim when present (revocation).
         if (_options.CheckStatus)
@@ -242,6 +254,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         SdJwtPresentation presentation,
         JsonObject processed,
         VerificationContext context,
+        TransactionDataExpectation? transactionData,
         List<VerificationError> errors,
         CancellationToken ct)
     {
@@ -253,6 +266,17 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
                 {
                     Code = ErrorCodes.KeyBindingMissing,
                     Message = "The presentation carries no KB-JWT, but key binding is required.",
+                });
+            }
+
+            if (transactionData is not null)
+            {
+                // SPEC: OpenID4VP 1.0 Annex B.3.3 — the transaction data mechanism requires
+                // cryptographic holder binding; without a KB-JWT the acknowledgment cannot exist.
+                errors.Add(new VerificationError
+                {
+                    Code = ErrorCodes.TransactionDataMissing,
+                    Message = "The request carried transaction_data, but the presentation has no KB-JWT to acknowledge it.",
                 });
             }
 
@@ -286,7 +310,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         }
 
         errors.AddRange(await KeyBindingVerifier.VerifyAsync(
-            presentation.KbJwt, holderKey, context, presentation.PresentationWithoutKbJwt, ct).ConfigureAwait(false));
+            presentation.KbJwt, holderKey, context, presentation.PresentationWithoutKbJwt, ct, transactionData).ConfigureAwait(false));
     }
 
     private static Dictionary<string, object> ExtractClaims(JsonObject processed)

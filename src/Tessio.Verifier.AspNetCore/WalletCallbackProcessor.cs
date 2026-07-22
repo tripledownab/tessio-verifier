@@ -90,17 +90,23 @@ internal sealed class WalletCallbackProcessor
 
         // Verify every presented credential; the session completes with the first failure, or with
         // the first credential's result when all pass (v0.1 flows request a single credential).
+        var transactionData = RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject) is { } tds
+            ? new TransactionDataExpectation { TransactionData = tds }
+            : null;
         VerificationResult? outcome = null;
         foreach (var credential in parsed.Credentials)
         {
+            var context = new VerificationContext
+            {
+                Nonce = session.Request.Nonce,
+                Audience = _options.ClientId,
+                ExpectedVct = _options.ExpectedVct ?? DemoRequestOptionsFactory.DefaultVct,
+            };
             var result = string.Equals(credential.Format, MdocVerifier.Format, StringComparison.Ordinal)
                 ? await _mdocVerifier.VerifyAsync(credential, BuildMdocContext(session), ct).ConfigureAwait(false)
-                : await _verifier.VerifyAsync(credential, new VerificationContext
-                {
-                    Nonce = session.Request.Nonce,
-                    Audience = _options.ClientId,
-                    ExpectedVct = _options.ExpectedVct ?? DemoRequestOptionsFactory.DefaultVct,
-                }, ct).ConfigureAwait(false);
+                : _verifier is SdJwtVcVerifier sdJwtVerifier
+                    ? await sdJwtVerifier.VerifyAsync(credential, context, transactionData, ct).ConfigureAwait(false)
+                    : await _verifier.VerifyAsync(credential, context, ct).ConfigureAwait(false);
             outcome ??= result;
             if (!result.IsValid)
             {

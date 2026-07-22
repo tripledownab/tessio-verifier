@@ -239,6 +239,16 @@ builder.Services.AddSingleton<ICredentialVerifier>(sp => new SdJwtVcVerifier(
 
 Verification results carry stable error codes (`nonce_mismatch`, `untrusted_issuer`, `credential_revoked` and so on) in `VerificationResult.Errors`, so your application logic and your logs can branch on codes rather than messages.
 
+## Binding transactions into presentations
+
+For flows where the credential authorizes a specific act (a payment, a contract signature), OpenID4VP transaction data binds the holder's signature to that act. Supply the transaction objects and the rest is automatic: they ride base64url-encoded in the signed request, the wallet hashes each one into its Key Binding JWT and the verifier rejects presentations whose hashes are missing or wrong.
+
+```csharp
+options.TransactionData = ["""{"type":"payment_confirmation","amount":"120.00 EUR"}"""];
+```
+
+`credential_ids` defaults to the query's credential id. Failures surface as `transaction_data_missing`, `transaction_data_hash_mismatch` or `transaction_data_alg_unsupported`. SD-JWT VC flows only; the mechanism requires key binding.
+
 ## Observability
 
 The pipeline logs through `Microsoft.Extensions.Logging`, so whatever your host configures (console, Application Insights, OpenTelemetry) picks it up with no extra wiring. Session creation logs under `Tessio.Verifier.Sessions`; callback handling logs under the `WalletCallbackProcessor` category. Every rejected wallet response logs a warning with the cause (parse failure, missing or unknown state, replay) and every completion logs the verification outcome with its error codes. Disclosed claims and credential contents are never logged.
