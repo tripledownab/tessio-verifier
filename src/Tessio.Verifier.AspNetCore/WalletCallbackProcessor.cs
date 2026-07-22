@@ -135,7 +135,7 @@ internal sealed class WalletCallbackProcessor
         ClientId = session.Request.ClientId,
         Nonce = session.Request.Nonce,
         EncryptionKeyThumbprint = _options.ResponseMode == ResponseMode.DirectPostJwt
-            ? Base64UrlEncoder.DecodeBytes(_encryptionKeys.KeyId)
+            ? _encryptionKeys.ThumbprintBytes
             : null,
         ResponseUri = RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject),
     };
