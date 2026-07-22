@@ -10,7 +10,7 @@ Verify credentials presented by EUDI Wallets directly from your .NET backend, ov
 
 > Relying-party (verifier) side only. This library never acts as a wallet or an issuer.
 
-> **Status: the full pipeline runs on `main`.** The quickstart below works end to end. **Mock** mode exercises the real protocol path with a built-in wallet, **Test** mode replays the RFC 9901 conformance vector through the real verifier and **Live** mode waits for real wallets on the callback endpoint (see the [going-live guide](docs/going-live.md)). Version 0.1.5 (stable) and 0.2.0-preview.2 are [on NuGet](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore). The preview adds **mso_mdoc** (ISO 18013-5/-7 mobile documents, e.g. the mDL) verified through the same pipeline, session-transcript device binding included. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
+> **Status: the full pipeline runs on `main`.** The quickstart below works end to end. **Mock** mode exercises the real protocol path with a built-in wallet, **Test** mode replays the RFC 9901 conformance vector through the real verifier and **Live** mode waits for real wallets on the callback endpoint (see the [going-live guide](docs/going-live.md)). Version 0.2.0 is [on NuGet](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore) and adds **mso_mdoc** (ISO 18013-5/-7 mobile documents, e.g. the mDL) verified through the same pipeline, validated against external artifacts at every layer. Follow [releases](https://github.com/tripledownab/tessio-verifier/releases) for progress.
 
 ## Why this exists
 
@@ -65,7 +65,7 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 | Package | Purpose |
 | --- | --- |
 | `Tessio.Verifier.Core` | Credential verification (SD-JWT VC, disclosures, KB-JWT). No web dependencies. |
-| `Tessio.Verifier.Core.Mdoc` | mdoc verification (ISO 18013-5/-7: MSO, digests, device auth). Preview. |
+| `Tessio.Verifier.Core.Mdoc` | mdoc verification (ISO 18013-5/-7: MSO, digests, device auth). |
 | `Tessio.Verifier.OpenId4Vp` | OpenID4VP protocol layer (request build, JAR, response parsing). |
 | `Tessio.Verifier.AspNetCore` | DI, endpoints, session management, demo/mock/test modes. |
 | `Tessio.Verifier.Trust` | `ITrustListResolver` interface + a basic implementation. |
