@@ -107,12 +107,24 @@ internal sealed class IssuerKeyResolver
 
         // Extract the typed public key: X509SecurityKey does not support ECDSA certificates in
         // Microsoft.IdentityModel's crypto providers, and ES256 is the norm for EUDI issuers.
-        SecurityKey leafKey = leaf.GetECDsaPublicKey() is { } ecdsa
-            ? new ECDsaSecurityKey(ecdsa)
-            : leaf.GetRSAPublicKey() is { } rsa
-                ? new RsaSecurityKey(rsa)
-                : throw new SdJwtProcessingException(
-                    ErrorCodes.IssuerKeyUnresolvable, "The end-entity certificate carries neither an EC nor an RSA public key.");
+        // A structurally valid certificate can still carry key bits the platform crypto layer
+        // rejects (e.g. an EC point off the curve); those throw OS-specific CryptographicException
+        // subtypes and must map to a typed verification error.
+        SecurityKey leafKey;
+        try
+        {
+            leafKey = leaf.GetECDsaPublicKey() is { } ecdsa
+                ? new ECDsaSecurityKey(ecdsa)
+                : leaf.GetRSAPublicKey() is { } rsa
+                    ? new RsaSecurityKey(rsa)
+                    : throw new SdJwtProcessingException(
+                        ErrorCodes.IssuerKeyUnresolvable, "The end-entity certificate carries neither an EC nor an RSA public key.");
+        }
+        catch (CryptographicException e)
+        {
+            throw new SdJwtProcessingException(
+                ErrorCodes.IssuerKeyUnresolvable, $"The end-entity certificate's key is unusable: {e.Message}");
+        }
 
         return new IssuerKeyResolution
         {
