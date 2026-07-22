@@ -32,6 +32,7 @@ internal sealed class MockWalletService : BackgroundService
     private readonly ISessionStore _store;
     private readonly WalletCallbackProcessor _processor;
     private readonly MockCredentialIssuer _issuer;
+    private readonly MockMdocIssuer _mdocIssuer;
     private readonly ResponseEncryptionKeyProvider _encryptionKeys;
     private readonly VerifierOptions _options;
 
@@ -40,6 +41,7 @@ internal sealed class MockWalletService : BackgroundService
         ISessionStore store,
         WalletCallbackProcessor processor,
         MockCredentialIssuer issuer,
+        MockMdocIssuer mdocIssuer,
         ResponseEncryptionKeyProvider encryptionKeys,
         IOptions<VerifierOptions> options)
     {
@@ -47,6 +49,7 @@ internal sealed class MockWalletService : BackgroundService
         _store = store;
         _processor = processor;
         _issuer = issuer;
+        _mdocIssuer = mdocIssuer;
         _encryptionKeys = encryptionKeys;
         _options = options.Value;
     }
@@ -67,11 +70,22 @@ internal sealed class MockWalletService : BackgroundService
                     ? _options.RequestedClaims
                     : ["age_over_18"];
 
-                var presentation = _issuer.IssuePresentation(
-                    claims,
-                    _options.ExpectedVct ?? DemoRequestOptionsFactory.DefaultVct,
-                    session.Request.Nonce,
-                    _options.ClientId);
+                var presentation = _options.CredentialFormat == "mso_mdoc"
+                    ? _mdocIssuer.IssueDeviceResponse(
+                        claims,
+                        _options.ExpectedDocType,
+                        _options.MdocNamespace,
+                        session.Request.ClientId,
+                        session.Request.Nonce,
+                        _options.ResponseMode == ResponseMode.DirectPostJwt
+                            ? Base64UrlEncoder.DecodeBytes(_encryptionKeys.KeyId)
+                            : null,
+                        RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject) ?? string.Empty)
+                    : _issuer.IssuePresentation(
+                        claims,
+                        _options.ExpectedVct ?? DemoRequestOptionsFactory.DefaultVct,
+                        session.Request.Nonce,
+                        _options.ClientId);
 
                 // Mirror what a wallet POSTs: cleartext form for direct_post (OpenID4VP 1.0 §8.2),
                 // or an ECDH-ES-encrypted response JWT for direct_post.jwt (§8.3, the HAIP default).

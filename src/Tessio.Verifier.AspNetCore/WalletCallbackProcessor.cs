@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using Tessio.Verifier.Core;
+using Tessio.Verifier.Core.Mdoc;
 using Tessio.Verifier.OpenId4Vp;
 
 namespace Tessio.Verifier.AspNetCore;
@@ -23,6 +25,8 @@ internal sealed class WalletCallbackProcessor
 {
     private readonly WalletResponseParser _parser;
     private readonly ICredentialVerifier _verifier;
+    private readonly MdocVerifier _mdocVerifier;
+    private readonly ResponseEncryptionKeyProvider _encryptionKeys;
     private readonly IStateCorrelatingSessionStore _store;
     private readonly VerifierOptions _options;
     private readonly ILogger<WalletCallbackProcessor> _logger;
@@ -30,12 +34,16 @@ internal sealed class WalletCallbackProcessor
     public WalletCallbackProcessor(
         WalletResponseParser parser,
         ICredentialVerifier verifier,
+        MdocVerifier mdocVerifier,
+        ResponseEncryptionKeyProvider encryptionKeys,
         ISessionStore store,
         IOptions<VerifierOptions> options,
         ILogger<WalletCallbackProcessor> logger)
     {
         _parser = parser;
         _verifier = verifier;
+        _mdocVerifier = mdocVerifier;
+        _encryptionKeys = encryptionKeys;
         _logger = logger;
         // Wallet responses carry only `state` as a correlation handle, so the callback path cannot
         // work against a store that has no state index.
@@ -80,19 +88,19 @@ internal sealed class WalletCallbackProcessor
             return CallbackOutcome.SessionNotPending; // Sessions complete exactly once (replay protection).
         }
 
-        var context = new VerificationContext
-        {
-            Nonce = session.Request.Nonce,
-            Audience = _options.ClientId,
-            ExpectedVct = _options.ExpectedVct ?? DemoRequestOptionsFactory.DefaultVct,
-        };
-
         // Verify every presented credential; the session completes with the first failure, or with
         // the first credential's result when all pass (v0.1 flows request a single credential).
         VerificationResult? outcome = null;
         foreach (var credential in parsed.Credentials)
         {
-            var result = await _verifier.VerifyAsync(credential, context, ct).ConfigureAwait(false);
+            var result = string.Equals(credential.Format, MdocVerifier.Format, StringComparison.Ordinal)
+                ? await _mdocVerifier.VerifyAsync(credential, BuildMdocContext(session), ct).ConfigureAwait(false)
+                : await _verifier.VerifyAsync(credential, new VerificationContext
+                {
+                    Nonce = session.Request.Nonce,
+                    Audience = _options.ClientId,
+                    ExpectedVct = _options.ExpectedVct ?? DemoRequestOptionsFactory.DefaultVct,
+                }, ct).ConfigureAwait(false);
             outcome ??= result;
             if (!result.IsValid)
             {
@@ -115,4 +123,20 @@ internal sealed class WalletCallbackProcessor
 
         return CallbackOutcome.Completed;
     }
+
+    /// <summary>
+    /// The mdoc device signature covers the session transcript: this request's client_id and nonce,
+    /// the thumbprint of the encryption key the wallet encrypted to (null for plain direct_post)
+    /// and the response_uri, read from the stored request object.
+    /// </summary>
+    private MdocVerificationContext BuildMdocContext(VerificationSession session) => new()
+    {
+        ExpectedDocType = _options.ExpectedDocType,
+        ClientId = session.Request.ClientId,
+        Nonce = session.Request.Nonce,
+        EncryptionKeyThumbprint = _options.ResponseMode == ResponseMode.DirectPostJwt
+            ? Base64UrlEncoder.DecodeBytes(_encryptionKeys.KeyId)
+            : null,
+        ResponseUri = RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject),
+    };
 }

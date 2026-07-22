@@ -11,10 +11,11 @@ internal sealed class DevDefaultTrustListResolver : ITrustListResolver
 {
     private readonly StaticTrustListResolver _inner;
 
-    public DevDefaultTrustListResolver(MockCredentialIssuer mockIssuer) => _inner = new StaticTrustListResolver(
-        [MockCredentialIssuer.Issuer, "https://demo-issuer.tessio.dev"],
-        source: "tessio-dev-defaults",
-        trustAnchors: [mockIssuer.Certificate]);
+    public DevDefaultTrustListResolver(MockCredentialIssuer mockIssuer, MockMdocIssuer mockMdocIssuer) =>
+        _inner = new StaticTrustListResolver(
+            [MockCredentialIssuer.Issuer, "https://demo-issuer.tessio.dev", mockMdocIssuer.DsCertificate.Subject],
+            source: "tessio-dev-defaults",
+            trustAnchors: [mockIssuer.Certificate, mockMdocIssuer.IacaCertificate]);
 
     public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default) =>
         _inner.ResolveAsync(issuer, x5c, ct);

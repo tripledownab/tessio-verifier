@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tessio.Verifier.OpenId4Vp\Tessio.Verifier.OpenId4Vp.csproj" />
+    <ProjectReference Include="..\Tessio.Verifier.Core.Mdoc\Tessio.Verifier.Core.Mdoc.csproj" />
   </ItemGroup>
 
   <ItemGroup>

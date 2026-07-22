@@ -30,7 +30,7 @@ internal static class DeviceAuthVerifier
                 : "MAC-based device authentication (deviceMac) is not supported; use deviceSignature.")];
         }
 
-        var deviceAuthenticationBytes = BuildDeviceAuthenticationBytes(
+        var deviceAuthenticationBytes = SessionTranscriptBuilder.BuildDeviceAuthenticationBytes(
             sessionTranscript, document.DocType, deviceSigned.EncodedNameSpacesBytes);
 
         try
@@ -48,23 +48,6 @@ internal static class DeviceAuthVerifier
         }
 
         return [];
-    }
-
-    internal static byte[] BuildDeviceAuthenticationBytes(
-        byte[] sessionTranscript, string docType, byte[] encodedDeviceNameSpacesBytes)
-    {
-        var auth = new CborWriter(CborConformanceMode.Lax);
-        auth.WriteStartArray(4);
-        auth.WriteTextString("DeviceAuthentication");
-        auth.WriteEncodedValue(sessionTranscript);
-        auth.WriteTextString(docType);
-        auth.WriteEncodedValue(encodedDeviceNameSpacesBytes);
-        auth.WriteEndArray();
-
-        var outer = new CborWriter(CborConformanceMode.Lax);
-        outer.WriteTag((CborTag)24);
-        outer.WriteByteString(auth.Encode());
-        return outer.Encode();
     }
 
     // SPEC: RFC 9053 §7 — COSE_Key EC2: kty(1)=2, crv(-1)∈{1,2,3}, x(-2), y(-3).

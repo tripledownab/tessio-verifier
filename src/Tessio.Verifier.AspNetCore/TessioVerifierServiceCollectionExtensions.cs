@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Tessio.Verifier.Core;
+using Tessio.Verifier.Core.Mdoc;
 using Tessio.Verifier.OpenId4Vp;
 using Tessio.Verifier.Trust;
 
@@ -41,6 +43,7 @@ public static class TessioVerifierServiceCollectionExtensions
         services.TryAddSingleton<DemoCompletionQueue>();
         services.TryAddSingleton<MockWalletQueue>();
         services.TryAddSingleton<MockCredentialIssuer>();
+        services.TryAddSingleton<MockMdocIssuer>();
         services.TryAddSingleton<ResponseEncryptionKeyProvider>();
         services.TryAddSingleton<RequestObjectStore>();
 
@@ -51,11 +54,15 @@ public static class TessioVerifierServiceCollectionExtensions
         services.TryAddSingleton(sp => new WalletResponseParser(new WalletResponseParserOptions
         {
             ResponseDecryptionKey = sp.GetRequiredService<ResponseEncryptionKeyProvider>().DecryptionKey,
+            PresentationFormat = sp.GetRequiredService<IOptions<VerifierOptions>>().Value.CredentialFormat,
         }));
         services.TryAddSingleton<IPresentationResponseParser>(sp => sp.GetRequiredService<WalletResponseParser>());
-        services.TryAddSingleton<ITrustListResolver>(sp =>
-            new DevDefaultTrustListResolver(sp.GetRequiredService<MockCredentialIssuer>()));
+        services.TryAddSingleton<ITrustListResolver>(sp => new DevDefaultTrustListResolver(
+            sp.GetRequiredService<MockCredentialIssuer>(), sp.GetRequiredService<MockMdocIssuer>()));
         services.TryAddSingleton<ICredentialVerifier>(sp => new SdJwtVcVerifier(
+            sp.GetRequiredService<ITrustListResolver>(),
+            clock: sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton(sp => new MdocVerifier(
             sp.GetRequiredService<ITrustListResolver>(),
             clock: sp.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<WalletCallbackProcessor>();
