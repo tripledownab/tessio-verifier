@@ -48,6 +48,9 @@ internal static class IssuerAuthVerifier
         var dsCertificate = chain[0];
         try
         {
+            // A structurally valid certificate can still carry key bits the platform crypto layer
+            // rejects (e.g. an EC point off the curve); those throw platform-specific
+            // CryptographicException subtypes and must map to a typed verification error.
             AsymmetricAlgorithm key = dsCertificate.GetECDsaPublicKey() as AsymmetricAlgorithm
                 ?? dsCertificate.GetRSAPublicKey() as AsymmetricAlgorithm
                 ?? throw new MdocProcessingException(
@@ -67,6 +70,11 @@ internal static class IssuerAuthVerifier
                 Issuer = dsCertificate.Subject,
                 CertificateChain = chain.Select(c => new ReadOnlyMemory<byte>(c.RawData)).ToArray(),
             };
+        }
+        catch (Exception e) when (e is CryptographicException or ArgumentException)
+        {
+            throw new MdocProcessingException(
+                MdocErrorCodes.IssuerKeyUnresolvable, $"The Document Signer key is unusable: {e.Message}");
         }
         finally
         {
