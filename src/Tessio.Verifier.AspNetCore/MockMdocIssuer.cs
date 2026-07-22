@@ -3,100 +3,63 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.Cose;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.IdentityModel.Tokens;
+using Tessio.Verifier.Core.Mdoc;
 
-namespace Tessio.Verifier.Core.Mdoc.Tests;
+namespace Tessio.Verifier.AspNetCore;
 
 /// <summary>
-/// Builds real mdoc DeviceResponses for tests: a Document Signer certificate chained to an IACA-like
-/// root, IssuerSignedItems with random salts, an MSO with computed digests signed as COSE_Sign1
-/// (x5chain header) and a device key. Follows the TestCredentialBuilder pattern from Core.Tests.
+/// The MOCK-mode mdoc wallet: issues real ISO 18013-5 DeviceResponses with an ephemeral IACA root,
+/// a Document Signer certificate and a device key, and device-signs the OpenID4VP session
+/// transcript, so the full mdoc verification pipeline runs offline.
 /// </summary>
-internal sealed class MdocTestBuilder : IDisposable
+internal sealed class MockMdocIssuer : IDisposable
 {
-    public const string DefaultDocType = "org.iso.18013.5.1.mDL";
-    public const string DefaultNamespace = "org.iso.18013.5.1";
-
     private readonly ECDsa _iacaKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly ECDsa _dsKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly ECDsa _deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
-    public MdocTestBuilder()
+    public MockMdocIssuer()
     {
-        var iacaReq = new CertificateRequest("CN=Test IACA Root", _iacaKey, HashAlgorithmName.SHA256);
+        var iacaReq = new CertificateRequest("CN=Tessio Mock IACA Root", _iacaKey, HashAlgorithmName.SHA256);
         iacaReq.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
         IacaCertificate = iacaReq.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(5));
 
-        var dsReq = new CertificateRequest("CN=Test Document Signer", _dsKey, HashAlgorithmName.SHA256);
+        var dsReq = new CertificateRequest("CN=Tessio Mock Document Signer", _dsKey, HashAlgorithmName.SHA256);
         DsCertificate = dsReq.Create(
             IacaCertificate, DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1),
             Guid.NewGuid().ToByteArray());
     }
 
+    /// <summary>IACA root, pinned as the dev trust anchor for the mdoc path.</summary>
     public X509Certificate2 IacaCertificate { get; }
 
+    /// <summary>Document Signer certificate; its subject is the issuer identifier on the trust list.</summary>
     public X509Certificate2 DsCertificate { get; }
 
-    public ECDsa DeviceKey => _deviceKey;
-
-    public string DocType { get; set; } = DefaultDocType;
-
-    /// <summary>docType written into the MSO; defaults to <see cref="DocType"/>.</summary>
-    public string? MsoDocType { get; set; }
-
-    public string DigestAlgorithm { get; set; } = "SHA-256";
-
-    public DateTimeOffset ValidFrom { get; set; } = DateTimeOffset.UtcNow.AddMinutes(-10);
-
-    public DateTimeOffset ValidUntil { get; set; } = DateTimeOffset.UtcNow.AddDays(30);
-
-    /// <summary>Claims to issue, in insertion order; digestIDs are assigned sequentially.</summary>
-    public Dictionary<string, object?> Claims { get; } = new(StringComparer.Ordinal)
-    {
-        ["family_name"] = "Mobius",
-        ["age_over_18"] = true,
-    };
-
-    /// <summary>Mutates one encoded item after digest computation, to model tampering.</summary>
-    public Func<byte[], string, byte[]>? TamperItem { get; set; }
-
-    /// <summary>Signs the MSO with this key instead of the DS certificate's key (signature mismatch).</summary>
-    public ECDsa? SignerKeyOverride { get; set; }
-
-    /// <summary>Session parameters the device signature binds to (the wallet's view of the request).</summary>
-    public string ClientId { get; set; } = "x509_san_dns:verifier.test";
-
-    public string Nonce { get; set; } = "test-nonce";
-
-    public byte[]? EncryptionKeyThumbprint { get; set; }
-
-    public string ResponseUri { get; set; } = "https://verifier.test/callback";
-
-    /// <summary>Whether to emit the deviceSigned structure. Default true.</summary>
-    public bool IncludeDeviceAuth { get; set; } = true;
-
-    /// <summary>Signs deviceAuth with this key instead of the MSO's device key (holder mismatch).</summary>
-    public ECDsa? DeviceSignerOverride { get; set; }
-
-    /// <summary>Emits a deviceMac instead of a deviceSignature.</summary>
-    public bool UseDeviceMac { get; set; }
-
-    /// <summary>Builds a DeviceResponse and returns it base64url-encoded (the vp_token form).</summary>
-    public string BuildBase64Url() => Base64UrlEncoder.Encode(Build());
-
-    /// <summary>Builds the raw CBOR DeviceResponse.</summary>
-    public byte[] Build()
+    /// <summary>
+    /// Issues a base64url DeviceResponse for the requested claims, with the device signature bound
+    /// to this request's session transcript.
+    /// </summary>
+    public string IssueDeviceResponse(
+        IEnumerable<string> claimNames,
+        string docType,
+        string mdocNamespace,
+        string clientId,
+        string nonce,
+        byte[]? encryptionKeyThumbprint,
+        string responseUri)
     {
         List<byte[]> encodedItems = [];
         List<byte[]> digests = [];
         long digestId = 0;
-        foreach (var (name, value) in Claims)
+        foreach (var name in claimNames)
         {
-            var item = EncodeIssuerSignedItem(digestId++, name, value);
-            digests.Add(Hash(item));
-            encodedItems.Add(TamperItem is null ? item : TamperItem(item, name));
+            var item = EncodeIssuerSignedItem(digestId++, name, SampleClaimValues.For(name));
+            digests.Add(SHA256.HashData(item));
+            encodedItems.Add(item);
         }
 
-        var issuerAuth = SignMso(digests);
+        var issuerAuth = SignMso(digests, docType, mdocNamespace);
 
         var w = new CborWriter(CborConformanceMode.Lax);
         w.WriteStartMap(3);
@@ -104,14 +67,14 @@ internal sealed class MdocTestBuilder : IDisposable
         w.WriteTextString("1.0");
         w.WriteTextString("documents");
         w.WriteStartArray(1);
-        w.WriteStartMap(IncludeDeviceAuth ? 3 : 2);
+        w.WriteStartMap(3);
         w.WriteTextString("docType");
-        w.WriteTextString(DocType);
+        w.WriteTextString(docType);
         w.WriteTextString("issuerSigned");
         w.WriteStartMap(2);
         w.WriteTextString("nameSpaces");
         w.WriteStartMap(1);
-        w.WriteTextString(DefaultNamespace);
+        w.WriteTextString(mdocNamespace);
         w.WriteStartArray(encodedItems.Count);
         foreach (var item in encodedItems)
         {
@@ -123,22 +86,18 @@ internal sealed class MdocTestBuilder : IDisposable
         w.WriteTextString("issuerAuth");
         w.WriteEncodedValue(issuerAuth);
         w.WriteEndMap();
-        if (IncludeDeviceAuth)
-        {
-            WriteDeviceSigned(w);
-        }
-
+        WriteDeviceSigned(w, docType, clientId, nonce, encryptionKeyThumbprint, responseUri);
         w.WriteEndMap();
         w.WriteEndArray();
         w.WriteTextString("status");
         w.WriteInt32(0);
         w.WriteEndMap();
-        return w.Encode();
+        return Base64UrlEncoder.Encode(w.Encode());
     }
 
-    private void WriteDeviceSigned(CborWriter w)
+    private void WriteDeviceSigned(
+        CborWriter w, string docType, string clientId, string nonce, byte[]? encryptionKeyThumbprint, string responseUri)
     {
-        // DeviceNameSpacesBytes = #6.24(bstr .cbor {}) — remote presentations disclose nothing device-signed.
         var emptyMap = new CborWriter(CborConformanceMode.Lax);
         emptyMap.WriteStartMap(0);
         emptyMap.WriteEndMap();
@@ -147,10 +106,9 @@ internal sealed class MdocTestBuilder : IDisposable
         nameSpacesBytes.WriteByteString(emptyMap.Encode());
         var encodedNameSpaces = nameSpacesBytes.Encode();
 
-        var transcript = SessionTranscriptBuilder.Build(ClientId, Nonce, EncryptionKeyThumbprint, ResponseUri);
-        var deviceAuthBytes = SessionTranscriptBuilder.BuildDeviceAuthenticationBytes(transcript, DocType, encodedNameSpaces);
-        var signature = CoseSign1Message.SignDetached(
-            deviceAuthBytes, new CoseSigner(DeviceSignerOverride ?? _deviceKey, HashAlgorithmName.SHA256));
+        var transcript = SessionTranscriptBuilder.Build(clientId, nonce, encryptionKeyThumbprint, responseUri);
+        var deviceAuthBytes = SessionTranscriptBuilder.BuildDeviceAuthenticationBytes(transcript, docType, encodedNameSpaces);
+        var signature = CoseSign1Message.SignDetached(deviceAuthBytes, new CoseSigner(_deviceKey, HashAlgorithmName.SHA256));
 
         w.WriteTextString("deviceSigned");
         w.WriteStartMap(2);
@@ -158,8 +116,8 @@ internal sealed class MdocTestBuilder : IDisposable
         w.WriteEncodedValue(encodedNameSpaces);
         w.WriteTextString("deviceAuth");
         w.WriteStartMap(1);
-        w.WriteTextString(UseDeviceMac ? "deviceMac" : "deviceSignature");
-        w.WriteEncodedValue(signature); // for the MAC case only presence matters; the verifier rejects it first
+        w.WriteTextString("deviceSignature");
+        w.WriteEncodedValue(signature);
         w.WriteEndMap();
         w.WriteEndMap();
     }
@@ -178,7 +136,6 @@ internal sealed class MdocTestBuilder : IDisposable
         WriteValue(inner, value);
         inner.WriteEndMap();
 
-        // IssuerSignedItemBytes = #6.24(bstr .cbor IssuerSignedItem)
         var outer = new CborWriter(CborConformanceMode.Lax);
         outer.WriteTag((CborTag)24);
         outer.WriteByteString(inner.Encode());
@@ -194,22 +151,21 @@ internal sealed class MdocTestBuilder : IDisposable
             case bool b: w.WriteBoolean(b); break;
             case int i: w.WriteInt64(i); break;
             case long l: w.WriteInt64(l); break;
-            case byte[] bytes: w.WriteByteString(bytes); break;
-            default: throw new NotSupportedException($"Unsupported test claim type {value.GetType()}.");
+            default: w.WriteTextString(value.ToString() ?? string.Empty); break;
         }
     }
 
-    private byte[] SignMso(List<byte[]> digests)
+    private byte[] SignMso(List<byte[]> digests, string docType, string mdocNamespace)
     {
         var mso = new CborWriter(CborConformanceMode.Lax);
         mso.WriteStartMap(6);
         mso.WriteTextString("version");
         mso.WriteTextString("1.0");
         mso.WriteTextString("digestAlgorithm");
-        mso.WriteTextString(DigestAlgorithm);
+        mso.WriteTextString("SHA-256");
         mso.WriteTextString("valueDigests");
         mso.WriteStartMap(1);
-        mso.WriteTextString(DefaultNamespace);
+        mso.WriteTextString(mdocNamespace);
         mso.WriteStartMap(digests.Count);
         for (var i = 0; i < digests.Count; i++)
         {
@@ -225,40 +181,33 @@ internal sealed class MdocTestBuilder : IDisposable
         WriteCoseKey(mso, _deviceKey);
         mso.WriteEndMap();
         mso.WriteTextString("docType");
-        mso.WriteTextString(MsoDocType ?? DocType);
+        mso.WriteTextString(docType);
         mso.WriteTextString("validityInfo");
         mso.WriteStartMap(3);
         mso.WriteTextString("signed");
         WriteTDate(mso, DateTimeOffset.UtcNow);
         mso.WriteTextString("validFrom");
-        WriteTDate(mso, ValidFrom);
+        WriteTDate(mso, DateTimeOffset.UtcNow.AddMinutes(-5));
         mso.WriteTextString("validUntil");
-        WriteTDate(mso, ValidUntil);
+        WriteTDate(mso, DateTimeOffset.UtcNow.AddDays(30));
         mso.WriteEndMap();
         mso.WriteEndMap();
 
-        // MobileSecurityObjectBytes = #6.24(bstr .cbor MSO), signed as the COSE_Sign1 payload.
         var payload = new CborWriter(CborConformanceMode.Lax);
         payload.WriteTag((CborTag)24);
         payload.WriteByteString(mso.Encode());
 
-        var signer = new CoseSigner(SignerKeyOverride ?? _dsKey, HashAlgorithmName.SHA256);
-        // SPEC: RFC 9360 — x5chain at header label 33; DS certificate first, then the chain.
-        signer.UnprotectedHeaders.Add(new CoseHeaderLabel(33), CoseHeaderValue.FromEncodedValue(EncodeChain()));
+        var chain = new CborWriter(CborConformanceMode.Lax);
+        chain.WriteStartArray(2);
+        chain.WriteByteString(DsCertificate.RawData);
+        chain.WriteByteString(IacaCertificate.RawData);
+        chain.WriteEndArray();
+
+        var signer = new CoseSigner(_dsKey, HashAlgorithmName.SHA256);
+        signer.UnprotectedHeaders.Add(new CoseHeaderLabel(33), CoseHeaderValue.FromEncodedValue(chain.Encode()));
         return CoseSign1Message.SignEmbedded(payload.Encode(), signer);
     }
 
-    private byte[] EncodeChain()
-    {
-        var w = new CborWriter(CborConformanceMode.Lax);
-        w.WriteStartArray(2);
-        w.WriteByteString(DsCertificate.RawData);
-        w.WriteByteString(IacaCertificate.RawData);
-        w.WriteEndArray();
-        return w.Encode();
-    }
-
-    // SPEC: RFC 9053 — COSE_Key for EC2/P-256: {1:2, -1:1, -2:x, -3:y}.
     private static void WriteCoseKey(CborWriter w, ECDsa key)
     {
         var p = key.ExportParameters(false);
@@ -279,13 +228,6 @@ internal sealed class MdocTestBuilder : IDisposable
         w.WriteTag((CborTag)0);
         w.WriteTextString(value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture));
     }
-
-    private byte[] Hash(byte[] data) => DigestAlgorithm switch
-    {
-        "SHA-384" => SHA384.HashData(data),
-        "SHA-512" => SHA512.HashData(data),
-        _ => SHA256.HashData(data),
-    };
 
     public void Dispose()
     {

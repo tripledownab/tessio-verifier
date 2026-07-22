@@ -33,6 +33,24 @@ public sealed class VerifierOptions
     public string? ExpectedVct { get; set; }
 
     /// <summary>
+    /// Credential format to request and verify: <c>dc+sd-jwt</c> (default) or <c>mso_mdoc</c>
+    /// (ISO mobile documents, e.g. the mDL).
+    /// </summary>
+    public string CredentialFormat { get; set; } = "dc+sd-jwt";
+
+    /// <summary>
+    /// Expected mdoc document type when <see cref="CredentialFormat"/> is <c>mso_mdoc</c>.
+    /// Defaults to the mobile driving licence (<c>org.iso.18013.5.1.mDL</c>).
+    /// </summary>
+    public string ExpectedDocType { get; set; } = "org.iso.18013.5.1.mDL";
+
+    /// <summary>
+    /// Namespace for requested mdoc claims (DCQL paths are <c>[namespace, element]</c>).
+    /// Defaults to the mDL namespace.
+    /// </summary>
+    public string MdocNamespace { get; set; } = "org.iso.18013.5.1";
+
+    /// <summary>
     /// OpenID4VP response delivery mode written into the generated request. Defaults to
     /// <see cref="ResponseMode.DirectPostJwt"/> (the HAIP default).
     /// </summary>

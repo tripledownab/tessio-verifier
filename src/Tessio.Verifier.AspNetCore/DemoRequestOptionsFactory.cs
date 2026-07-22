@@ -28,7 +28,9 @@ internal static class DemoRequestOptionsFactory
             ClientId = options.ClientId,
             Nonce = Tokens.NewNonce(),
             State = Tokens.NewNonce(),
-            DcqlQueryJson = BuildDcqlQuery(claims, options.ExpectedVct),
+            DcqlQueryJson = options.CredentialFormat == "mso_mdoc"
+                ? BuildMdocDcqlQuery(claims, options.ExpectedDocType, options.MdocNamespace)
+                : BuildDcqlQuery(claims, options.ExpectedVct),
             ResponseUri = responseUri,
             ResponseMode = options.ResponseMode,
             RequestLifetime = options.SessionLifetime,
@@ -55,6 +57,34 @@ internal static class DemoRequestOptionsFactory
                     ["meta"] = new JsonObject
                     {
                         ["vct_values"] = new JsonArray(expectedVct ?? DefaultVct),
+                    },
+                    ["claims"] = claimsArray,
+                }),
+        };
+
+        return query.ToJsonString(JsonDefaults.Relaxed);
+    }
+
+    // SPEC: OpenID4VP 1.0 Annex B.2 — mdoc queries use meta.doctype_value and two-element
+    // [namespace, element] claim paths.
+    private static string BuildMdocDcqlQuery(IEnumerable<string> claims, string docType, string mdocNamespace)
+    {
+        var claimsArray = new JsonArray();
+        foreach (var claim in claims)
+        {
+            claimsArray.Add(new JsonObject { ["path"] = new JsonArray(mdocNamespace, claim) });
+        }
+
+        var query = new JsonObject
+        {
+            ["credentials"] = new JsonArray(
+                new JsonObject
+                {
+                    ["id"] = "credential",
+                    ["format"] = "mso_mdoc",
+                    ["meta"] = new JsonObject
+                    {
+                        ["doctype_value"] = docType,
                     },
                     ["claims"] = claimsArray,
                 }),
