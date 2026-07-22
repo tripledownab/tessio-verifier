@@ -85,7 +85,8 @@ internal sealed class MockWalletService : BackgroundService
                         claims,
                         _options.ExpectedVct ?? DemoRequestOptionsFactory.DefaultVct,
                         session.Request.Nonce,
-                        _options.ClientId);
+                        _options.ClientId,
+                        RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject));
 
                 // Mirror what a wallet POSTs: cleartext form for direct_post (OpenID4VP 1.0 §8.2),
                 // or an ECDH-ES-encrypted response JWT for direct_post.jwt (§8.3, the HAIP default).

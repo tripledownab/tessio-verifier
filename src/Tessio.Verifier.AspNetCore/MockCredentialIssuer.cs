@@ -38,7 +38,9 @@ internal sealed class MockCredentialIssuer : IDisposable
     /// Issues a presentation for the requested claims, bound to the session's nonce and the
     /// verifier's audience: <c>&lt;issuer-jwt&gt;~&lt;disclosures…&gt;~&lt;kb-jwt&gt;</c>.
     /// </summary>
-    public string IssuePresentation(IEnumerable<string> claimNames, string vct, string nonce, string audience)
+    public string IssuePresentation(
+        IEnumerable<string> claimNames, string vct, string nonce, string audience,
+        IReadOnlyList<string>? transactionData = null)
     {
         var disclosures = claimNames
             .Select(name => MakeDisclosure(name, SampleClaimValues.For(name)))
@@ -74,13 +76,22 @@ internal sealed class MockCredentialIssuer : IDisposable
         var withoutKb = issuerJwt + "~" + string.Concat(disclosures.Select(d => d + "~"));
 
         // SPEC: RFC 9901 §4.3 — KB-JWT binds the presentation to this verifier's nonce and audience.
-        var kbPayload = JsonSerializer.Serialize(new Dictionary<string, object>
+        var kbClaims = new Dictionary<string, object>
         {
             ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             ["aud"] = audience,
             ["nonce"] = nonce,
             ["sd_hash"] = Base64UrlEncoder.Encode(SHA256.HashData(Encoding.ASCII.GetBytes(withoutKb))),
-        });
+        };
+        if (transactionData is { Count: > 0 })
+        {
+            // SPEC: OpenID4VP 1.0 Annex B.3.3.1 — hash each transaction_data string as received.
+            kbClaims["transaction_data_hashes"] = transactionData
+                .Select(td => Base64UrlEncoder.Encode(SHA256.HashData(Encoding.ASCII.GetBytes(td))))
+                .ToList();
+        }
+
+        var kbPayload = JsonSerializer.Serialize(kbClaims);
 
         return withoutKb + SignJwt(kbPayload, new ECDsaSecurityKey(_holderKey), typ: "kb+jwt", x5c: null);
     }

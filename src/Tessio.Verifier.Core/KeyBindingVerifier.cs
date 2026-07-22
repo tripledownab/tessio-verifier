@@ -17,7 +17,8 @@ internal static class KeyBindingVerifier
         SecurityKey holderKey,
         VerificationContext context,
         string presentationWithoutKbJwt,
-        CancellationToken ct)
+        CancellationToken ct,
+        TransactionDataExpectation? transactionData = null)
     {
         var errors = new List<VerificationError>();
 
@@ -87,8 +88,77 @@ internal static class KeyBindingVerifier
             errors.Add(Error(ErrorCodes.SdHashMismatch, "The KB-JWT sd_hash does not match the presented credential and disclosures."));
         }
 
+        if (transactionData is not null)
+        {
+            CheckTransactionData(token, transactionData, errors);
+        }
+
         return errors;
     }
+
+    // SPEC: OpenID4VP 1.0 Annex B.3.3.1 — transaction_data_hashes is a non-empty array of
+    // base64url hashes, each computed over the transaction_data request string as received (no
+    // base64url decoding before hashing). transaction_data_hashes_alg is REQUIRED in the response
+    // iff the request constrained it; the default hash is sha-256.
+    private static void CheckTransactionData(
+        JsonWebToken token, TransactionDataExpectation expectation, List<VerificationError> errors)
+    {
+        if (!token.TryGetPayloadValue<string[]>("transaction_data_hashes", out var hashes) || hashes.Length == 0)
+        {
+            errors.Add(Error(ErrorCodes.TransactionDataMissing,
+                "The request carried transaction_data, but the KB-JWT has no transaction_data_hashes."));
+            return;
+        }
+
+        token.TryGetPayloadValue<string>("transaction_data_hashes_alg", out var alg);
+        if (expectation.AllowedHashAlgorithms is { Count: > 0 } allowed)
+        {
+            if (alg is null || !allowed.Contains(alg, StringComparer.Ordinal))
+            {
+                errors.Add(Error(ErrorCodes.TransactionDataAlgUnsupported,
+                    $"The KB-JWT transaction_data_hashes_alg '{alg ?? "(absent)"}' is not one the request allows."));
+                return;
+            }
+        }
+        else if (alg is not null && !string.Equals(alg, "sha-256", StringComparison.Ordinal))
+        {
+            errors.Add(Error(ErrorCodes.TransactionDataAlgUnsupported,
+                $"The request did not constrain the hash algorithm, so sha-256 is required; the KB-JWT declares '{alg}'."));
+            return;
+        }
+
+        if (HashFor(alg ?? "sha-256") is not { } hash)
+        {
+            errors.Add(Error(ErrorCodes.TransactionDataAlgUnsupported,
+                $"The transaction data hash algorithm '{alg}' is not supported."));
+            return;
+        }
+
+        if (hashes.Length != expectation.TransactionData.Count)
+        {
+            errors.Add(Error(ErrorCodes.TransactionDataHashMismatch,
+                $"The KB-JWT carries {hashes.Length} transaction data hash(es); the request sent {expectation.TransactionData.Count}."));
+            return;
+        }
+
+        for (var i = 0; i < hashes.Length; i++)
+        {
+            var expected = Base64UrlEncoder.Encode(hash(Encoding.ASCII.GetBytes(expectation.TransactionData[i])));
+            if (!string.Equals(hashes[i], expected, StringComparison.Ordinal))
+            {
+                errors.Add(Error(ErrorCodes.TransactionDataHashMismatch,
+                    $"transaction_data_hashes[{i}] does not match the transaction data sent in the request."));
+            }
+        }
+    }
+
+    private static Func<byte[], byte[]>? HashFor(string alg) => alg switch
+    {
+        "sha-256" => SHA256.HashData,
+        "sha-384" => SHA384.HashData,
+        "sha-512" => SHA512.HashData,
+        _ => null,
+    };
 
     private static VerificationError Error(string code, string message) => new() { Code = code, Message = message };
 }

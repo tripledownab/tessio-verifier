@@ -2,7 +2,7 @@ namespace Tessio.Verifier.Core.Tests;
 
 /// <summary>
 /// Mutation-based robustness for the SD-JWT pipeline, mirroring the mdoc fuzz suite: presentations
-/// are attacker-controlled strings, so <see cref="SdJwtVcVerifier.VerifyAsync"/> must return a
+/// are attacker-controlled strings, so <see cref="SdJwtVcVerifier"/> must return a
 /// result (valid or invalid) on every mutated input and never throw. Covers both key-resolution
 /// paths (issuer metadata and x5c). Seeded for determinism; failures print seed and iteration.
 /// </summary>

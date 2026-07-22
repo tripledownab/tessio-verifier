@@ -1,0 +1,43 @@
+name: Bug report
+description: Something does not behave as documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: e.g. 0.1.5 or 0.2.0-preview.2
+    validations:
+      required: true
+  - type: input
+    id: tfm
+    attributes:
+      label: Target framework and OS
+      placeholder: e.g. net8.0 on Ubuntu 24.04
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Verifier mode
+      options:
+        - Demo
+        - Mock
+        - Test
+        - Live
+        - Not applicable (Core/OpenId4Vp/Trust used directly)
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: What happened and how to reproduce it
+      description: Smallest possible setup, expected vs actual. Include error codes from VerificationResult.Errors when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Never paste credentials or disclosed claims. The pipeline's own logs are safe (they carry no claim values).
+      render: text

@@ -35,6 +35,7 @@ internal static class DemoRequestOptionsFactory
             ResponseMode = options.ResponseMode,
             RequestLifetime = options.SessionLifetime,
             ClientMetadataJson = BuildClientMetadata(options, responseEncryptionJwk),
+            TransactionDataJson = BuildTransactionData(options),
         };
     }
 
@@ -91,6 +92,28 @@ internal static class DemoRequestOptionsFactory
         };
 
         return query.ToJsonString(JsonDefaults.Relaxed);
+    }
+
+    // SPEC: OpenID4VP 1.0 §5.1/Annex B.3.3 — transaction_data is an array of base64url-encoded JSON
+    // objects; each needs type and credential_ids. The KB-JWT hashes are computed over these exact strings.
+    private static string? BuildTransactionData(VerifierOptions options)
+    {
+        if (options.TransactionData.Count == 0)
+        {
+            return null;
+        }
+
+        // Serialized via JsonSerializer, not a JsonArray of strings: on net8, implicitly converted
+        // JsonValues fail to serialize under custom JsonSerializerOptions.
+        var entries = new List<string>();
+        foreach (var entry in options.TransactionData)
+        {
+            var node = (JsonObject)JsonNode.Parse(entry)!;
+            node["credential_ids"] ??= JsonNode.Parse("""["credential"]""");
+            entries.Add(Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(node.ToJsonString(JsonDefaults.Relaxed)));
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(entries);
     }
 
     private static string BuildClientMetadata(VerifierOptions options, JsonObject? responseEncryptionJwk)

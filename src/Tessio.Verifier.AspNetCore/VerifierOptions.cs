@@ -56,6 +56,14 @@ public sealed class VerifierOptions
     /// </summary>
     public ResponseMode ResponseMode { get; set; } = ResponseMode.DirectPostJwt;
 
+    /// <summary>
+    /// Transaction data to bind into the presentation (OpenID4VP transaction_data): each entry is a
+    /// JSON object string with at least a <c>type</c> member; <c>credential_ids</c> defaults to the
+    /// query's credential id. The wallet acknowledges each entry with a hash in the KB-JWT, which is
+    /// verified. SD-JWT VC flows only.
+    /// </summary>
+    public IList<string> TransactionData { get; set; } = new List<string>();
+
     /// <summary>How long a created session (and its request) remains valid. Default: 5 minutes.</summary>
     public TimeSpan SessionLifetime { get; set; } = TimeSpan.FromMinutes(5);
 

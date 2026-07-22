@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose an addition or change
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you solving?
+      description: The scenario, not the solution. Mention the spec section if this is protocol surface.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: API sketch, option, or behavior you have in mind. Note that contracts-v0 interfaces are frozen.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is relying-party (verifier) functionality, not wallet or issuer side
+          required: true
