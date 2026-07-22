@@ -60,3 +60,12 @@ project.fragment.lock.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Internal working documents — never commit
+CLAUDE.md
+AGENTS.md
+ARCHITECTURE.md
+START-HERE.md
+docs/agent-brief.md
+article-*.md
+mcp.json
