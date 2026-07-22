@@ -108,6 +108,7 @@ internal static class Iso18013AnnexDVectors
 
     public static byte[] DsCertificate => Decode(DsCertificateHex);
 
+    // Keep only hex digits: git checkout rewrites the raw string's line endings per platform.
     private static byte[] Decode(string wrappedHex) =>
-        Convert.FromHexString(wrappedHex.Replace("\n", string.Empty).Replace(" ", string.Empty));
+        Convert.FromHexString(string.Concat(wrappedHex.Where(char.IsAsciiHexDigit)));
 }
