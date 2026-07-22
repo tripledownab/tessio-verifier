@@ -62,6 +62,9 @@ public sealed class ResponseEncryptionKeyProvider : IDisposable
     /// <summary>Key identifier (RFC 7638 JWK thumbprint).</summary>
     public string KeyId { get; }
 
+    /// <summary>The raw thumbprint bytes, as bound into the mdoc session transcript.</summary>
+    public byte[] ThumbprintBytes => Base64UrlEncoder.DecodeBytes(KeyId);
+
     /// <summary>Private key for decrypting wallet responses.</summary>
     public ECDsaSecurityKey DecryptionKey { get; }
 

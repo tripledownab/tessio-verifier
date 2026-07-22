@@ -6,29 +6,29 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// </summary>
 public static class MdocErrorCodes
 {
-    /// <summary>Malformed base64url, CBOR or a missing required element (shared code with Core).</summary>
-    public const string StructureInvalid = "structure_invalid";
+    /// <summary>Malformed base64url, CBOR or a missing required element (shared with Core).</summary>
+    public const string StructureInvalid = ErrorCodes.StructureInvalid;
 
-    /// <summary>The credential is not an mdoc (shared code with Core).</summary>
-    public const string FormatUnsupported = "format_unsupported";
+    /// <summary>The credential is not an mdoc (shared with Core).</summary>
+    public const string FormatUnsupported = ErrorCodes.FormatUnsupported;
 
-    /// <summary>The COSE signature algorithm is not on the allowlist (shared code with Core).</summary>
-    public const string AlgorithmNotAllowed = "algorithm_not_allowed";
+    /// <summary>The COSE signature algorithm is not on the allowlist (shared with Core).</summary>
+    public const string AlgorithmNotAllowed = ErrorCodes.AlgorithmNotAllowed;
 
-    /// <summary>The issuerAuth signature does not verify (shared code with Core).</summary>
-    public const string SignatureInvalid = "signature_invalid";
+    /// <summary>The issuerAuth signature does not verify (shared with Core).</summary>
+    public const string SignatureInvalid = ErrorCodes.SignatureInvalid;
 
-    /// <summary>The Document Signer key could not be resolved from x5chain (shared code with Core).</summary>
-    public const string IssuerKeyUnresolvable = "issuer_key_unresolvable";
+    /// <summary>The Document Signer key could not be resolved from x5chain (shared with Core).</summary>
+    public const string IssuerKeyUnresolvable = ErrorCodes.IssuerKeyUnresolvable;
 
-    /// <summary>The issuer does not chain to a configured trust anchor (shared code with Core).</summary>
-    public const string IssuerUntrusted = "issuer_untrusted";
+    /// <summary>The issuer does not chain to a configured trust anchor (shared with Core).</summary>
+    public const string IssuerUntrusted = ErrorCodes.IssuerUntrusted;
 
-    /// <summary>The MSO validity window has passed (shared code with Core).</summary>
-    public const string CredentialExpired = "credential_expired";
+    /// <summary>The MSO validity window has passed (shared with Core).</summary>
+    public const string CredentialExpired = ErrorCodes.CredentialExpired;
 
-    /// <summary>The MSO validity window has not started (shared code with Core).</summary>
-    public const string CredentialNotYetValid = "credential_not_yet_valid";
+    /// <summary>The MSO validity window has not started (shared with Core).</summary>
+    public const string CredentialNotYetValid = ErrorCodes.CredentialNotYetValid;
 
     /// <summary>A disclosed item's digest does not appear in the MSO's valueDigests.</summary>
     public const string DigestMismatch = "mdoc_digest_mismatch";

@@ -78,7 +78,7 @@ internal sealed class MockWalletService : BackgroundService
                         session.Request.ClientId,
                         session.Request.Nonce,
                         _options.ResponseMode == ResponseMode.DirectPostJwt
-                            ? Base64UrlEncoder.DecodeBytes(_encryptionKeys.KeyId)
+                            ? _encryptionKeys.ThumbprintBytes
                             : null,
                         RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject) ?? string.Empty)
                     : _issuer.IssuePresentation(

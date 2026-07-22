@@ -3,8 +3,9 @@ namespace Tessio.Verifier.Core;
 /// <summary>
 /// Stable machine-readable error codes carried in <see cref="VerificationError.Code"/>.
 /// Codes are part of the observable behavior (log/metric grouping) — treat as append-only.
+/// Public so application logic can branch on codes without magic strings.
 /// </summary>
-internal static class ErrorCodes
+public static class ErrorCodes
 {
     public const string FormatUnsupported = "format_unsupported";
     public const string StructureInvalid = "structure_invalid";
