@@ -217,7 +217,7 @@ Two things differ from the SD-JWT path:
 - **Trust anchors are mandatory.** mdoc trust is X.509 only (IACA roots), so your `ITrustListResolver` must anchor chains; an identifier list alone rejects everything. Pass the IACA certificates as `trustAnchors` and list the Document Signer subjects as issuers.
 - **Stay on `direct_post.jwt`.** The high-assurance profile requires encrypted responses for mdocs, and the encryption key's thumbprint is part of what the wallet's device signature covers.
 
-Mock mode works the same way: with `CredentialFormat = "mso_mdoc"` the built-in wallet issues real device-signed DeviceResponses, so you can exercise the whole mdoc flow offline. mdoc support is a v0.2 preview. The pipeline is verified against the ISO 18013-5 Annex D worked example (externally published bytes: parsing, digests and issuer signature all agree) and the OpenID4VP Annex B.2.6 transcript vectors; a live round trip against the EUDI reference wallet is the remaining step before the preview label comes off.
+Mock mode works the same way: with `CredentialFormat = "mso_mdoc"` the built-in wallet issues real device-signed DeviceResponses, so you can exercise the whole mdoc flow offline. mdoc support is a v0.2 preview. The pipeline is verified against external artifacts at every layer: the ISO 18013-5 Annex D worked example (parsing, digests and issuer signature agree with the spec's own bytes), the OpenID4VP Annex B.2.6 transcript vectors (byte-identical to the EUDI reference wallet's own test expectations) and a cross-implementation round trip in which an independent mdoc stack (OpenWallet Foundation wallet-framework-dotnet) built and signed the device authentication that this verifier accepts.
 
 ## Adjusting verification policy
 
