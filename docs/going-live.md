@@ -195,6 +195,30 @@ Every instance holding the same key advertises the same JWK with the same RFC 76
 
 `ResponseMode.DirectPost` (cleartext form posts) is also supported, but encrypted responses are the profile default so stay on `DirectPostJwt` unless you have a reason not to.
 
+## Requesting mdocs instead of SD-JWT VC (preview)
+
+The same pipeline verifies ISO mobile documents (the mDL and the mdoc flavour of the PID). One option switches the credential format:
+
+```csharp
+builder.Services.AddTessioVerifier(options =>
+{
+    options.Mode = VerifierMode.Live;
+    options.CredentialFormat = "mso_mdoc";
+    options.ExpectedDocType = "org.iso.18013.5.1.mDL";   // or eu.europa.ec.eudi.pid.1
+    options.MdocNamespace = "org.iso.18013.5.1";
+    options.RequestedClaims = ["age_over_18"];
+});
+```
+
+The DCQL query then uses `doctype_value` and `[namespace, element]` claim paths, and responses are verified by `MdocVerifier`: issuer signature via the `x5chain` Document Signer certificate, per-item digests against the Mobile Security Object, validity window and the device signature over the OpenID4VP session transcript (which binds your client_id, nonce, response_uri and response-encryption key).
+
+Two things differ from the SD-JWT path:
+
+- **Trust anchors are mandatory.** mdoc trust is X.509 only (IACA roots), so your `ITrustListResolver` must anchor chains; an identifier list alone rejects everything. Pass the IACA certificates as `trustAnchors` and list the Document Signer subjects as issuers.
+- **Stay on `direct_post.jwt`.** The high-assurance profile requires encrypted responses for mdocs, and the encryption key's thumbprint is part of what the wallet's device signature covers.
+
+Mock mode works the same way: with `CredentialFormat = "mso_mdoc"` the built-in wallet issues real device-signed DeviceResponses, so you can exercise the whole mdoc flow offline. mdoc support is a v0.2 preview; interop against the EUDI reference wallet is in progress.
+
 ## Adjusting verification policy
 
 `SdJwtVcVerifier` defaults are strict: key binding required, credential status (Token Status List) checked and failing closed, 5 minutes of clock skew. To change them, register the verifier yourself:

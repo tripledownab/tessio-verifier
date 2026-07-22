@@ -7,6 +7,7 @@
           "src": "../../src",
           "files": [
             "Tessio.Verifier.Core/Tessio.Verifier.Core.csproj",
+            "Tessio.Verifier.Core.Mdoc/Tessio.Verifier.Core.Mdoc.csproj",
             "Tessio.Verifier.Trust/Tessio.Verifier.Trust.csproj",
             "Tessio.Verifier.OpenId4Vp/Tessio.Verifier.OpenId4Vp.csproj",
             "Tessio.Verifier.AspNetCore/Tessio.Verifier.AspNetCore.csproj"

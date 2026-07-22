@@ -17,6 +17,7 @@ Everything else follows [releases](https://github.com/tripledownab/tessio-verifi
 | Package | Purpose |
 | --- | --- |
 | [Tessio.Verifier.Core](xref:Tessio.Verifier.Core) | Credential verification (SD-JWT VC, disclosures, KB-JWT). No web dependencies. |
+| [Tessio.Verifier.Core.Mdoc](xref:Tessio.Verifier.Core.Mdoc) | mdoc verification (ISO 18013-5/-7: MSO, digests, session-transcript device auth). Preview. |
 | [Tessio.Verifier.OpenId4Vp](xref:Tessio.Verifier.OpenId4Vp) | OpenID4VP 1.0 protocol layer (DCQL + JAR build, response parse). |
 | [Tessio.Verifier.AspNetCore](xref:Tessio.Verifier.AspNetCore) | DI extensions, minimal-API endpoints, session store, demo/mock/test modes. |
 | [Tessio.Verifier.Trust](xref:Tessio.Verifier.Trust) | `ITrustListResolver` seam. Basic dev resolver in OSS, managed resolver in the commercial layer. |
