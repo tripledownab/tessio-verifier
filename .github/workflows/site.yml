@@ -17,10 +17,11 @@ permissions:
   pages: write
   id-token: write
 
-# Avoid concurrent deploys clobbering each other.
+# One deploy pipeline at a time; a newer push supersedes a stale in-flight build
+# (actions/deploy-pages switches atomically, so cancellation cannot half-deploy).
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
