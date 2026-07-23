@@ -29,12 +29,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up .NET (8 + 9 — global.json pins driver)
+      - name: Set up .NET (8 + 10 — global.json pins driver)
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
             8.0.x
-            9.0.x
+            10.0.x
           global-json-file: global.json
 
       - name: Install DocFX as global tool

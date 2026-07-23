@@ -76,7 +76,7 @@ public sealed class StaticTrustListResolver : ITrustListResolver
 
     private bool ChainAnchorsOnConfiguredRoot(ReadOnlyMemory<byte>[] x5c)
     {
-        var certificates = x5c.Select(der => new X509Certificate2(der.ToArray())).ToList();
+        var certificates = x5c.Select(der => LoadCertificate(der.ToArray())).ToList();
         try
         {
             var leaf = certificates[0];
@@ -112,6 +112,13 @@ public sealed class StaticTrustListResolver : ITrustListResolver
             }
         }
     }
+
+    private static X509Certificate2 LoadCertificate(byte[] der) =>
+#if NET9_0_OR_GREATER
+        X509CertificateLoader.LoadCertificate(der);
+#else
+        new(der);
+#endif
 
     private Task<IssuerTrustStatus> Trusted() =>
         Task.FromResult(new IssuerTrustStatus { Trusted = true, TrustListSource = _source });
