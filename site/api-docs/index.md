@@ -12,6 +12,8 @@ in-memory session store.
 The contracts are frozen at tag **[`contracts-v0`](https://github.com/tripledownab/tessio-verifier/releases/tag/contracts-v0)**.
 Everything else follows [releases](https://github.com/tripledownab/tessio-verifier/releases).
 
+The packages run on **.NET 8, 9 and 10** (targeting .NET 8 and .NET 10, both LTS).
+
 ## Packages
 
 | Package | Purpose |
