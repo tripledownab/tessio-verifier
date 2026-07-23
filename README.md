@@ -16,11 +16,13 @@ Verify credentials presented by EUDI Wallets directly from your .NET backend, ov
 
 The EUDI Wallet arrives under Regulation (EU) 2024/1183: member states must make wallets available by **December 2026**, and regulated relying parties must **accept** them by **December 2027**. The open-source verifier tooling today is Kotlin (walt.id), Rust (SpruceID), and TypeScript (OpenEUDI). If you run on .NET, there hasn't been a native option. This is it.
 
-## What you get (v0.1)
+## What you get
 
 - OpenID4VP 1.0 verifier flow (cross-device / QR), **DCQL** queries, JAR-signed requests (RFC 9101)
-- **SD-JWT VC** verification: issuer signature (JWT VC Issuer Metadata and X.509), selective disclosure, key binding (KB-JWT)
-- **DEMO / MOCK / TEST** modes so you can build before wallets exist
+- **SD-JWT VC** verification: issuer signature (JWT VC Issuer Metadata and X.509), selective disclosure, key binding (KB-JWT), transaction data
+- **mdoc** (`mso_mdoc`) verification: ISO 18013-5/-7 mobile documents like the mDL, validated against the spec's own vectors and an independent implementation
+- Token Status List revocation checking
+- **Demo / Mock / Test / Live** modes so you can build before wallets exist, then serve real ones
 - Idiomatic ASP.NET Core integration (DI + minimal APIs) and a runnable sample
 - A pluggable trust seam (`ITrustListResolver`) for production trust lists
 
@@ -29,6 +31,8 @@ The EUDI Wallet arrives under Regulation (EU) 2024/1183: member states must make
 ```bash
 dotnet add package Tessio.Verifier.AspNetCore
 ```
+
+Runs on **.NET 8, 9 and 10**. The packages target .NET 8 and .NET 10 (both LTS); apps on .NET 9 use the .NET 8 build.
 
 ## Quickstart — 5 minutes, DEMO mode
 
