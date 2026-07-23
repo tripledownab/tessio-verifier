@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up .NET (8 + 10 — global.json drives the SDK pin)
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: |
             8.0.x
