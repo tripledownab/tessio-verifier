@@ -73,9 +73,8 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             : null;
         var requestOptions = DemoRequestOptionsFactory.Create(options, responseUri, encryptionJwk);
         var session = await store.CreateAsync(requestOptions, http.RequestAborted).ConfigureAwait(false);
-        Log.SessionCreated(
-            http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Tessio.Verifier.Sessions"),
-            session.SessionId, options.Mode, session.ExpiresAt);
+        var logger = http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Tessio.Verifier.Sessions");
+        Log.SessionCreated(logger, session.SessionId, options.Mode, session.ExpiresAt);
 
         // By-reference delivery: host the signed JAR where the wallet will fetch it.
         if (session.Request is PresentationRequest.ByReference byReference)

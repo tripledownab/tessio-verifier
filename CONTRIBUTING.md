@@ -4,7 +4,7 @@ Thanks for your interest. This page covers what you need to build, test and land
 
 ## Development setup
 
-- .NET 8 SDK or later (`global.json` pins the SDK the build uses; the solution multitargets net8.0 and net9.0).
+- .NET 10 SDK (`global.json` pins the exact build SDK; the net 10 SDK builds both target frameworks). The solution multitargets net8.0 (LTS floor, broad reach) and net10.0 (current LTS).
 - Any editor. No other tooling is required.
 
 ```bash
