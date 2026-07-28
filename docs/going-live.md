@@ -171,6 +171,8 @@ builder.Services.AddSingleton<ISessionStore, RedisSessionStore>();
 
 `FindByStateAsync` is the extra member beyond the base `ISessionStore`: a wallet response carries only the OpenID4VP `state` value, so the callback path needs a state index next to the sessions. Registering a store without it fails fast with an explanatory exception on the first callback.
 
+If you drive creation and completion from your own API (bypassing `/start` and `/callback`) or host many tenants in one process, see [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md) for the `IWalletResponseVerifier` seam, a durable Postgres store and the request-object round-trip.
+
 Two behaviors to know:
 
 - `CreateAsync` builds the presentation request (inject `IPresentationRequestBuilder`) and must index the request's `state`. Complete each session at most once and treat later completions as no-ops or conflicts.
