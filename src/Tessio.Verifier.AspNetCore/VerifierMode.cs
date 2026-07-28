@@ -8,7 +8,9 @@ public enum VerifierMode
 {
     /// <summary>
     /// Auto-completes each session locally with a synthesized, valid result after a short delay.
-    /// For showcases and the first-run experience — no wallet, no protocol traffic.
+    /// For showcases and the first-run experience — no wallet, no protocol traffic. Only sessions
+    /// created through the built-in <c>/start</c> endpoint are auto-completed; a host that creates
+    /// sessions itself drives completion via <see cref="TessioVerifierSandbox"/>.
     /// </summary>
     Demo = 0,
 

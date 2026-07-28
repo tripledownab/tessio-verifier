@@ -22,17 +22,11 @@ internal static class DemoVerificationResultFactory
             disclosed[claim] = SampleClaimValues.For(claim);
         }
 
-        return new VerificationResult
+        return VerificationResult.Valid(disclosed, new IssuerInfo
         {
-            IsValid = true,
-            DisclosedClaims = disclosed,
-            Issuer = new IssuerInfo
-            {
-                Identifier = "https://demo-issuer.tessio.dev",
-                Trusted = true,
-                KeyResolutionMethod = "jwt-vc-issuer-metadata",
-            },
-            Errors = Array.Empty<VerificationError>(),
-        };
+            Identifier = "https://demo-issuer.tessio.dev",
+            Trusted = true,
+            KeyResolutionMethod = "jwt-vc-issuer-metadata",
+        });
     }
 }

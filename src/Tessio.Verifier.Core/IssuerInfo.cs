@@ -21,4 +21,16 @@ public sealed record IssuerInfo
     /// </summary>
     // SPEC: SD-JWT VC issuer key resolution — two mechanisms (JWT VC Issuer Metadata + X.509).
     public required string KeyResolutionMethod { get; init; }
+
+    /// <summary>
+    /// Placeholder issuer for results produced before any issuer could be resolved (for example a
+    /// structurally malformed credential). <see cref="Trusted"/> is false and
+    /// <see cref="KeyResolutionMethod"/> is <c>"none"</c>.
+    /// </summary>
+    public static IssuerInfo Unknown { get; } = new()
+    {
+        Identifier = "unknown",
+        Trusted = false,
+        KeyResolutionMethod = "none",
+    };
 }
