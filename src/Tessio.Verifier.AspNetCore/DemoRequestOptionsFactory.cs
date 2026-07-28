@@ -9,10 +9,6 @@ namespace Tessio.Verifier.AspNetCore;
 /// </summary>
 internal static class DemoRequestOptionsFactory
 {
-    // SPEC: SD-JWT VC credential format identifier is "dc+sd-jwt" (not the legacy "vc+sd-jwt");
-    // media type application/dc+sd-jwt, per draft-ietf-oauth-sd-jwt-vc.
-    private const string SdJwtVcFormat = "dc+sd-jwt";
-
     /// <summary>Credential type used when <see cref="VerifierOptions.ExpectedVct"/> is unset.</summary>
     internal const string DefaultVct = "https://demo-issuer.tessio.dev/vct/identity";
 
@@ -39,60 +35,13 @@ internal static class DemoRequestOptionsFactory
         };
     }
 
-    // SPEC: OpenID4VP 1.0 uses DCQL (Digital Credentials Query Language), not Presentation Exchange.
-    private static string BuildDcqlQuery(IEnumerable<string> claims, string? expectedVct)
-    {
-        var claimsArray = new JsonArray();
-        foreach (var claim in claims)
-        {
-            claimsArray.Add(new JsonObject { ["path"] = new JsonArray(claim) });
-        }
+    // The DCQL query shapes live in the public Dcql helper so hosts building their own requests share
+    // exactly the query the verifier expects.
+    private static string BuildDcqlQuery(IEnumerable<string> claims, string? expectedVct) =>
+        Dcql.SdJwtVc(expectedVct ?? DefaultVct, claims.ToArray());
 
-        var query = new JsonObject
-        {
-            ["credentials"] = new JsonArray(
-                new JsonObject
-                {
-                    ["id"] = "credential",
-                    ["format"] = SdJwtVcFormat,
-                    ["meta"] = new JsonObject
-                    {
-                        ["vct_values"] = new JsonArray(expectedVct ?? DefaultVct),
-                    },
-                    ["claims"] = claimsArray,
-                }),
-        };
-
-        return query.ToJsonString(JsonDefaults.Relaxed);
-    }
-
-    // SPEC: OpenID4VP 1.0 Annex B.2 — mdoc queries use meta.doctype_value and two-element
-    // [namespace, element] claim paths.
-    private static string BuildMdocDcqlQuery(IEnumerable<string> claims, string docType, string mdocNamespace)
-    {
-        var claimsArray = new JsonArray();
-        foreach (var claim in claims)
-        {
-            claimsArray.Add(new JsonObject { ["path"] = new JsonArray(mdocNamespace, claim) });
-        }
-
-        var query = new JsonObject
-        {
-            ["credentials"] = new JsonArray(
-                new JsonObject
-                {
-                    ["id"] = "credential",
-                    ["format"] = "mso_mdoc",
-                    ["meta"] = new JsonObject
-                    {
-                        ["doctype_value"] = docType,
-                    },
-                    ["claims"] = claimsArray,
-                }),
-        };
-
-        return query.ToJsonString(JsonDefaults.Relaxed);
-    }
+    private static string BuildMdocDcqlQuery(IEnumerable<string> claims, string docType, string mdocNamespace) =>
+        Dcql.Mdoc(docType, mdocNamespace, claims.ToArray());
 
     // SPEC: OpenID4VP 1.0 §5.1/Annex B.3.3 — transaction_data is an array of base64url-encoded JSON
     // objects; each needs type and credential_ids. The KB-JWT hashes are computed over these exact strings.

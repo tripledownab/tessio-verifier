@@ -65,7 +65,10 @@ public static class TessioVerifierServiceCollectionExtensions
         services.TryAddSingleton(sp => new MdocVerifier(
             sp.GetRequiredService<ITrustListResolver>(),
             clock: sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<WalletResponseVerifier>();
+        services.TryAddSingleton<IWalletResponseVerifier>(sp => sp.GetRequiredService<WalletResponseVerifier>());
         services.TryAddSingleton<WalletCallbackProcessor>();
+        services.TryAddSingleton<TessioVerifierSandbox>();
 
         services.TryAddSingleton<InMemorySessionStore>();
         services.TryAddSingleton<ISessionStore>(sp => sp.GetRequiredService<InMemorySessionStore>());
