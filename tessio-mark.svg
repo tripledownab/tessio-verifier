@@ -1,4 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none" stroke="#0a0a0a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Tessio.Verifier">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none" stroke="#0a0a0a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Tessio">
+  <style>
+    path{stroke:#0a0a0a}
+    @media (prefers-color-scheme:dark){path{stroke:#fafafa}}
+  </style>
   <path d="M100.0 24.0 L165.818 62.0 L165.818 138.0 L100.0 176.0 L34.182 138.0 L34.182 62.0Z"/>
   <path d="M100.0 24.0 L100.0 62.0"/>
   <path d="M165.818 62.0 L132.909 81.0"/>

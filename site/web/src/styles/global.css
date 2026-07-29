@@ -9,4 +9,38 @@
 @import "./tessio-design.css";
 
 /* --- site-specific styles (verifier.tessio.eu) --- */
-/* nothing yet — site is using design tokens only */
+
+/* Animated tesseract mark in the header. Colour follows the theme via
+   --color-text: near-black on the light header, near-white on the dark one. */
+.ts-mark path {
+  stroke: var(--color-text);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: tsdraw 4.2s ease-in-out infinite;
+}
+.ts-mark .g2 {
+  animation-delay: 0.3s;
+}
+.ts-mark .g3 {
+  animation-delay: 0.6s;
+}
+@keyframes tsdraw {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  32% {
+    stroke-dashoffset: 0;
+  }
+  70% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-mark path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

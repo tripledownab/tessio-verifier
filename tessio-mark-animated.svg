@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none" stroke="#0a0a0a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Tessio">
+  <style>
+    path{stroke:#0a0a0a;stroke-dasharray:1;stroke-dashoffset:1;animation:tsdraw 4.2s ease-in-out infinite}
+    .g2{animation-delay:.3s} .g3{animation-delay:.6s}
+    @keyframes tsdraw{0%{stroke-dashoffset:1}32%{stroke-dashoffset:0}70%{stroke-dashoffset:0}100%{stroke-dashoffset:-1}}
+    @media (prefers-color-scheme:dark){path{stroke:#fafafa}}
+    @media (prefers-reduced-motion:reduce){path{animation:none;stroke-dashoffset:0}}
+  </style>
+  <path class="g1" pathLength="1" d="M100.0 24.0 L165.818 62.0 L165.818 138.0 L100.0 176.0 L34.182 138.0 L34.182 62.0Z"/>
+  <path class="g2" pathLength="1" d="M100.0 24.0 L100.0 62.0"/>
+  <path class="g2" pathLength="1" d="M165.818 62.0 L132.909 81.0"/>
+  <path class="g2" pathLength="1" d="M165.818 138.0 L132.909 119.0"/>
+  <path class="g2" pathLength="1" d="M100.0 176.0 L100.0 138.0"/>
+  <path class="g2" pathLength="1" d="M34.182 138.0 L67.091 119.0"/>
+  <path class="g2" pathLength="1" d="M34.182 62.0 L67.091 81.0"/>
+  <path class="g3" pathLength="1" d="M100.0 62.0 L132.909 81.0 L132.909 119.0 L100.0 138.0 L67.091 119.0 L67.091 81.0Z"/>
+  <path class="g3" pathLength="1" d="M67.091 81.0 L100.0 100.0"/>
+  <path class="g3" pathLength="1" d="M132.909 81.0 L100.0 100.0"/>
+  <path class="g3" pathLength="1" d="M100.0 138.0 L100.0 100.0"/>
+</svg>

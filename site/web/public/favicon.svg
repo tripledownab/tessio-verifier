@@ -1,5 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#0033a0"/>
-  <path d="M9 11h14M9 16h14M9 21h9" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
-  <circle cx="22" cy="21" r="3" fill="none" stroke="#fff" stroke-width="2.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none" stroke="#0a0a0a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Tessio">
+  <style>
+    path{stroke:#0a0a0a}
+    @media (prefers-color-scheme:dark){path{stroke:#fafafa}}
+  </style>
+  <path d="M100.0 24.0 L165.818 62.0 L165.818 138.0 L100.0 176.0 L34.182 138.0 L34.182 62.0Z"/>
+  <path d="M100.0 62.0 L132.909 81.0 L132.909 119.0 L100.0 138.0 L67.091 119.0 L67.091 81.0Z"/>
+  <path d="M67.091 81.0 L100.0 100.0"/>
+  <path d="M132.909 81.0 L100.0 100.0"/>
+  <path d="M100.0 138.0 L100.0 100.0"/>
 </svg>
