@@ -6,7 +6,7 @@
 [![NuGet](https://img.shields.io/nuget/v/Tessio.Verifier.AspNetCore.svg)](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Verify credentials presented by EUDI Wallets directly from your .NET backend, over **OpenID4VP 1.0** with **SD-JWT VC** credentials. Native to ASP.NET Core and Azure, with a built-in **demo mode** so you can run a full verification flow today, before any production wallet ships.
+Verify credentials presented by EUDI Wallets directly from your .NET backend, over **OpenID4VP 1.0** with **SD-JWT VC** and **mdoc** credentials. Native to ASP.NET Core and Azure, with a built-in **demo mode** so you can run a full verification flow today, before any production wallet ships.
 
 > Relying-party (verifier) side only. This library never acts as a wallet or an issuer.
 
@@ -14,7 +14,7 @@ Verify credentials presented by EUDI Wallets directly from your .NET backend, ov
 
 ## Why this exists
 
-The EUDI Wallet arrives under Regulation (EU) 2024/1183: member states must make wallets available by **December 2026**, and regulated relying parties must **accept** them by **December 2027**. The open-source verifier tooling today is Kotlin (walt.id), Rust (SpruceID), and TypeScript (OpenEUDI). If you run on .NET, there hasn't been a native option. This is it.
+The EUDI Wallet arrives under Regulation (EU) 2024/1183: member states must make wallets available by **December 2026**, and regulated relying parties must **accept** them by **December 2027**. The open-source verifier tooling today is Kotlin (walt.id), Rust (SpruceID) and TypeScript (OpenEUDI). If you run on .NET, there hasn't been a native option. This is it.
 
 ## What you get
 
@@ -24,6 +24,7 @@ The EUDI Wallet arrives under Regulation (EU) 2024/1183: member states must make
 - Token Status List revocation checking
 - **Demo / Mock / Test / Live** modes so you can build before wallets exist, then serve real ones
 - Idiomatic ASP.NET Core integration (DI + minimal APIs) and a runnable sample
+- **Self-driving and multi-tenant hosting**: verify wallet callbacks for many tenants in one process, each against its own request (`IWalletResponseVerifier`)
 - A pluggable trust seam (`ITrustListResolver`) for production trust lists
 
 ## Install
@@ -34,9 +35,11 @@ dotnet add package Tessio.Verifier.AspNetCore
 
 Runs on **.NET 8, 9 and 10**. The packages target .NET 8 and .NET 10 (both LTS); apps on .NET 9 use the .NET 8 build.
 
-## Quickstart — 5 minutes, DEMO mode
+## Quickstart in 5 minutes (DEMO mode)
 
 ```csharp
+using Tessio.Verifier.AspNetCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddTessioVerifier(options =>
@@ -47,7 +50,7 @@ builder.Services.AddTessioVerifier(options =>
 
 var app = builder.Build();
 
-app.MapTessioVerifier();   // request-init, wallet-callback, and result-stream (SSE) endpoints
+app.MapTessioVerifier();   // request-init, wallet-callback and result-stream (SSE) endpoints
 
 app.MapGet("/", () => Results.Content(
     """<a href="/verify/start">Start a verification</a>""", "text/html"));
@@ -70,20 +73,20 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 | --- | --- |
 | `Tessio.Verifier.Core` | Credential verification (SD-JWT VC, disclosures, KB-JWT). No web dependencies. |
 | `Tessio.Verifier.Core.Mdoc` | mdoc verification (ISO 18013-5/-7: MSO, digests, device auth). |
-| `Tessio.Verifier.OpenId4Vp` | OpenID4VP protocol layer (request build, JAR, response parsing). |
-| `Tessio.Verifier.AspNetCore` | DI, endpoints, session management, demo/mock/test modes. |
+| `Tessio.Verifier.OpenId4Vp` | OpenID4VP protocol layer (request build, JAR, response parsing, `Dcql` query builders). |
+| `Tessio.Verifier.AspNetCore` | DI, endpoints, session management, the multi-tenant verification seam, demo/mock/test modes. |
 | `Tessio.Verifier.Trust` | `ITrustListResolver` interface + a basic implementation. |
 
 ## Going to production
 
-[docs/going-live.md](docs/going-live.md) walks through the code side: signed requests (Key Vault/HSM included), real trust lists, distributed session stores and shared response-encryption keys. Beyond the code, live verification against real wallets requires a **registered Relying Party** and a **WRPAC** (Wallet Relying Party Access Certificate) from a Qualified Trust Service Provider, plus maintained EU trust lists. This library handles the protocol and credential verification. The trust and compliance layer is provided separately (see `docs/production.md`). Relying parties do **not** need their own HSM/QSCD, since the QTSP holds those.
+[docs/going-live.md](docs/going-live.md) walks through the code side: signed requests (Key Vault/HSM included), real trust lists, distributed session stores and shared response-encryption keys. For self-driving or multi-tenant hosting (your own store, one process serving many tenants), see [docs/self-driving-and-multi-tenant.md](docs/self-driving-and-multi-tenant.md). Beyond the code, live verification against real wallets requires a **registered Relying Party** and a **WRPAC** (Wallet Relying Party Access Certificate) from a Qualified Trust Service Provider, plus maintained EU trust lists. This library handles the protocol and credential verification. The trust and compliance layer is provided separately (see `docs/production.md`). Relying parties do **not** need their own HSM/QSCD, since the QTSP holds those.
 
 ## Standards
 
-- OpenID4VP 1.0 — <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html>
-- SD-JWT VC — <https://datatracker.ietf.org/doc/html/draft-ietf-oauth-sd-jwt-vc>
-- EUDI Architecture & Reference Framework — <https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework>
-- WRPAC profile — ETSI TS 119 475
+- OpenID4VP 1.0: <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html>
+- SD-JWT VC: <https://datatracker.ietf.org/doc/html/draft-ietf-oauth-sd-jwt-vc>
+- EUDI Architecture & Reference Framework: <https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework>
+- WRPAC profile: ETSI TS 119 475
 
 ## Repository
 
