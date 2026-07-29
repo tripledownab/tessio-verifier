@@ -171,15 +171,22 @@ header {
 }
 
 /* Logo — DocFX has NO #logo rule, so the SVG was rendering unconstrained.
-   Force a tight icon-sized box that matches the landing's 24px mark. */
+   Force a tight icon-sized box that matches the landing's 42px mark. */
 #logo,
 .navbar-brand #logo,
 .navbar-brand img,
 .navbar-brand svg {
-  width: 24px !important;
-  height: 24px !important;
+  width: 42px !important;
+  height: 42px !important;
   margin: 0 !important;
   flex-shrink: 0;
+}
+
+/* The tesseract mark ships as near-black lines. In dark mode invert it to
+   near-white so it stays legible on the dark navbar (the <img> can't read
+   the page's data-bs-theme, so recolour it here rather than inside the SVG). */
+[data-bs-theme="dark"] #logo {
+  filter: invert(1);
 }
 
 /* DocFX adds a generic img margin that throws off vertical alignment */
