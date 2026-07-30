@@ -10,8 +10,14 @@
 
 /* --- site-specific styles (verifier.tessio.eu) --- */
 
-/* Animated tesseract mark in the header. Colour follows the theme via
-   --color-text: near-black on the light header, near-white on the dark one. */
+/* Animated tesseract mark in the header. The <svg> element spins one full
+   turn per 4.2s cycle while its paths draw in independently (same period, so
+   the loop is seamless). Colour follows the theme via --color-text:
+   near-black on the light header, near-white on the dark one. */
+.ts-mark {
+  transform-origin: center;
+  animation: tsspin 4.2s linear infinite;
+}
 .ts-mark path {
   stroke: var(--color-text);
   stroke-dasharray: 1;
@@ -38,7 +44,15 @@
     stroke-dashoffset: -1;
   }
 }
+@keyframes tsspin {
+  to {
+    transform: rotate(1turn);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .ts-mark {
+    animation: none;
+  }
   .ts-mark path {
     animation: none;
     stroke-dashoffset: 0;
