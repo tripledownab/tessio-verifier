@@ -19,6 +19,17 @@ internal static class SampleClaimValues
         ["email"] = "erika.mustermann@example.com",
     };
 
-    public static object For(string claimName) =>
-        Values.TryGetValue(claimName, out var value) ? value : "demo-value";
+    /// <summary>
+    /// The value to disclose for <paramref name="claimName"/>: the caller's override when supplied,
+    /// otherwise the shared persona.
+    /// </summary>
+    public static object For(string claimName, IReadOnlyDictionary<string, object>? overrides = null)
+    {
+        if (overrides is not null && overrides.TryGetValue(claimName, out var supplied))
+        {
+            return supplied;
+        }
+
+        return Values.TryGetValue(claimName, out var value) ? value : "demo-value";
+    }
 }
