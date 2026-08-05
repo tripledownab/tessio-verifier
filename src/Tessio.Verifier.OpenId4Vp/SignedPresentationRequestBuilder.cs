@@ -77,11 +77,20 @@ public sealed class SignedPresentationRequestBuilder : IPresentationRequestBuild
         }
 
         // SPEC: OpenID4VP 1.0 §5.2 / RFC 9101 — the request object typ MUST be "oauth-authz-req+jwt".
+        var headers = new Dictionary<string, object> { ["typ"] = "oauth-authz-req+jwt" };
+
+        // SPEC: RFC 7515 §4.1.6 — x5c is base64 (not base64url) DER, leaf certificate first.
+        // Required in practice: a wallet using the x509_san_dns client_id scheme has no other way to
+        // obtain the certificate whose SAN it must match, so it rejects a signed request that omits this
+        // as a malformed JAR, before any trust decision is reached. Observed with the EC reference wallet
+        // as "InvalidJarJwt(cause=Missing x5c)".
+        if (_options.SigningCertificateChain is { Count: > 0 } chain)
+        {
+            headers["x5c"] = chain.Select(c => Convert.ToBase64String(c.RawData)).ToArray();
+        }
+
         var handler = new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false };
-        return handler.CreateToken(
-            payload.ToJsonString(RelaxedJson),
-            _options.SigningCredentials,
-            new Dictionary<string, object> { ["typ"] = "oauth-authz-req+jwt" });
+        return handler.CreateToken(payload.ToJsonString(RelaxedJson), _options.SigningCredentials, headers);
     }
 
     private PresentationRequest.ByValue BuildByValue(
