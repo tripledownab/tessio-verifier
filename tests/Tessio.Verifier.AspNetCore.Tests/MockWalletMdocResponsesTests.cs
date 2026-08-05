@@ -68,6 +68,29 @@ public sealed class MockWalletMdocResponsesTests : IDisposable
     }
 
     [Fact]
+    public async Task A_disclosed_age_of_false_is_a_valid_presentation_carrying_a_no()
+    {
+        // The case a host cannot test without choosing the value, and the one that decides whether a
+        // minor passes an age check. A wallet holding age_over_18 = false answers the request with false,
+        // and the presentation is flawless: right issuer, valid signature, intact device binding. Any
+        // host reading "valid" as "old enough" gets this exactly backwards, so the helper has to be able
+        // to produce it.
+        await using var provider = BuildVerifier(anchorTheIaca: true);
+        var session = await CreateSessionAsync(provider);
+
+        var response = _wallet.CreateMdocResponse(
+            session, docType: AvDocType, claimValues: new Dictionary<string, object> { ["age_over_18"] = false });
+        var result = await provider.GetRequiredService<IWalletResponseVerifier>()
+            .VerifyAsync(session, response);
+
+        Assert.True(result.IsValid,
+            string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+
+        var elements = Assert.IsType<Dictionary<string, object?>>(result.DisclosedClaims[AvDocType]);
+        Assert.Equal(false, elements["age_over_18"]);
+    }
+
+    [Fact]
     public async Task Mdoc_response_is_rejected_when_the_iaca_is_not_anchored()
     {
         // The point of the trust layer: a well-formed, correctly signed response from an unknown issuer

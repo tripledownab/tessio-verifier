@@ -40,10 +40,11 @@ internal sealed class MockCredentialIssuer : IDisposable
     /// </summary>
     public string IssuePresentation(
         IEnumerable<string> claimNames, string vct, string nonce, string audience,
-        IReadOnlyList<string>? transactionData = null)
+        IReadOnlyList<string>? transactionData = null,
+        IReadOnlyDictionary<string, object>? claimValues = null)
     {
         var disclosures = claimNames
-            .Select(name => MakeDisclosure(name, SampleClaimValues.For(name)))
+            .Select(name => MakeDisclosure(name, SampleClaimValues.For(name, claimValues)))
             .ToList();
 
         var holderPublic = _holderKey.ExportParameters(false);

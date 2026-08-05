@@ -40,6 +40,12 @@ internal sealed class MockMdocIssuer : IDisposable
     /// Issues a base64url DeviceResponse for the requested claims, with the device signature bound
     /// to this request's session transcript.
     /// </summary>
+    /// <remarks>
+    /// <c>claimValues</c> overrides the sample persona per claim. It is needed to present a claim whose
+    /// value is the point of the test, such as an age boolean that is false: a wallet answering
+    /// <c>age_over_18</c> with <c>false</c> produces a perfectly valid presentation, and a verifier that
+    /// cannot be handed one has no way to prove it reads the answer rather than the signature.
+    /// </remarks>
     public string IssueDeviceResponse(
         IEnumerable<string> claimNames,
         string docType,
@@ -47,14 +53,15 @@ internal sealed class MockMdocIssuer : IDisposable
         string clientId,
         string nonce,
         byte[]? encryptionKeyThumbprint,
-        string responseUri)
+        string responseUri,
+        IReadOnlyDictionary<string, object>? claimValues = null)
     {
         List<byte[]> encodedItems = [];
         List<byte[]> digests = [];
         long digestId = 0;
         foreach (var name in claimNames)
         {
-            var item = EncodeIssuerSignedItem(digestId++, name, SampleClaimValues.For(name));
+            var item = EncodeIssuerSignedItem(digestId++, name, SampleClaimValues.For(name, claimValues));
             digests.Add(SHA256.HashData(item));
             encodedItems.Add(item);
         }

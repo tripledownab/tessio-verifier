@@ -54,12 +54,17 @@ public sealed class MockWalletResponses : IDisposable
     /// <param name="audience">
     /// KB-JWT audience. Defaults to the session's <c>client_id</c>, which is what the verifier checks.
     /// </param>
+    /// <param name="claimValues">
+    /// Values to disclose, by claim name, overriding the sample persona. See the remarks on
+    /// <see cref="CreateMdocResponse"/> for why a test needs to choose these.
+    /// </param>
     /// <returns>A response ready to hand to a callback endpoint or <c>IWalletResponseVerifier</c>.</returns>
     public WalletResponseData CreateSdJwtResponse(
         VerificationSession session,
         IEnumerable<string>? claims = null,
         string? vct = null,
-        string? audience = null)
+        string? audience = null,
+        IReadOnlyDictionary<string, object>? claimValues = null)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -68,7 +73,8 @@ public sealed class MockWalletResponses : IDisposable
             vct ?? DemoRequestOptionsFactory.DefaultVct,
             session.Request.Nonce,
             audience ?? session.Request.ClientId,
-            RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject));
+            RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject),
+            claimValues);
 
         return new WalletResponseData
         {
@@ -104,12 +110,23 @@ public sealed class MockWalletResponses : IDisposable
     /// <param name="encryptionKeyThumbprint">
     /// Set only for an encrypted <c>direct_post.jwt</c> response, whose transcript binds the key thumbprint.
     /// </param>
+    /// <param name="claimValues">
+    /// Values to disclose, by claim name, overriding the sample persona (which answers every age question
+    /// with true).
+    /// </param>
+    /// <remarks>
+    /// Choosing values matters more than it looks. A wallet answering <c>age_over_18</c> with <c>false</c>
+    /// produces a completely valid presentation: correct issuer, valid signature, intact device binding.
+    /// A host that can only ever be handed a true one cannot tell whether it reads the disclosed answer or
+    /// merely the signature, and those two behaviours differ by whether a minor passes an age check.
+    /// </remarks>
     public WalletResponseData CreateMdocResponse(
         VerificationSession session,
         IEnumerable<string>? claimNames = null,
         string? docType = null,
         string? mdocNamespace = null,
-        byte[]? encryptionKeyThumbprint = null)
+        byte[]? encryptionKeyThumbprint = null,
+        IReadOnlyDictionary<string, object>? claimValues = null)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -145,7 +162,8 @@ public sealed class MockWalletResponses : IDisposable
             session.Request.ClientId,
             session.Request.Nonce,
             encryptionKeyThumbprint,
-            responseUri);
+            responseUri,
+            claimValues);
 
         return new WalletResponseData
         {
