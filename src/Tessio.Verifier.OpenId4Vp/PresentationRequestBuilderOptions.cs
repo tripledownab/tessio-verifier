@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Tessio.Verifier.OpenId4Vp;
@@ -11,6 +12,19 @@ public sealed class PresentationRequestBuilderOptions
     /// keys held in Azure Key Vault or an HSM via a custom <see cref="CryptoProviderFactory"/>.
     /// </summary>
     public required SigningCredentials SigningCredentials { get; set; }
+
+    /// <summary>Certificate chain to advertise in the JAR <c>x5c</c> header, leaf certificate first.</summary>
+    /// <remarks>
+    /// Required in practice for the <c>x509_san_dns</c> client_id scheme: the wallet matches the client_id
+    /// against this certificate's SAN and has no other way to obtain it, so a signed request without x5c
+    /// is rejected as a malformed JAR before any trust decision is reached.
+    /// <para>
+    /// Kept separate from <see cref="SigningCredentials"/> rather than read off an
+    /// <c>X509SecurityKey</c>, because Microsoft.IdentityModel has no ES256 signature provider for that
+    /// key type: an EC certificate can be advertised but not signed with in that form.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<X509Certificate2>? SigningCertificateChain { get; set; }
 
     /// <summary>
     /// When set, requests are delivered by reference: the wallet fetches the signed JAR from
