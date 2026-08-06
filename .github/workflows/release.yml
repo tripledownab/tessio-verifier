@@ -12,7 +12,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # create the GitHub Release for this tag
       id-token: write # OIDC token issuance for NuGet Trusted Publishing
     env:
       NUGET_USER: ${{ secrets.NUGET_USER }}
@@ -76,3 +76,21 @@ jobs:
       - name: NuGet publish skipped
         if: env.NUGET_USER == '' && env.NUGET_API_KEY == ''
         run: echo "::warning::Neither NUGET_USER (trusted publishing) nor NUGET_API_KEY is configured; packages were built but not published."
+
+      # Without this the tag ships to nuget.org and the repo's Releases page silently stays behind.
+      # That happened for v0.3.0 through v0.3.3: all four were on NuGet while the repo still showed
+      # v0.2.1 as latest, which reads as an abandoned project to anyone evaluating the library.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A tag containing a hyphen is a prerelease by SemVer (v0.3.0-preview.1), and marking it keeps
+          # it off the repo's "Latest" badge. --generate-notes derives the changelog from the previous
+          # release, so no git history is needed beyond the shallow checkout.
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            $prerelease \
+            release-artifacts/*.nupkg
