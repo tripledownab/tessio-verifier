@@ -75,6 +75,13 @@ jobs:
           find site/web/dist/docs -name "*.html" -type f -exec \
             sed -i "s|</head>|${UMAMI_TAG}</head>|" {} +
 
+      # Astro writes the sitemap during its own build, before the DocFX merge above, so it only ever
+      # saw the landing page: the published sitemap listed one URL while the whole API reference and
+      # the guides were missing from it. Runs after the merge, when the files actually exist.
+      - name: Add the DocFX pages to the sitemap
+        run: node scripts/add-docs-to-sitemap.mjs dist https://verifier.tessio.eu
+        working-directory: site/web
+
       - name: Configure Pages (auto-enable if not already)
         uses: actions/configure-pages@v6
         with:
@@ -95,3 +102,16 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+      # Ping IndexNow (Bing, Yandex, Seznam, Naver) once the new build is live. Google does not use
+      # IndexNow; it is covered by Search Console and the sitemap in robots.txt.
+      # This job does not otherwise check out the repo, so the script would not exist without this.
+      - uses: actions/checkout@v7
+
+      # continue-on-error: a search-engine ping must never turn a good deploy into a failed one.
+      - name: Tell IndexNow the docs changed
+        continue-on-error: true
+        env:
+          INDEXNOW_KEY: 6859f82b21abec5c7b846a95f86d0d1a
+          INDEXNOW_HOST: verifier.tessio.eu
+        run: node site/web/scripts/submit-indexnow.mjs
