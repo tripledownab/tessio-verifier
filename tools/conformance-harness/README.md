@@ -80,7 +80,8 @@ cat > appsettings.Local.json <<'JSON'
 {
   "Suite": {
     "AuthorizationEndpoint": "https://localhost.emobix.co.uk:8443/test/a/<alias>/authorize",
-    "Issuer": "https://localhost.emobix.co.uk:8443/test/a/<alias>/"
+    "Issuer": "https://localhost.emobix.co.uk:8443/test/a/<alias>/",
+    "TrustAnchors": []
   }
 }
 JSON
@@ -93,6 +94,24 @@ guessing, because a wrong endpoint fails as a timeout twenty seconds later with 
 Set `Request:CredentialFormat` and `Request:ResponseMode` in `appsettings.json` to **match the variants
 you chose**. A mismatch fails the module for the wrong reason, and you will not see it until the
 screenshot.
+
+### Trust anchors, and the failure they prevent
+
+`StaticTrustListResolver` trusts an issuer identifier outright only when the credential's key was
+resolved from issuer metadata. When the key arrives in an `x5c` or `x5chain` header the identifier
+proves nothing (anyone can put a name in a self-signed certificate), so the chain must anchor on a
+certificate you configure, and **with no anchors configured every such credential is rejected**.
+
+That failure is nastier than it sounds. The four positive modules fail outright, and the eight negative
+modules *appear to pass* while actually rejecting for the wrong reason: the credential was refused over
+trust configuration before the tampering under test could matter. The evidence page prints a warning
+when a rejection carries an untrusted issuer, precisely so this does not reach a screenshot.
+
+- **`mso_mdoc`**: anchors are mandatory, because mdoc trust is X.509 only (IACA roots). The harness
+  refuses to start without them rather than producing twelve worthless results.
+- **`dc+sd-jwt`**: depends on how the suite signs. Start with none, and if the modules reject with an
+  untrusted issuer, export the suite's issuer certificate and list its path in `Suite:TrustAnchors`.
+  PEM or DER both load.
 
 ## Running a module
 
