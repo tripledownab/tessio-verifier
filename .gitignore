@@ -69,3 +69,4 @@ START-HERE.md
 docs/agent-brief.md
 article-*.md
 mcp.json
+appsettings.Local.json
