@@ -15,19 +15,27 @@ oid4vp-1final-verifier-haip-test-plan
 ```
 
 So certification means the **High Assurance Interoperability Profile**, which is stricter than
-OpenID4VP 1.0 alone. The plan pins three variants and lets you choose two:
+OpenID4VP 1.0 alone.
+
+Queried from the running suite (`/api/plan/available`, 2026-08-10), not read off the source:
 
 | Variant | Value | |
 |---|---|---|
 | `VPProfile` | `haip` | fixed |
 | `client_id_prefix` | `x509_hash` | fixed |
 | `request_method` | `request_uri_signed` | fixed |
-| `response_mode` | `direct_post` or `direct_post.jwt` | your choice |
+| `response_mode` | `direct_post.jwt` | **only value offered** |
 | `credential_format` | `sd_jwt_vc` or `iso_mdl` | your choice |
 
-The last two become part of the certification profile name, so **SD-JWT VC and mdoc are separate
-certifications**. Start with `sd_jwt_vc` + `direct_post.jwt`, which is the HAIP default and already
-Tessio's default.
+So the only real choice is the credential format, and it becomes part of the certification profile
+name: **SD-JWT VC and mdoc are separate certifications**. Start with `sd_jwt_vc`.
+
+The suite's variant names are not the wire format identifiers. `sd_jwt_vc` means
+`Request:CredentialFormat = "dc+sd-jwt"` here, and `iso_mdl` means `"mso_mdoc"`.
+
+The plan has exactly one configuration field, `client.request_object_trust_anchor_pem`. That is our
+request-object signing certificate, which the harness prints on its landing page for copying and
+persists between runs so the value you paste stays valid.
 
 `x509_hash` is why `ClientIdentifier.X509Hash` exists. We shipped only `x509_san_dns` before this
 work, which could not have been certified.
@@ -71,8 +79,10 @@ docker compose -f docker-compose-prebuilt.yml up -d
 # https://localhost:8443
 ```
 
-Create the test plan in the suite UI, choose `oid4vp-1final-verifier-haip-test-plan`, pick your
-`response_mode` and `credential_format`, and note the two values it gives you. Then:
+Create the test plan in the suite UI, choose `oid4vp-1final-verifier-haip-test-plan` and your
+`credential_format`, then note the authorization endpoint and issuer it gives you. Work through
+"The order to do it in" below rather than this section alone, because the PEM has to go the other way
+first. Then:
 
 ```sh
 cd tools/conformance-harness
@@ -91,9 +101,8 @@ dotnet run
 `appsettings.Local.json` is gitignored. The harness refuses to start without both values rather than
 guessing, because a wrong endpoint fails as a timeout twenty seconds later with no clue attached.
 
-Set `Request:CredentialFormat` and `Request:ResponseMode` in `appsettings.json` to **match the variants
-you chose**. A mismatch fails the module for the wrong reason, and you will not see it until the
-screenshot.
+Set `Request:CredentialFormat` in `appsettings.json` to **match the variant you chose**. A mismatch
+fails the module for the wrong reason, and you will not see it until the screenshot.
 
 ### Trust anchors, and the failure they prevent
 
@@ -112,6 +121,21 @@ when a rejection carries an untrusted issuer, precisely so this does not reach a
 - **`dc+sd-jwt`**: depends on how the suite signs. Start with none, and if the modules reject with an
   untrusted issuer, export the suite's issuer certificate and list its path in `Suite:TrustAnchors`.
   PEM or DER both load.
+
+## The order to do it in
+
+The two ends need each other's values, so there is one unavoidable back and forth. This order gets it
+in a single pass:
+
+1. **Start the harness with placeholder suite values.** It only needs to boot far enough to print its
+   certificate; the endpoint being wrong does not matter yet.
+2. **Copy the PEM** from the landing page at <http://localhost:5099>.
+3. **In the suite**, create the test plan: `oid4vp-1final-verifier-haip-test-plan`, choose
+   `credential_format`, paste the PEM into `client.request_object_trust_anchor_pem`.
+4. **Copy the suite's authorization endpoint and issuer** out of the created plan into
+   `appsettings.Local.json`.
+5. **Restart the harness.** The certificate persists, so the PEM you pasted in step 3 stays valid.
+6. Run the modules.
 
 ## Running a module
 
@@ -149,7 +173,7 @@ plan first and fix anything red before paying. See <https://openid.net/certifica
 | `Suite:AuthorizationEndpoint` | The suite's mock wallet endpoint, from the test plan. |
 | `Suite:Issuer` | The suite's credential issuer, which we must trust. |
 | `Request:CredentialFormat` | `dc+sd-jwt` or `mso_mdoc`. Match the plan variant. |
-| `Request:ResponseMode` | `DirectPostJwt` or `DirectPost`. Match the plan variant. |
+| `Request:ResponseMode` | `DirectPostJwt`. The HAIP plan offers no other value. |
 | `Request:Claim` | Single claim to request. The suite requires DCQL to name exactly one credential. |
 | `Request:ExpectedVct` | `urn:eudi:pid:1` for the suite's SD-JWT VC credential. |
 

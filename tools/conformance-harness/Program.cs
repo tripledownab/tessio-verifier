@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using Tessio.Verifier.ConformanceHarness;
 using Microsoft.IdentityModel.Tokens;
 using Tessio.Verifier.AspNetCore;
@@ -20,17 +18,17 @@ var builder = WebApplication.CreateBuilder(args);
 // file that actually gets read.
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
 
-// A fresh EC key and self-signed certificate per run. The suite checks that the x509_hash in our
-// client_id matches the leaf we send in x5c, not that the chain is publicly trusted, so self-signed
-// is sufficient and keeps real access-certificate material out of this tool entirely.
-var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-var certificate = new CertificateRequest(
-        "CN=conformance.tessio.local", key, HashAlgorithmName.SHA256)
-    .CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
+// Persisted between runs on purpose: this certificate is what you paste into the plan's
+// client.request_object_trust_anchor_pem field, so regenerating it would invalidate the suite
+// configuration on every restart. See HarnessCertificate.
+var signing = HarnessCertificate.LoadOrCreate(
+    builder.Configuration["Certificate:CertPath"] ?? "harness-cert.pem",
+    builder.Configuration["Certificate:KeyPath"] ?? "harness-key.pem");
 
 var settings = HarnessSettings.Load(builder.Configuration) with
 {
-    ClientId = ClientIdentifier.X509Hash(certificate),
+    ClientId = ClientIdentifier.X509Hash(signing.Certificate),
+    RequestObjectTrustAnchorPem = signing.Pem,
 };
 
 builder.Services.AddSingleton(settings);
@@ -39,10 +37,10 @@ builder.Services.AddSingleton<IPresentationRequestBuilder>(new SignedPresentatio
     new PresentationRequestBuilderOptions
     {
         SigningCredentials = new SigningCredentials(
-            new ECDsaSecurityKey(key), SecurityAlgorithms.EcdsaSha256),
+            new ECDsaSecurityKey(signing.Key), SecurityAlgorithms.EcdsaSha256),
 
         // The wallet has no other way to obtain the certificate whose hash it must check.
-        SigningCertificateChain = [certificate],
+        SigningCertificateChain = [signing.Certificate],
 
         // HAIP pins request_method to request_uri_signed, so the JAR is fetched rather than inlined.
         // The suite runs in Docker and reaches us over host.docker.internal, hence PublicBaseUri.
@@ -119,8 +117,7 @@ app.Lifetime.ApplicationStopped.Register(() =>
         anchor.Dispose();
     }
 
-    certificate.Dispose();
-    key.Dispose();
+    signing.Dispose();
 });
 
 app.Run();

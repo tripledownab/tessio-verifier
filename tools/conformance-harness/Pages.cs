@@ -22,6 +22,8 @@ internal static class Pages
         td, th { border: 1px solid #8884; padding: .4rem .6rem; text-align: left; vertical-align: top; }
         th { background: #8881; }
         code { font-family: ui-monospace, monospace; word-break: break-all; }
+        pre { background: #8881; padding: .8rem; border-radius: .4rem; overflow-x: auto;
+              font-size: 12px; line-height: 1.35; }
         .verdict { font-size: 1.5rem; font-weight: 700; padding: .9rem 1.2rem; border-radius: .5rem; margin: 1rem 0; }
         .ok { background: #2e7d3222; color: #1b5e20; }
         .fail { background: #c6282822; color: #b71c1c; }
@@ -63,6 +65,10 @@ internal static class Pages
             <a class="start" href="/verify/start">Start a verification</a>
             <p>After the suite responds, open <code>/evidence/{sessionId}</code> for the screenshot artifact.</p>
             {{trustWarning}}
+            <h2>Paste this into the suite</h2>
+            <p>The plan's one configuration field is <code>client.request_object_trust_anchor_pem</code>.
+               It is this certificate, and it is stable across restarts.</p>
+            <pre>{{Esc(s.RequestObjectTrustAnchorPem)}}</pre>
             <h2>Configuration in effect</h2>
             <dl>
               <dt>client_id</dt><dd>{{Esc(s.ClientId)}}</dd>

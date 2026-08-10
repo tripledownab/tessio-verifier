@@ -33,6 +33,12 @@ internal sealed record HarnessSettings
 
     public string ClientId { get; init; } = "";
 
+    /// <summary>
+    /// Our request-object signing certificate as PEM. This is the plan's one configuration field,
+    /// client.request_object_trust_anchor_pem, so the landing page shows it for copying.
+    /// </summary>
+    public string RequestObjectTrustAnchorPem { get; init; } = "";
+
     public static HarnessSettings Load(IConfiguration cfg)
     {
         string Required(string key) => cfg[key] is { Length: > 0 } value
