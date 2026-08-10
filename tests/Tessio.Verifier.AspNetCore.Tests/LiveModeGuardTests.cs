@@ -114,7 +114,7 @@ public sealed class LiveModeGuardTests
             Body = ReadOnlyMemory<byte>.Empty,
         };
 
-        Assert.Equal(CallbackOutcome.Completed, await processor.ProcessAsync(response, CancellationToken.None));
+        Assert.Equal(CallbackOutcome.Completed, (await processor.ProcessAsync(response, CancellationToken.None)).Outcome);
 
         var terminal = await store.GetAsync(session.SessionId);
         Assert.False(terminal!.Result!.IsValid);

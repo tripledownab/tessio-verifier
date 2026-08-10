@@ -82,7 +82,7 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
             Body = ReadOnlyMemory<byte>.Empty,
         };
 
-        Assert.Equal(CallbackOutcome.UnknownSession, await processor.ProcessAsync(response, CancellationToken.None));
+        Assert.Equal(CallbackOutcome.UnknownSession, (await processor.ProcessAsync(response, CancellationToken.None)).Outcome);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
             Body = ReadOnlyMemory<byte>.Empty,
         };
 
-        Assert.Equal(CallbackOutcome.ResponseInvalid, await processor.ProcessAsync(response, CancellationToken.None));
+        Assert.Equal(CallbackOutcome.ResponseInvalid, (await processor.ProcessAsync(response, CancellationToken.None)).Outcome);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
             Body = ReadOnlyMemory<byte>.Empty,
         };
 
-        Assert.Equal(CallbackOutcome.ResponseInvalid, await processor.ProcessAsync(response, CancellationToken.None));
+        Assert.Equal(CallbackOutcome.ResponseInvalid, (await processor.ProcessAsync(response, CancellationToken.None)).Outcome);
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
             Body = ReadOnlyMemory<byte>.Empty,
         };
 
-        Assert.Equal(CallbackOutcome.Completed, await processor.ProcessAsync(response, CancellationToken.None));
+        Assert.Equal(CallbackOutcome.Completed, (await processor.ProcessAsync(response, CancellationToken.None)).Outcome);
 
         var terminal = await store.GetAsync(session.SessionId);
         Assert.Equal(VerificationSessionStatus.Completed, terminal!.Status);
@@ -177,7 +177,7 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
             Body = ReadOnlyMemory<byte>.Empty,
         };
 
-        Assert.Equal(CallbackOutcome.SessionNotPending, await processor.ProcessAsync(response, CancellationToken.None));
+        Assert.Equal(CallbackOutcome.SessionNotPending, (await processor.ProcessAsync(response, CancellationToken.None)).Outcome);
     }
 
     public async ValueTask DisposeAsync()

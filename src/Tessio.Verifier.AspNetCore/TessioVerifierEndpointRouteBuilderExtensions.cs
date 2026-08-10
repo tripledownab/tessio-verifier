@@ -57,7 +57,7 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         endpoints.MapGet($"{prefix}/request/{{requestId}}", (string requestId, HttpContext http) => ServeRequestObjectAsync(requestId, http));
         endpoints.MapGet($"{prefix}/{{sessionId}}", (string sessionId, HttpContext http) => GetStatusAsync(sessionId, http));
         endpoints.MapGet($"{prefix}/{{sessionId}}/stream", (string sessionId, HttpContext http) => StreamAsync(sessionId, http));
-        endpoints.MapPost($"{prefix}/callback", CallbackAsync);
+        endpoints.MapPost($"{prefix}/callback", (HttpContext http) => CallbackAsync(http, prefix));
 
         return endpoints;
     }
@@ -232,7 +232,7 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         }
     }
 
-    private static async Task CallbackAsync(HttpContext http)
+    private static async Task CallbackAsync(HttpContext http, string prefix)
     {
         // SPEC: OpenID4VP 1.0 §8.2 — wallets POST application/x-www-form-urlencoded to response_uri.
         if (!http.Request.HasFormContentType)
@@ -256,9 +256,9 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         };
 
         var processor = http.RequestServices.GetRequiredService<WalletCallbackProcessor>();
-        var outcome = await processor.ProcessAsync(response, http.RequestAborted).ConfigureAwait(false);
+        var result = await processor.ProcessAsync(response, http.RequestAborted).ConfigureAwait(false);
 
-        (http.Response.StatusCode, var error) = outcome switch
+        (http.Response.StatusCode, var error) = result.Outcome switch
         {
             CallbackOutcome.Completed => (StatusCodes.Status200OK, (string?)null),
             CallbackOutcome.UnknownSession => (StatusCodes.Status400BadRequest, "unknown_session"),
@@ -266,8 +266,14 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             _ => (StatusCodes.Status400BadRequest, "invalid_response"),
         };
 
+        // SPEC: HAIP 1.0 §5.1 requires this response to carry redirect_uri, which is where the wallet
+        // sends the user next. OpenID4VP §8.2 permits omitting it, so this used to be a bare
+        // {"status":"accepted"}: valid OpenID4VP, not valid HAIP, and "status" is not a member the
+        // specification defines at all. Point it at this session's own status resource.
         await http.Response.WriteAsJsonAsync(
-            error is null ? new { status = "accepted" } : (object)new { error },
+            error is null
+                ? new { redirect_uri = $"{http.Request.Scheme}://{http.Request.Host}{prefix}/{result.SessionId}" }
+                : (object)new { error },
             SerializerOptions, http.RequestAborted).ConfigureAwait(false);
     }
 
