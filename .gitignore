@@ -70,3 +70,5 @@ docs/agent-brief.md
 article-*.md
 mcp.json
 appsettings.Local.json
+harness-cert.pem
+harness-key.pem
