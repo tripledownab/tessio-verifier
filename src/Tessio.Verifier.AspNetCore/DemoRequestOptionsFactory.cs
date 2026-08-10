@@ -68,10 +68,17 @@ internal static class DemoRequestOptionsFactory
     private static string BuildClientMetadata(VerifierOptions options, JsonObject? responseEncryptionJwk)
     {
         // HAIP verifier display metadata (OpenID4VP client_metadata) shown on the wallet consent screen.
+        //
+        // client_id deliberately does NOT appear here. It is an authorization request parameter, not
+        // verifier metadata, and OpenID4VP 1.0 §5.1 enumerates what client_metadata may carry.
         var metadata = new JsonObject
         {
             ["client_name"] = "Tessio Demo Verifier",
-            ["client_id"] = options.ClientId,
+
+            // SPEC: OpenID4VP 1.0 Appendix B.2.2 (mdoc) and B.3.4 (SD-JWT VC) — vp_formats_supported is
+            // REQUIRED, keyed by credential format. Omitting it is what the conformance suite fails on,
+            // and a wallet cannot otherwise learn which signature algorithms we accept.
+            ["vp_formats_supported"] = BuildVpFormatsSupported(options.CredentialFormat),
         };
 
         if (responseEncryptionJwk is not null)
@@ -79,9 +86,38 @@ internal static class DemoRequestOptionsFactory
             // SPEC: OpenID4VP 1.0 §8.3 — the wallet encrypts direct_post.jwt responses to a key from
             // client_metadata.jwks (use=enc); the verifier lists its supported content encryptions.
             metadata["jwks"] = new JsonObject { ["keys"] = new JsonArray(responseEncryptionJwk.DeepClone()) };
-            metadata["encrypted_response_enc_values_supported"] = new JsonArray("A128CBC-HS256");
+
+            // SPEC: HAIP 1.0 §5 requires BOTH A128GCM and A256GCM. This previously advertised only
+            // A128CBC-HS256, which is legal OpenID4VP and fails HAIP: it offers neither required value.
+            // Nothing else had to change, because decryption dispatches on the wallet's chosen enc and
+            // Microsoft.IdentityModel already provides AES-GCM (see EcdhEsJweDecryptor).
+            metadata["encrypted_response_enc_values_supported"] = new JsonArray("A128GCM", "A256GCM");
         }
 
         return metadata.ToJsonString(JsonDefaults.Relaxed);
     }
+
+    /// <summary>
+    /// The signature algorithms we accept, keyed by credential format, for <c>vp_formats_supported</c>.
+    /// </summary>
+    // SD-JWT VC names JWS algorithms as strings; mdoc names COSE algorithms as integers, where -7 is
+    // ES256 (RFC 9053 §2.1). We verify ES256 on both paths, so each list has exactly one entry.
+    private static JsonObject BuildVpFormatsSupported(string credentialFormat) =>
+        credentialFormat == "mso_mdoc"
+            ? new JsonObject
+            {
+                ["mso_mdoc"] = new JsonObject
+                {
+                    ["issuerauth_alg_values"] = new JsonArray(-7),
+                    ["deviceauth_alg_values"] = new JsonArray(-7),
+                },
+            }
+            : new JsonObject
+            {
+                ["dc+sd-jwt"] = new JsonObject
+                {
+                    ["sd-jwt_alg_values"] = new JsonArray("ES256"),
+                    ["kb-jwt_alg_values"] = new JsonArray("ES256"),
+                },
+            };
 }

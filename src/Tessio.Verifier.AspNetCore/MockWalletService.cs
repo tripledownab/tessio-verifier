@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -119,38 +121,72 @@ internal sealed class MockWalletService : BackgroundService
 
     /// <summary>
     /// Encrypts the authorization response the way a HAIP wallet does: ephemeral EC key,
-    /// ECDH-ES+A256KW against the verifier's advertised public key, epk in the JWE header.
+    /// ECDH-ES+A256KW against the verifier's advertised public key, epk in the JWE header, A256GCM
+    /// content encryption.
     /// </summary>
+    /// <remarks>
+    /// The JWE is assembled here rather than by <c>JsonWebTokenHandler</c> because that library cannot
+    /// encrypt with AES-GCM at all: it answers <c>IDX10715: Encryption using algorithm 'A256GCM' is
+    /// not supported</c>. A256GCM is what our client_metadata advertises under HAIP 1.0 §5, so a mock
+    /// wallet using anything else would leave the algorithm real wallets actually pick untested. It
+    /// previously used A128CBC-HS256, which we never advertised.
+    /// </remarks>
     private string EncryptResponse(string presentation, string state)
     {
         using var ephemeral = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var ep = ephemeral.ExportParameters(false);
         var verifierJwk = new JsonWebKey(_encryptionKeys.PublicJwk.ToJsonString());
 
-        return new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false }.CreateToken(new SecurityTokenDescriptor
+        var payload = JsonSerializer.Serialize(new Dictionary<string, object>
         {
-            EncryptingCredentials = new EncryptingCredentials(
-                new ECDsaSecurityKey(ephemeral), SecurityAlgorithms.EcdhEsA256kw, SecurityAlgorithms.Aes128CbcHmacSha256)
+            ["vp_token"] = new Dictionary<string, string[]> { ["credential"] = [presentation] },
+            ["state"] = state,
+        });
+
+        // SPEC: RFC 7518 §4.6 — epk (the sender's ephemeral public key) is required for the receiver's
+        // key agreement, and the header is the AAD, so it has to be built before encrypting.
+        var header = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["alg"] = SecurityAlgorithms.EcdhEsA256kw,
+            ["enc"] = SecurityAlgorithms.Aes256Gcm,
+            ["epk"] = new Dictionary<string, string>
             {
-                KeyExchangePublicKey = verifierJwk,
-            },
-            AdditionalHeaderClaims = new Dictionary<string, object>
-            {
-                // SPEC: RFC 7518 §4.6 — epk (the sender's ephemeral public key) is required for the
-                // receiver's key agreement; IdentityModel does not write it itself.
-                ["epk"] = new Dictionary<string, string>
-                {
-                    ["kty"] = "EC",
-                    ["crv"] = "P-256",
-                    ["x"] = Base64UrlEncoder.Encode(ep.Q.X!),
-                    ["y"] = Base64UrlEncoder.Encode(ep.Q.Y!),
-                },
-            },
-            Claims = new Dictionary<string, object>
-            {
-                ["vp_token"] = new Dictionary<string, string[]> { ["credential"] = [presentation] },
-                ["state"] = state,
+                ["kty"] = "EC",
+                ["crv"] = "P-256",
+                ["x"] = Base64UrlEncoder.Encode(ep.Q.X!),
+                ["y"] = Base64UrlEncoder.Encode(ep.Q.Y!),
             },
         });
+
+        // Derive the key-wrap key exactly as the verifier will, then wrap a fresh CEK with it.
+        var ecdh = new EcdhKeyExchangeProvider(
+            new ECDsaSecurityKey(ephemeral), verifierJwk, SecurityAlgorithms.EcdhEsA256kw, SecurityAlgorithms.Aes256Gcm);
+        var kdfKey = ecdh.GenerateKdf();
+        var keyWrap = kdfKey.CryptoProviderFactory.CreateKeyWrapProvider(kdfKey, SecurityAlgorithms.Aes256KW);
+
+        var cek = RandomNumberGenerator.GetBytes(32);
+        var wrappedKey = keyWrap.WrapKey(cek);
+        kdfKey.CryptoProviderFactory.ReleaseKeyWrapProvider(keyWrap);
+
+        // SPEC: RFC 7518 §5.3 — AES-GCM uses a 96-bit IV and a 128-bit authentication tag.
+        var iv = RandomNumberGenerator.GetBytes(12);
+        var plaintext = Encoding.UTF8.GetBytes(payload);
+        var ciphertext = new byte[plaintext.Length];
+        var tag = new byte[16];
+        var encodedHeader = Base64UrlEncoder.Encode(header);
+
+        using (var gcm = new System.Security.Cryptography.AesGcm(cek, tag.Length))
+        {
+            gcm.Encrypt(iv, plaintext, ciphertext, tag, Encoding.ASCII.GetBytes(encodedHeader));
+        }
+
+        // SPEC: RFC 7516 §3.1 — five dot-separated base64url segments.
+        return string.Join('.', [
+            encodedHeader,
+            Base64UrlEncoder.Encode(wrappedKey),
+            Base64UrlEncoder.Encode(iv),
+            Base64UrlEncoder.Encode(ciphertext),
+            Base64UrlEncoder.Encode(tag),
+        ]);
     }
 }

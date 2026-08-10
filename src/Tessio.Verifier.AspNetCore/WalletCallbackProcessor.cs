@@ -13,6 +13,15 @@ internal enum CallbackOutcome
 }
 
 /// <summary>
+/// The outcome plus the session it belonged to, when one was correlated.
+/// </summary>
+/// <remarks>
+/// The session id is carried out because HAIP 1.0 5.1 requires the response to the wallet's POST to
+/// contain a <c>redirect_uri</c>, and the only sensible destination is this session's own result.
+/// </remarks>
+internal readonly record struct CallbackResult(CallbackOutcome Outcome, string? SessionId);
+
+/// <summary>
 /// Processes a wallet authorization response end to end: parse (<see cref="WalletResponseParser"/>),
 /// correlate the session via <c>state</c>, verify every presented credential
 /// (<see cref="WalletResponseVerifier"/>) against the session's own request, and complete the session
@@ -42,7 +51,7 @@ internal sealed class WalletCallbackProcessor
             "to correlate responses by OpenID4VP 'state'. Implement that interface on your store.");
     }
 
-    public async Task<CallbackOutcome> ProcessAsync(WalletResponseData response, CancellationToken ct)
+    public async Task<CallbackResult> ProcessAsync(WalletResponseData response, CancellationToken ct)
     {
         ParsedWalletResponse parsed;
         try
@@ -52,7 +61,7 @@ internal sealed class WalletCallbackProcessor
         catch (WalletResponseException e)
         {
             Log.CallbackParseFailed(_logger, e);
-            return CallbackOutcome.ResponseInvalid;
+            return new CallbackResult(CallbackOutcome.ResponseInvalid, null);
         }
 
         // SPEC: OpenID4VP 1.0 — state echoes the request and is this verifier's session correlation
@@ -60,20 +69,20 @@ internal sealed class WalletCallbackProcessor
         if (parsed.State is null)
         {
             Log.CallbackMissingState(_logger);
-            return CallbackOutcome.ResponseInvalid;
+            return new CallbackResult(CallbackOutcome.ResponseInvalid, null);
         }
 
         var session = await _store.FindByStateAsync(parsed.State, ct).ConfigureAwait(false);
         if (session is null)
         {
             Log.CallbackUnknownState(_logger, parsed.State);
-            return CallbackOutcome.UnknownSession;
+            return new CallbackResult(CallbackOutcome.UnknownSession, null);
         }
 
         if (session.Status != VerificationSessionStatus.Pending)
         {
             Log.CallbackNotPending(_logger, session.SessionId, session.Status);
-            return CallbackOutcome.SessionNotPending; // Sessions complete exactly once (replay protection).
+            return new CallbackResult(CallbackOutcome.SessionNotPending, session.SessionId); // Sessions complete exactly once (replay protection).
         }
 
         // Verify every presented credential; the verifier derives audience, nonce, vct, docType and the
@@ -92,6 +101,6 @@ internal sealed class WalletCallbackProcessor
                 string.Join(",", outcome.Errors.Select(e => e.Code)));
         }
 
-        return CallbackOutcome.Completed;
+        return new CallbackResult(CallbackOutcome.Completed, session.SessionId);
     }
 }
