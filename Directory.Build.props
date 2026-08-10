@@ -24,8 +24,9 @@
     <PackageProjectUrl>https://github.com/tripledownab/tessio-verifier</PackageProjectUrl>
     <RepositoryUrl>https://github.com/tripledownab/tessio-verifier</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>eudi;wallet;openid4vp;sd-jwt-vc;verifier;eidas</PackageTags>
-    <Description>Open-source .NET / ASP.NET Core verifier for the EU Digital Identity (EUDI) Wallet — OpenID4VP 1.0 + SD-JWT VC, relying-party side.</Description>
+    <PackageTags>eudi;eudi-wallet;wallet;openid4vp;dcql;sd-jwt;sd-jwt-vc;mdoc;mdl;iso-18013-5;eidas;verifiable-credentials;digital-identity;age-verification;age-assurance;selective-disclosure;verifier;dotnet;aspnetcore</PackageTags>
+    <Description>Open source .NET and ASP.NET Core verifier for the EU Digital Identity Wallet, relying party side. OpenID4VP 1.0 with DCQL, SD-JWT VC and ISO 18013-5 mdoc, with COSE, CBOR and X.509 chain validation. Apache-2.0.</Description>
+    <PackageIcon>icon.png</PackageIcon>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
@@ -35,6 +36,7 @@
 
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)icon.png" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
 </Project>
