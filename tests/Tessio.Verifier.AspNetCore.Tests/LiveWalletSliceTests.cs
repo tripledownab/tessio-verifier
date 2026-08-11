@@ -100,6 +100,12 @@ public class LiveWalletSliceTests
             .EnumerateArray().Select(v => v.GetString()).ToList();
         Assert.Contains("A128GCM", encValues);
         Assert.Contains("A256GCM", encValues);
+
+        // openid/OpenID4VP#233 narrowed client_metadata to exactly these three members. Anything else
+        // is either a request parameter in the wrong place or an unauthenticated claim about ourselves.
+        Assert.Equal(
+            ["encrypted_response_enc_values_supported", "jwks", "vp_formats_supported"],
+            metadata.RootElement.EnumerateObject().Select(p => p.Name).Order().ToArray());
     }
 
     // ---- Request-object hosting ---------------------------------------------------------------
