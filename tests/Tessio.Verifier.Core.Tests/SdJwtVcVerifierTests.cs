@@ -368,4 +368,40 @@ public class SdJwtVcVerifierTests
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
         Assert.Contains("https://issuer.example/.well-known/jwt-vc-issuer/tenant/1234", http.Requested);
     }
+
+    // ---- KB-JWT iat freshness (found by the OIDF conformance suite) ----------------------------
+
+    [Fact]
+    public async Task KbJwt_IatFarInPast_FailsKeyBinding()
+    {
+        using var builder = new TestCredentialBuilder { KbIatOverride = DateTimeOffset.UtcNow.AddYears(-1) };
+
+        var result = await MetadataVerifier(builder).VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == "key_binding_invalid" && e.Message.Contains("past"));
+    }
+
+    [Fact]
+    public async Task KbJwt_IatFarInFuture_FailsKeyBinding()
+    {
+        using var builder = new TestCredentialBuilder { KbIatOverride = DateTimeOffset.UtcNow.AddYears(1) };
+
+        var result = await MetadataVerifier(builder).VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == "key_binding_invalid" && e.Message.Contains("future"));
+    }
+
+    [Fact]
+    public async Task KbJwt_IatWithinWindow_Verifies()
+    {
+        // Two minutes old: inside the 5-minute default window, so it must still pass.
+        using var builder = new TestCredentialBuilder { KbIatOverride = DateTimeOffset.UtcNow.AddMinutes(-2) };
+
+        var result = await MetadataVerifier(builder).VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    }
+
 }

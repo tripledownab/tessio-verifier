@@ -66,6 +66,9 @@ internal sealed class TestCredentialBuilder : IDisposable
     /// <summary>When set, the credential carries a status claim referencing a Token Status List.</summary>
     public (long Idx, string Uri)? Status { get; set; }
 
+    /// <summary>Overrides the KB-JWT iat; null uses now.</summary>
+    public DateTimeOffset? KbIatOverride { get; set; }
+
     /// <summary>Overrides the sd_hash input; null computes the correct value.</summary>
     public string? SdHashOverride { get; set; }
 
@@ -209,7 +212,7 @@ internal sealed class TestCredentialBuilder : IDisposable
         var sdHash = Base64UrlEncoder.Encode(SHA256.HashData(Encoding.ASCII.GetBytes(SdHashOverride ?? withoutKb)));
         var kbClaims = new Dictionary<string, object>
         {
-            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["iat"] = (KbIatOverride ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds(),
             ["aud"] = KbAudience,
             ["nonce"] = KbNonce,
             ["sd_hash"] = sdHash,

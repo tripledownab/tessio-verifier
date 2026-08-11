@@ -17,6 +17,9 @@ internal static class KeyBindingVerifier
         SecurityKey holderKey,
         VerificationContext context,
         string presentationWithoutKbJwt,
+        DateTimeOffset now,
+        TimeSpan maxAge,
+        TimeSpan clockSkew,
         CancellationToken ct,
         TransactionDataExpectation? transactionData = null)
     {
@@ -73,9 +76,31 @@ internal static class KeyBindingVerifier
             errors.Add(Error(ErrorCodes.NonceMismatch, "The KB-JWT nonce does not match the challenge issued for this session."));
         }
 
-        if (!token.TryGetClaim("iat", out _))
+        // SPEC: RFC 9901 §4.3 — iat is REQUIRED. Its freshness is verifier policy, and it matters:
+        // a presentation is made in response to this verifier's live request, so an iat far in the
+        // past is stale or replayed, and one far in the future is a wrong or spoofed clock. Checking
+        // only its presence, as this once did, accepts both. The conformance suite skews iat by a year
+        // each way and expects rejection.
+        if (!token.TryGetClaim("iat", out var iatClaim))
         {
             errors.Add(Error(ErrorCodes.KeyBindingInvalid, "The KB-JWT is missing the required iat claim."));
+        }
+        else if (long.TryParse(iatClaim.Value, out var iatSeconds))
+        {
+            var iat = DateTimeOffset.FromUnixTimeSeconds(iatSeconds);
+            var oldest = maxAge == Timeout.InfiniteTimeSpan ? DateTimeOffset.MinValue : now - maxAge - clockSkew;
+            if (iat < oldest)
+            {
+                errors.Add(Error(ErrorCodes.KeyBindingInvalid, "The KB-JWT iat is too far in the past; the presentation is stale."));
+            }
+            else if (iat > now + clockSkew)
+            {
+                errors.Add(Error(ErrorCodes.KeyBindingInvalid, "The KB-JWT iat is in the future beyond the tolerated clock skew."));
+            }
+        }
+        else
+        {
+            errors.Add(Error(ErrorCodes.KeyBindingInvalid, "The KB-JWT iat is not a numeric timestamp."));
         }
 
         // SPEC: RFC 9901 §4.3.1 — sd_hash = base64url(sha-256(US-ASCII(<presentation without KB-JWT>))),

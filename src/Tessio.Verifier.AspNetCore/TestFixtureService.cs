@@ -41,7 +41,10 @@ internal sealed class TestFixtureService : BackgroundService
         // A dedicated verifier instance: fixture metadata served offline, fixture issuer trusted.
         _verifier = new SdJwtVcVerifier(
             new StaticTrustListResolver([ConformanceFixture.Issuer], source: "rfc9901-fixture"),
-            httpClient: new HttpClient(new FixtureMetadataHandler()));
+            httpClient: new HttpClient(new FixtureMetadataHandler()),
+            // Evaluate the historical vector as of its own era, so iat freshness and exp/nbf hold. See
+            // ConformanceFixture.EvaluatedAt.
+            clock: new FixedInstant(ConformanceFixture.EvaluatedAt));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -90,5 +93,10 @@ internal sealed class TestFixtureService : BackgroundService
                 : new HttpResponseMessage(HttpStatusCode.NotFound);
             return Task.FromResult(response);
         }
+    }
+
+    private sealed class FixedInstant(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }

@@ -23,6 +23,17 @@ public sealed class SdJwtVcVerifierOptions
     public TimeSpan ClockSkew { get; set; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
+    /// How far in the past a KB-JWT <c>iat</c> (the time the holder created the presentation) may be
+    /// and still be accepted. Defaults to 5 minutes: a presentation is meant to be fresh, made in
+    /// response to this verifier's live request, so an <c>iat</c> older than this is stale or replayed.
+    /// <see cref="ClockSkew"/> is added on top for tolerance, and it also bounds how far in the future
+    /// an <c>iat</c> may be. Set to <see cref="Timeout.InfiniteTimeSpan"/> to disable the past bound.
+    /// </summary>
+    // SPEC: RFC 9901 §4.3 requires iat; its freshness is verifier policy. The OpenID Foundation
+    // conformance suite skews iat by a year in each direction and expects rejection.
+    public TimeSpan MaxKeyBindingAge { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// Whether to resolve and enforce the credential's <c>status</c> claim (Token Status List) when
     /// present. Defaults to true — a revoked or suspended credential fails verification. Turn off
     /// only for offline scenarios where the status host is unreachable by design.
