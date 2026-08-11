@@ -41,7 +41,9 @@ public sealed class ResponseEncryptionKeyStore : IDisposable
     /// Keyed by the key's own <c>kid</c> (RFC 7638 thumbprint) rather than by session id, because for
     /// <c>direct_post.jwt</c> the session correlation handle (<c>state</c>) is inside the encrypted
     /// payload: at decryption time the only identifier available is the <c>kid</c> the wallet echoes
-    /// back in the JWE header.
+    /// back in the JWE header. SPEC: OpenID4VP 1.0 §5 requires every advertised JWK to carry a
+    /// <c>kid</c> and §8.3 then requires the wallet to echo it, so requiring it here (no fallback) only
+    /// rejects a non-conformant response; <see cref="Get"/> returns null for an absent or unknown kid.
     /// </remarks>
     public ResponseEncryptionKeyProvider CreateForRequest(DateTimeOffset expiresAt)
     {
