@@ -101,8 +101,17 @@ var app = builder.Build();
 // host.docker.internal does not resolve on the host, so we cannot simply browse through it either.
 app.Use(async (context, next) =>
 {
-    context.Request.Host = new HostString(settings.PublicBaseUri.Authority);
-    context.Request.Scheme = settings.PublicBaseUri.Scheme;
+    // Two audiences, two hostnames. request_uri and response_uri are minted at /verify/start and
+    // fetched by the suite's container, so they must say host.docker.internal. redirect_uri is minted
+    // at /verify/callback and followed by the BROWSER, which cannot resolve that name at all: only the
+    // container can. Rewriting everything to one host sends the user to a dead address after an
+    // otherwise successful verification.
+    var target = context.Request.Path.StartsWithSegments("/verify/callback")
+        ? settings.BrowserBaseUri
+        : settings.PublicBaseUri;
+
+    context.Request.Host = new HostString(target.Authority);
+    context.Request.Scheme = target.Scheme;
     await next();
 });
 

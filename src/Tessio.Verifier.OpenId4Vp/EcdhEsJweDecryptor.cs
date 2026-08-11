@@ -34,7 +34,12 @@ internal static class EcdhEsJweDecryptor
         [SecurityAlgorithms.EcdhEsA256kw] = SecurityAlgorithms.Aes256KW,
     };
 
-    public static bool CanHandle(JsonWebToken jwe) => KeyWrapAlgorithmByAlg.ContainsKey(jwe.Alg);
+    // SPEC: RFC 7518 §4.6 — "ECDH-ES" is Direct Key Agreement: the derived key IS the content
+    // encryption key and the JWE Encrypted Key segment is empty. HAIP 1.0 §5 requires verifiers to
+    // advertise exactly this, so supporting only the +AxxxKW variants would mean advertising a key
+    // agreement we cannot complete.
+    public static bool CanHandle(JsonWebToken jwe) =>
+        KeyWrapAlgorithmByAlg.ContainsKey(jwe.Alg) || jwe.Alg == SecurityAlgorithms.EcdhEs;
 
     /// <summary>Decrypts the JWE and returns the plaintext payload (UTF-8 JSON).</summary>
     public static string Decrypt(JsonWebToken jwe, SecurityKey decryptionKey)
@@ -76,16 +81,33 @@ internal static class EcdhEsJweDecryptor
             // Mirror of the library's sender path (JwtTokenUtilities.GetSecurityKey): derive the
             // key-wrap key via ECDH + Concat KDF, then unwrap the CEK, then decrypt the content.
             var ecdh = new EcdhKeyExchangeProvider(privateKey, ephemeralPublicKey, jwe.Alg, jwe.Enc);
-            var kdfKey = ecdh.GenerateKdf(apu, apv);
-            var keyWrap = privateKey.CryptoProviderFactory.CreateKeyWrapProvider(kdfKey, KeyWrapAlgorithmByAlg[jwe.Alg]);
+
+            // Direct Key Agreement derives the CEK itself and carries no encrypted key; the +AxxxKW
+            // variants derive a key-wrapping key and unwrap the CEK from segment 1.
             byte[] cek;
-            try
+            if (jwe.Alg == SecurityAlgorithms.EcdhEs)
             {
-                cek = keyWrap.UnwrapKey(Base64UrlEncoder.DecodeBytes(segments[1]));
+                if (segments[1].Length != 0)
+                {
+                    throw new WalletResponseException(
+                        "An ECDH-ES (Direct Key Agreement) response must carry an empty JWE Encrypted Key segment.");
+                }
+
+                ecdh.KeyDataLen = ContentEncryptionKeyBits(jwe.Enc);
+                cek = ((SymmetricSecurityKey)ecdh.GenerateKdf(apu, apv)).Key;
             }
-            finally
+            else
             {
-                privateKey.CryptoProviderFactory.ReleaseKeyWrapProvider(keyWrap);
+                var kdfKey = ecdh.GenerateKdf(apu, apv);
+                var keyWrap = privateKey.CryptoProviderFactory.CreateKeyWrapProvider(kdfKey, KeyWrapAlgorithmByAlg[jwe.Alg]);
+                try
+                {
+                    cek = keyWrap.UnwrapKey(Base64UrlEncoder.DecodeBytes(segments[1]));
+                }
+                finally
+                {
+                    privateKey.CryptoProviderFactory.ReleaseKeyWrapProvider(keyWrap);
+                }
             }
 
             // SPEC: RFC 7516 §5.2 — the additional authenticated data is the ASCII of the encoded header.
@@ -106,6 +128,22 @@ internal static class EcdhEsJweDecryptor
             throw new WalletResponseException("The ECDH-ES response could not be decrypted with the configured key.", e);
         }
     }
+
+    /// <summary>
+    /// CEK size in bits for Direct Key Agreement, which is fixed by the content encryption.
+    /// </summary>
+    // SPEC: RFC 7518 §5.1 — A128GCM takes a 128-bit key, A256GCM 256, and the AES-CBC-HMAC family
+    // takes double its name (A128CBC-HS256 is a 256-bit key: 128 for HMAC, 128 for AES).
+    private static int ContentEncryptionKeyBits(string enc) => enc switch
+    {
+        SecurityAlgorithms.Aes128Gcm => 128,
+        "A192GCM" => 192,
+        SecurityAlgorithms.Aes256Gcm => 256,
+        SecurityAlgorithms.Aes128CbcHmacSha256 => 256,
+        SecurityAlgorithms.Aes192CbcHmacSha384 => 384,
+        SecurityAlgorithms.Aes256CbcHmacSha512 => 512,
+        _ => throw new WalletResponseException($"Unsupported content encryption '{enc}' for ECDH-ES direct key agreement."),
+    };
 
     // SPEC: RFC 7518 §5.3 — AES-GCM content encryption, 96-bit IV and 128-bit authentication tag.
     private static readonly HashSet<string> AesGcmContentEncryption =

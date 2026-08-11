@@ -12,7 +12,13 @@ namespace Tessio.Verifier.ConformanceHarness;
 /// </remarks>
 internal sealed record HarnessSettings
 {
+    /// <summary>Where the suite's container reaches us. Used for request_uri and response_uri.</summary>
     public required Uri PublicBaseUri { get; init; }
+
+    /// <summary>
+    /// Where the browser reaches us. Used for redirect_uri, which the wallet hands to the user agent.
+    /// </summary>
+    public required Uri BrowserBaseUri { get; init; }
     public required string AuthorizationEndpoint { get; init; }
     public required string Issuer { get; init; }
     public required string CredentialFormat { get; init; }
@@ -72,6 +78,7 @@ internal sealed record HarnessSettings
         return new HarnessSettings
         {
             PublicBaseUri = new Uri(Required("PublicBaseUri")),
+            BrowserBaseUri = new Uri(cfg["BrowserBaseUri"] ?? "https://localhost:5099"),
             AuthorizationEndpoint = Required("Suite:AuthorizationEndpoint"),
             Issuer = Required("Suite:Issuer"),
             CredentialFormat = format,
