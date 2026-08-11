@@ -6,6 +6,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Tessio.Verifier.AspNetCore" />
+    <InternalsVisibleTo Include="Tessio.Verifier.OpenId4Vp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
   </ItemGroup>
 

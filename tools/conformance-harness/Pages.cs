@@ -117,6 +117,12 @@ internal static class Pages
               + $"<tr><td>Key resolution</td><td><code>{Esc(result.Issuer.KeyResolutionMethod)}</code></td></tr>"
               + "</table>";
 
+        // Only explain the negative-module convention when we actually rejected. This is a screenshot a
+        // certification reviewer reads, so the word REJECTED must not appear on an ACCEPTED page.
+        var negativeNote = result is { IsValid: false }
+            ? "<p>For a negative test module, REJECTED is the expected outcome and the errors below are the evidence.</p>"
+            : "";
+
         // A rejection carrying an untrusted issuer is almost always our configuration rather than the
         // behaviour under test, and that distinction is the whole reason this page exists.
         var trustNote = result is { IsValid: false, Issuer.Trusted: false }
@@ -137,7 +143,7 @@ internal static class Pages
             <p>client_id <code>{{Esc(s.ClientId)}}</code> · format <code>{{Esc(s.CredentialFormat)}}</code>
                · response_mode <code>{{s.ResponseMode}}</code></p>
             <div class="verdict {{verdictClass}}">{{verdictText}}</div>
-            <p>For a negative test module, REJECTED is the expected outcome and the errors below are the evidence.</p>
+            {{negativeNote}}
             {{trustNote}}
             <h2>Errors</h2>
             {{errors}}
