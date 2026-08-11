@@ -89,6 +89,55 @@ public sealed class MockWalletResponses : IDisposable
     }
 
     /// <summary>
+    /// The SD-JWT counterpart wrapped as an ENCRYPTED <c>direct_post.jwt</c> response: the form carries a
+    /// single <c>response</c> JWE, ECDH-ES direct + A256GCM, encrypted to the key the session advertised.
+    /// </summary>
+    /// <remarks>
+    /// This exists because <see cref="CreateSdJwtResponse"/> is cleartext, so a host that only used it
+    /// never exercised the decryption path a real HAIP wallet forces. The verifier resolves its
+    /// per-request key by the <c>kid</c> echoed here, so this is the shape that proves keys are resolved
+    /// per request rather than from one shared key.
+    /// </remarks>
+    public WalletResponseData CreateEncryptedSdJwtResponse(
+        VerificationSession session,
+        IEnumerable<string>? claims = null,
+        string? vct = null,
+        string? audience = null,
+        IReadOnlyDictionary<string, object>? claimValues = null)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var recipientJwkJson = RequestObjectPayload.TryGetEncryptionJwkJson(session.Request.SignedRequestObject)
+            ?? throw new InvalidOperationException(
+                "This session advertised no encryption key, so it cannot receive an encrypted response. " +
+                "Build it with ResponseMode.DirectPostJwt and register a ResponseEncryptionKeyStore key.");
+
+        var presentation = _issuer.IssuePresentation(
+            claims ?? ["age_over_18"],
+            vct ?? DemoRequestOptionsFactory.DefaultVct,
+            session.Request.Nonce,
+            audience ?? session.Request.ClientId,
+            RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject),
+            claimValues);
+
+        var payload = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["vp_token"] = new Dictionary<string, string[]> { ["credential"] = [presentation] },
+            ["state"] = session.Request.State ?? string.Empty,
+        });
+
+        return new WalletResponseData
+        {
+            ContentType = "application/x-www-form-urlencoded",
+            Form = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["response"] = new[] { Tessio.Verifier.OpenId4Vp.EcdhEsJweEncryptor.Encrypt(payload, recipientJwkJson) },
+            },
+            Body = ReadOnlyMemory<byte>.Empty,
+        };
+    }
+
+    /// <summary>
     /// Issues an ISO 18013-5 mdoc DeviceResponse bound to the session, wrapped in the cleartext
     /// <c>direct_post</c> form a wallet POSTs to the <c>response_uri</c>.
     /// </summary>

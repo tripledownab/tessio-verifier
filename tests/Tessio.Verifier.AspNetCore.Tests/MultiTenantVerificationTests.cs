@@ -51,6 +51,72 @@ public sealed class MultiTenantVerificationTests
     private static WalletResponseData ResponseFor(VerificationSession session, string presentation) =>
         ResponseWith(session, $$"""{"credential":["{{presentation}}"]}""");
 
+    private static async Task<VerificationSession> CreateEncryptedSessionAsync(
+        ServiceProvider provider, string clientId, string vct)
+    {
+        var store = provider.GetRequiredService<InMemorySessionStore>();
+
+        // A fresh per-request key from the store, so client_metadata advertises it and the callback can
+        // find it again by kid, exactly as MapTessioVerifier's /start does.
+        var encryptionJwk = provider.GetRequiredService<ResponseEncryptionKeyStore>()
+            .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk;
+
+        var tenantOptions = new VerifierOptions
+        {
+            ClientId = clientId,
+            ExpectedVct = vct,
+            RequestedClaims = ["age_over_18"],
+            ResponseMode = ResponseMode.DirectPostJwt,
+        };
+        return await store.CreateAsync(DemoRequestOptionsFactory.Create(
+            tenantOptions, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
+    }
+
+    // An ENCRYPTED direct_post.jwt wallet POST: a single "response" JWE encrypted to the key the session
+    // advertised, produced by the same encryptor a real wallet uses. This is the path Tessio Cloud's
+    // WalletCallback runs in production, and the only one that exercises the verifier's own key resolver.
+    private static WalletResponseData EncryptedResponseFor(VerificationSession session, string presentation)
+    {
+        var recipientJwkJson = RequestObjectPayload.TryGetEncryptionJwkJson(session.Request.SignedRequestObject)!;
+        var payload = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["vp_token"] = new Dictionary<string, string[]> { ["credential"] = [presentation] },
+            ["state"] = session.Request.State!,
+        });
+
+        return new WalletResponseData
+        {
+            ContentType = "application/x-www-form-urlencoded",
+            Form = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["response"] = new[] { EcdhEsJweEncryptor.Encrypt(payload, recipientJwkJson) },
+            },
+            Body = ReadOnlyMemory<byte>.Empty,
+        };
+    }
+
+    [Fact]
+    public async Task Verify_DecryptsEncryptedResponse_WithThisSessionsEphemeralKey()
+    {
+        await using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IWalletResponseVerifier>();
+        var issuer = provider.GetRequiredService<MockCredentialIssuer>();
+
+        // Two independent sessions, each advertising its OWN key. If the verifier resolved a single
+        // shared key, one of these would decrypt against the wrong one and fail; keyed by kid, both pass.
+        var sessionA = await CreateEncryptedSessionAsync(provider, TenantA, TenantAVct);
+        var sessionB = await CreateEncryptedSessionAsync(provider, TenantB, TenantBVct);
+
+        var presentationA = issuer.IssuePresentation(["age_over_18"], TenantAVct, sessionA.Request.Nonce, TenantA);
+        var presentationB = issuer.IssuePresentation(["age_over_18"], TenantBVct, sessionB.Request.Nonce, TenantB);
+
+        var resultA = await verifier.VerifyAsync(sessionA, EncryptedResponseFor(sessionA, presentationA));
+        var resultB = await verifier.VerifyAsync(sessionB, EncryptedResponseFor(sessionB, presentationB));
+
+        Assert.True(resultA.IsValid, string.Join("; ", resultA.Errors.Select(e => $"{e.Code}: {e.Message}")));
+        Assert.True(resultB.IsValid, string.Join("; ", resultB.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    }
+
     [Fact]
     public async Task Verify_DerivesAudienceAndVctFromSession_NotProcessWideOptions()
     {

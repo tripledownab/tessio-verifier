@@ -149,83 +149,13 @@ internal sealed class MockWalletService : BackgroundService
             : null;
     }
 
-    /// <summary>
-    /// Encrypts the authorization response the way a HAIP wallet does: ephemeral EC key, ECDH-ES
-    /// Direct Key Agreement against the verifier's advertised public key, epk in the JWE header,
-    /// A256GCM content encryption.
-    /// </summary>
-    /// <remarks>
-    /// The JWE is assembled here rather than by <c>JsonWebTokenHandler</c> because that library cannot
-    /// encrypt with AES-GCM at all: it answers <c>IDX10715: Encryption using algorithm 'A256GCM' is
-    /// not supported</c>. Both alg and enc here mirror exactly what client_metadata advertises under
-    /// HAIP 1.0 §5, because a mock wallet choosing anything else leaves the combination real wallets
-    /// actually pick untested. It previously used ECDH-ES+A256KW with A128CBC-HS256, neither of which
-    /// we advertise.
-    /// </remarks>
-    private static string EncryptResponse(string presentation, string state, string verifierJwkJson)
-    {
-        using var ephemeral = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var ep = ephemeral.ExportParameters(false);
-
-        // From the session's request object, exactly as a real wallet reads it. Encrypting to a
-        // process-wide key instead is how the mock kept passing while every request advertised the
-        // same key, which the conformance suite fails.
-        var verifierJwk = new JsonWebKey(verifierJwkJson);
-
-        var payload = JsonSerializer.Serialize(new Dictionary<string, object>
-        {
-            ["vp_token"] = new Dictionary<string, string[]> { ["credential"] = [presentation] },
-            ["state"] = state,
-        });
-
-        // SPEC: RFC 7518 §4.6 — epk (the sender's ephemeral public key) is required for the receiver's
-        // key agreement, and the header is the AAD, so it has to be built before encrypting.
-        var header = JsonSerializer.Serialize(new Dictionary<string, object>
-        {
-            ["alg"] = SecurityAlgorithms.EcdhEs,
-            ["enc"] = SecurityAlgorithms.Aes256Gcm,
-            ["epk"] = new Dictionary<string, string>
+    /// <summary>Encrypts the response the way a HAIP wallet does. See <see cref="EcdhEsJweEncryptor"/>.</summary>
+    private static string EncryptResponse(string presentation, string state, string verifierJwkJson) =>
+        EcdhEsJweEncryptor.Encrypt(
+            JsonSerializer.Serialize(new Dictionary<string, object>
             {
-                ["kty"] = "EC",
-                ["crv"] = "P-256",
-                ["x"] = Base64UrlEncoder.Encode(ep.Q.X!),
-                ["y"] = Base64UrlEncoder.Encode(ep.Q.Y!),
-            },
-
-            // The kid of the verifier key we encrypt to. With ephemeral per-request keys this is how
-            // the verifier finds the right private key, since state is inside the encrypted payload.
-            ["kid"] = verifierJwk.Kid,
-        });
-
-        // Direct Key Agreement, matching the alg=ECDH-ES our client_metadata advertises under HAIP
-        // 1.0 §5: the derived key IS the content encryption key, so there is no wrapped key and the
-        // JWE Encrypted Key segment stays empty.
-        var ecdh = new EcdhKeyExchangeProvider(
-            new ECDsaSecurityKey(ephemeral), verifierJwk, SecurityAlgorithms.EcdhEs, SecurityAlgorithms.Aes256Gcm)
-        {
-            KeyDataLen = 256,
-        };
-        var cek = ((SymmetricSecurityKey)ecdh.GenerateKdf()).Key;
-
-        // SPEC: RFC 7518 §5.3 — AES-GCM uses a 96-bit IV and a 128-bit authentication tag.
-        var iv = RandomNumberGenerator.GetBytes(12);
-        var plaintext = Encoding.UTF8.GetBytes(payload);
-        var ciphertext = new byte[plaintext.Length];
-        var tag = new byte[16];
-        var encodedHeader = Base64UrlEncoder.Encode(header);
-
-        using (var gcm = new System.Security.Cryptography.AesGcm(cek, tag.Length))
-        {
-            gcm.Encrypt(iv, plaintext, ciphertext, tag, Encoding.ASCII.GetBytes(encodedHeader));
-        }
-
-        // SPEC: RFC 7516 §3.1 — five dot-separated base64url segments.
-        return string.Join('.', [
-            encodedHeader,
-            string.Empty, // Direct Key Agreement: no JWE Encrypted Key (RFC 7518 §4.6)
-            Base64UrlEncoder.Encode(iv),
-            Base64UrlEncoder.Encode(ciphertext),
-            Base64UrlEncoder.Encode(tag),
-        ]);
-    }
+                ["vp_token"] = new Dictionary<string, string[]> { ["credential"] = [presentation] },
+                ["state"] = state,
+            }),
+            verifierJwkJson);
 }
