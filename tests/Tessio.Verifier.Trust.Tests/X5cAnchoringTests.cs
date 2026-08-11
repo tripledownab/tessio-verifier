@@ -102,6 +102,45 @@ public sealed class X5cAnchoringTests : IDisposable
         Assert.True((await resolver.ResolveAsync(Issuer, [])).Trusted);
     }
 
+    [Fact]
+    public async Task X5c_AnchoredChain_IsTrusted_EvenWhenIssuerIdentifierIsNotListed()
+    {
+        // The ISO mdoc trust model: the issuer identifier is a Document Signer subject DN that no
+        // identifier list enumerates, and trust is the X.509 chain. A pinned leaf (or an anchored
+        // chain) must be trusted regardless of whether its identifier appears in the list. Before this
+        // was fixed, the identifier gate rejected every mdoc before the anchor check could run.
+        var resolver = new StaticTrustListResolver(["https://unrelated.example"], trustAnchors: [_legitCert]);
+
+        var status = await resolver.ResolveAsync("CN=Legit Issuer", Chain(_legitCert));
+
+        Assert.True(status.Trusted);
+    }
+
+    [Fact]
+    public async Task X5c_UnanchoredChain_IsRejected_EvenWhenIssuerIdentifierIsNotListed()
+    {
+        // Dropping the identifier gate for x5c must not degrade into "trust any certificate": an
+        // unlisted issuer whose chain does not anchor is still rejected.
+        var resolver = new StaticTrustListResolver(["https://unrelated.example"], trustAnchors: [_legitCert]);
+
+        var status = await resolver.ResolveAsync("CN=Spoofed Issuer", Chain(_spoofCert));
+
+        Assert.False(status.Trusted);
+        Assert.Contains("does not anchor", status.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MetadataPath_UnlistedIssuer_IsRejected()
+    {
+        // The identifier gate still governs metadata-resolved (empty-x5c) credentials.
+        var resolver = new StaticTrustListResolver([Issuer], trustAnchors: [_legitCert]);
+
+        var status = await resolver.ResolveAsync("https://not-listed.example", []);
+
+        Assert.False(status.Trusted);
+        Assert.Contains("not on the configured trust list", status.Reason, StringComparison.Ordinal);
+    }
+
     public void Dispose()
     {
         _legitCert.Dispose();
