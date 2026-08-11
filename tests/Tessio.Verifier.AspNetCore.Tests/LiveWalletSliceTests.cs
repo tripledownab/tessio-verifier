@@ -35,7 +35,9 @@ public class LiveWalletSliceTests
         {
             var store = provider.GetRequiredService<InMemorySessionStore>();
             var options = provider.GetRequiredService<IOptions<VerifierOptions>>().Value;
-            var encryptionJwk = provider.GetRequiredService<ResponseEncryptionKeyProvider>().PublicJwk;
+            // Through the store, as any host must: keys are ephemeral per request now.
+            var encryptionJwk = provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk;
             var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
                 options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
 

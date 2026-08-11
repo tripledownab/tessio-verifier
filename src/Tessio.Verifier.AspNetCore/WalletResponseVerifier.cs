@@ -19,11 +19,11 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
 
     private readonly ICredentialVerifier _verifier;
     private readonly MdocVerifier _mdocVerifier;
-    private readonly ResponseEncryptionKeyProvider _encryptionKeys;
+    private readonly ResponseEncryptionKeyStore _encryptionKeys;
 
     /// <summary>Creates a verifier over the SD-JWT VC and mdoc credential verifiers.</summary>
     public WalletResponseVerifier(
-        ICredentialVerifier verifier, MdocVerifier mdocVerifier, ResponseEncryptionKeyProvider encryptionKeys)
+        ICredentialVerifier verifier, MdocVerifier mdocVerifier, ResponseEncryptionKeyStore encryptionKeys)
     {
         ArgumentNullException.ThrowIfNull(verifier);
         ArgumentNullException.ThrowIfNull(mdocVerifier);
@@ -44,11 +44,12 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
         try
         {
             // Format comes from the session's own request, not a process-wide pin, so one process can
-            // parse both SD-JWT and mdoc tenants. Decryption uses the app-wide response key (see remarks
-            // on IWalletResponseVerifier for the encrypted-multi-tenant caveat).
+            // parse both SD-JWT and mdoc tenants. Decryption resolves the session's own ephemeral key by
+            // the kid the wallet echoes, so multiple tenants and multiple in-flight requests each get
+            // their own key rather than one shared one.
             var parser = new WalletResponseParser(new WalletResponseParserOptions
             {
-                ResponseDecryptionKey = _encryptionKeys.DecryptionKey,
+                ResponseDecryptionKeyResolver = kid => _encryptionKeys.Get(kid)?.DecryptionKey,
                 PresentationFormat = RequestObjectPayload.TryGetRequestedFormat(session.Request.SignedRequestObject)
                     ?? DefaultCredentialFormat,
             });
@@ -128,7 +129,7 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
     /// thumbprint of the encryption key the wallet encrypted to (only for encrypted <c>direct_post.jwt</c>
     /// responses) and the response_uri, all read from the session's request.
     /// </summary>
-    private MdocVerificationContext BuildMdocContext(VerificationSession session)
+    private static MdocVerificationContext BuildMdocContext(VerificationSession session)
     {
         var encrypted = string.Equals(
             RequestObjectPayload.TryGetResponseMode(session.Request.SignedRequestObject),
@@ -140,8 +141,25 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
             ExpectedDocType = RequestObjectPayload.TryGetExpectedDocType(session.Request.SignedRequestObject),
             ClientId = session.Request.ClientId,
             Nonce = session.Request.Nonce,
-            EncryptionKeyThumbprint = encrypted ? _encryptionKeys.ThumbprintBytes : null,
+            // From the session's own request object, because that is the key THIS session advertised.
+            // The process-wide singleton this used to read from is gone: with ephemeral keys there is
+            // no one thumbprint, and using the wrong session's would fail the device signature.
+            EncryptionKeyThumbprint = encrypted ? ThumbprintFromRequest(session.Request.SignedRequestObject) : null,
             ResponseUri = RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject),
         };
+    }
+
+    /// <summary>The RFC 7638 thumbprint of the encryption JWK this request advertised, from its kid.</summary>
+    private static byte[]? ThumbprintFromRequest(string requestObject)
+    {
+        if (RequestObjectPayload.TryGetEncryptionJwkJson(requestObject) is not { } jwkJson)
+        {
+            return null;
+        }
+
+        using var jwk = System.Text.Json.JsonDocument.Parse(jwkJson);
+        return jwk.RootElement.TryGetProperty("kid", out var kid) && kid.GetString() is { Length: > 0 } value
+            ? Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes(value)
+            : null;
     }
 }

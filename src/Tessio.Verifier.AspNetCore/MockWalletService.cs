@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -35,8 +36,8 @@ internal sealed class MockWalletService : BackgroundService
     private readonly WalletCallbackProcessor _processor;
     private readonly MockCredentialIssuer _issuer;
     private readonly MockMdocIssuer _mdocIssuer;
-    private readonly ResponseEncryptionKeyProvider _encryptionKeys;
     private readonly VerifierOptions _options;
+    private readonly ILogger<MockWalletService> _logger;
 
     public MockWalletService(
         MockWalletQueue queue,
@@ -44,16 +45,16 @@ internal sealed class MockWalletService : BackgroundService
         WalletCallbackProcessor processor,
         MockCredentialIssuer issuer,
         MockMdocIssuer mdocIssuer,
-        ResponseEncryptionKeyProvider encryptionKeys,
-        IOptions<VerifierOptions> options)
+        IOptions<VerifierOptions> options,
+        ILogger<MockWalletService> logger)
     {
         _queue = queue;
         _store = store;
         _processor = processor;
         _issuer = issuer;
         _mdocIssuer = mdocIssuer;
-        _encryptionKeys = encryptionKeys;
         _options = options.Value;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -80,7 +81,7 @@ internal sealed class MockWalletService : BackgroundService
                         session.Request.ClientId,
                         session.Request.Nonce,
                         _options.ResponseMode == ResponseMode.DirectPostJwt
-                            ? _encryptionKeys.ThumbprintBytes
+                            ? ThumbprintFromRequest(session.Request.SignedRequestObject)
                             : null,
                         RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject) ?? string.Empty)
                     : _issuer.IssuePresentation(
@@ -95,7 +96,15 @@ internal sealed class MockWalletService : BackgroundService
                 var form = _options.ResponseMode == ResponseMode.DirectPostJwt
                     ? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
                     {
-                        ["response"] = new[] { EncryptResponse(presentation, session.Request.State ?? string.Empty) },
+                        ["response"] = new[]
+                        {
+                            EncryptResponse(
+                                presentation,
+                                session.Request.State ?? string.Empty,
+                                RequestObjectPayload.TryGetEncryptionJwkJson(session.Request.SignedRequestObject)
+                                    ?? throw new InvalidOperationException(
+                                        "direct_post.jwt session advertised no encryption key in client_metadata.")),
+                        },
                     }
                     : new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
                     {
@@ -116,7 +125,28 @@ internal sealed class MockWalletService : BackgroundService
             {
                 break;
             }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Loud, and scoped to this session. Letting the exception escape kills the background
+                // loop, after which every later session waits silently for a wallet that no longer
+                // exists and times out with no explanation anywhere.
+                Log.MockWalletFailed(_logger, e, sessionId);
+            }
         }
+    }
+
+    /// <summary>The thumbprint of the encryption JWK this session's request advertised, from its kid.</summary>
+    private static byte[]? ThumbprintFromRequest(string requestObject)
+    {
+        if (RequestObjectPayload.TryGetEncryptionJwkJson(requestObject) is not { } jwkJson)
+        {
+            return null;
+        }
+
+        using var jwk = System.Text.Json.JsonDocument.Parse(jwkJson);
+        return jwk.RootElement.TryGetProperty("kid", out var kid) && kid.GetString() is { Length: > 0 } value
+            ? Base64UrlEncoder.DecodeBytes(value)
+            : null;
     }
 
     /// <summary>
@@ -132,11 +162,15 @@ internal sealed class MockWalletService : BackgroundService
     /// actually pick untested. It previously used ECDH-ES+A256KW with A128CBC-HS256, neither of which
     /// we advertise.
     /// </remarks>
-    private string EncryptResponse(string presentation, string state)
+    private static string EncryptResponse(string presentation, string state, string verifierJwkJson)
     {
         using var ephemeral = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var ep = ephemeral.ExportParameters(false);
-        var verifierJwk = new JsonWebKey(_encryptionKeys.PublicJwk.ToJsonString());
+
+        // From the session's request object, exactly as a real wallet reads it. Encrypting to a
+        // process-wide key instead is how the mock kept passing while every request advertised the
+        // same key, which the conformance suite fails.
+        var verifierJwk = new JsonWebKey(verifierJwkJson);
 
         var payload = JsonSerializer.Serialize(new Dictionary<string, object>
         {
@@ -157,6 +191,10 @@ internal sealed class MockWalletService : BackgroundService
                 ["x"] = Base64UrlEncoder.Encode(ep.Q.X!),
                 ["y"] = Base64UrlEncoder.Encode(ep.Q.Y!),
             },
+
+            // The kid of the verifier key we encrypt to. With ephemeral per-request keys this is how
+            // the verifier finds the right private key, since state is inside the encrypted payload.
+            ["kid"] = verifierJwk.Kid,
         });
 
         // Direct Key Agreement, matching the alg=ECDH-ES our client_metadata advertises under HAIP

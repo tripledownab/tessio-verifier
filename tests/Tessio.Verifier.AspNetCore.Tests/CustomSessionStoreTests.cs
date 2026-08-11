@@ -101,8 +101,13 @@ public sealed class CustomSessionStoreTests
             Assert.IsType<DictionarySessionStore>(store);
 
             var options = provider.GetRequiredService<IOptions<VerifierOptions>>().Value;
+
+            // DirectPostJwt is the default, so the request needs an advertised encryption key. Through
+            // the store, as MapTessioVerifier's /start does, because keys are ephemeral per request.
+            var encryptionJwk = provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk;
             var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-                options, new Uri("https://verifier.example/verify/callback")));
+                options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
 
             await provider.GetRequiredService<MockWalletQueue>().EnqueueAsync(session.SessionId);
 

@@ -32,8 +32,10 @@ public sealed class MdocMockModeTests
         {
             var store = provider.GetRequiredService<InMemorySessionStore>();
             var options = provider.GetRequiredService<IOptions<VerifierOptions>>().Value;
+            // Through the store, as any host must: keys are ephemeral per request now.
             var encryptionJwk = responseMode == ResponseMode.DirectPostJwt
-                ? provider.GetRequiredService<ResponseEncryptionKeyProvider>().PublicJwk
+                ? provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                    .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
                 : null;
             var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
                 options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));

@@ -79,8 +79,12 @@ public sealed class LoggingTests
         var issuer = provider.GetRequiredService<MockCredentialIssuer>();
         var processor = provider.GetRequiredService<WalletCallbackProcessor>();
 
+        var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
+            ? provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
+            : null;
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback")));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
 
         // Wrong nonce → verification fails with nonce_mismatch.
         var replayed = issuer.IssuePresentation(
@@ -115,8 +119,12 @@ public sealed class LoggingTests
         var issuer = provider.GetRequiredService<MockCredentialIssuer>();
         var processor = provider.GetRequiredService<WalletCallbackProcessor>();
 
+        var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
+            ? provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
+            : null;
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback")));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
         var presentation = issuer.IssuePresentation(
             ["age_over_18"], DemoRequestOptionsFactory.DefaultVct, session.Request.Nonce, options.ClientId);
 

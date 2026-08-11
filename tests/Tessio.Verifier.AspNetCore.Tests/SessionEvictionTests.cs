@@ -1,4 +1,7 @@
+using Tessio.Verifier.OpenId4Vp;
+
 namespace Tessio.Verifier.AspNetCore.Tests;
+
 
 public class SessionEvictionTests
 {
@@ -36,8 +39,9 @@ public class SessionEvictionTests
         var store = new InMemorySessionStore(new DemoPresentationRequestBuilder(clock), clock);
         var options = new VerifierOptions { SessionLifetime = TimeSpan.FromMinutes(5) };
 
+        using var keys = new ResponseEncryptionKeyProvider();
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback")));
+            options, new Uri("https://verifier.example/verify/callback"), keys.PublicJwk));
 
         // Past expiry, inside retention: still readable so a result page can show "expired".
         clock.Now += TimeSpan.FromMinutes(10);

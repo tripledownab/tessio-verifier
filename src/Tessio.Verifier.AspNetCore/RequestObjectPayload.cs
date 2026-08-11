@@ -92,6 +92,26 @@ internal static class RequestObjectPayload
             ? value.GetString()
             : null;
 
+    /// <summary>
+    /// The response-encryption public JWK this request advertised in <c>client_metadata.jwks</c>, as
+    /// raw JSON. Null when the request carries none (direct_post).
+    /// </summary>
+    /// <remarks>
+    /// This is the honest source for anything that needs "the key the wallet saw": the mock wallet
+    /// encrypts to it and the verifier derives the mdoc session-transcript thumbprint from it. Reading
+    /// it from a process-wide singleton instead is how key reuse survived until the conformance suite
+    /// flagged it.
+    /// </remarks>
+    public static string? TryGetEncryptionJwkJson(string requestObject) =>
+        ReadFromPayload(requestObject, root =>
+            root.TryGetProperty("client_metadata", out var cm)
+            && cm.TryGetProperty("jwks", out var jwks)
+            && jwks.TryGetProperty("keys", out var keys)
+            && keys.ValueKind == JsonValueKind.Array
+            && keys.GetArrayLength() > 0
+                ? keys[0].GetRawText()
+                : null);
+
     private static T? ReadFromPayload<T>(string requestObject, Func<JsonElement, T?> read)
     {
         var parts = requestObject.Split('.');
