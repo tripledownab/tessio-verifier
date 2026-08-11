@@ -123,9 +123,14 @@ internal static class Pages
             ? "<p>For a negative test module, REJECTED is the expected outcome and the errors below are the evidence.</p>"
             : "";
 
-        // A rejection carrying an untrusted issuer is almost always our configuration rather than the
-        // behaviour under test, and that distinction is the whole reason this page exists.
-        var trustNote = result is { IsValid: false, Issuer.Trusted: false }
+        // Warn only when the rejection was OUR trust configuration, not the tampering under test.
+        // Keyed off the error code, not Issuer.Trusted: a failed issuer signature also leaves Trusted
+        // false (trust cannot be established over a signature that does not verify), and on the
+        // invalid-credential-signature module that IS the behaviour under test, not a misconfiguration.
+        // Only issuer_untrusted, and the issuer-resolution codes, mean the credential was refused
+        // before the tampering could matter.
+        string[] configCodes = ["issuer_untrusted", "issuer_key_unresolvable", "issuer_certificate_mismatch"];
+        var trustNote = result is { IsValid: false } && result.Errors.Any(e => configCodes.Contains(e.Code))
             ? """
               <p class="warn"><strong>The issuer was not trusted.</strong> On a negative module this is
               probably the wrong rejection: the credential was refused before the tampering under test
