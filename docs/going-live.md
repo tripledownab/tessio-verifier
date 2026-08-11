@@ -2,7 +2,7 @@
 
 How to take a Tessio.Verifier app from the built-in Demo, Mock and Test modes to real wallets.
 
-The built-in modes exist so you can build and test without a wallet. Going live means five things change: the mode, the request signature, the trust list, the session store and the response encryption key. Each is a service you register before `AddTessioVerifier`, which uses `TryAdd` for everything and therefore keeps whatever you registered first.
+The built-in modes exist so you can build and test without a wallet. Going live means four things change: the mode, the request signature, the trust list and the session store. Each is a service you register before `AddTessioVerifier`, which uses `TryAdd` for everything and therefore keeps whatever you registered first. Response encryption (§6) needs no change for a single instance and one deliberate design choice when you scale out.
 
 ```csharp
 builder.Services.AddSingleton<IPresentationRequestBuilder>(...);   // 2. signed requests
@@ -178,22 +178,28 @@ Two behaviors to know:
 - `CreateAsync` builds the presentation request (inject `IPresentationRequestBuilder`) and must index the request's `state`. Complete each session at most once and treat later completions as no-ops or conflicts.
 - The SSE stream endpoint gets push notifications from the in-memory store. With a custom store it polls `GetAsync` every 500 ms until the session leaves `Pending`, which works unchanged with any store.
 
-## 6. Share the response encryption key
+## 6. Response encryption across instances
 
-With `ResponseMode.DirectPostJwt` (the default and the HAIP baseline) wallets encrypt their responses to a key published in your request's `client_metadata.jwks`. The default key is ephemeral and per-process, which breaks under load balancing the same way sessions do: instance A advertises a key that instance B cannot use to decrypt.
+With `ResponseMode.DirectPostJwt` (the default and the HAIP baseline) wallets encrypt their responses to a key published in your request's `client_metadata.jwks`.
 
-Load one persisted P-256 key everywhere:
+**The key is ephemeral per authorization request, not per process.** OpenID4VP 1.0 §8.3 and HAIP 1.0 §5 require this, and the conformance suite fails a verifier that reuses one. The reasons are real: a single long-lived key means its compromise retrospectively exposes every response ever encrypted against it, and a stable advertised public key is a correlation handle tying separate presentations to one verifier. `ResponseEncryptionKeyStore` generates a fresh P-256 key at `/verify/start`, holds it in memory, and the callback finds it again by the `kid` (RFC 7638 thumbprint) the wallet echoes in the JWE header. **The private half never touches disk.**
 
-```csharp
-using System.Security.Cryptography;
+That default is complete for a **single process**. Across instances it breaks the same way sessions do: instance A generates the key and holds it in its own memory, so instance B cannot decrypt a response routed to it.
 
-var key = ECDsa.Create();
-key.ImportPkcs8PrivateKey(pkcs8Bytes, out _); // from Key Vault, a secret store or a mounted file
+**Recommended when you scale out: derive the key, store no key material.** Do not persist private keys, not even encrypted. Keep one master secret in a KMS or HSM, ideally non-exportable, and derive each request's private scalar from it:
 
-builder.Services.AddSingleton(new ResponseEncryptionKeyProvider(key));
+```
+d    = HKDF(master, salt)      // salt: a fresh random value per request
+kid  = base64url SHA-256 thumbprint of the public JWK
 ```
 
-Every instance holding the same key advertises the same JWK with the same RFC 7638 thumbprint `kid`, and any instance can decrypt any wallet's response. Note this key is used for ECDH-ES key agreement, so unlike the JAR signing key it must be present in the process; keep it in a secret store, not in the repo.
+Store only the non-secret `salt`, keyed by `kid`, in the shared store you already run for sessions (§5). At the callback, any instance reads the `salt` for the response's `kid`, re-derives `d` from the master secret it reaches via the KMS, and decrypts. The database holds a random salt and nothing secret; the only long-lived secret is the master, which can live in hardware and never be exported.
+
+Why not the alternatives:
+- **Persisting the private key**, even as KMS-encrypted ciphertext in Postgres, puts key material in your database. Derivation avoids that entirely.
+- **Sticky sessions** (route the callback to the instance that issued the request) store nothing, but couple you to load-balancer affinity and lose the key if that instance restarts mid-flow. A reasonable stopgap, not the target.
+
+This derivation path is **not yet wired into the library**, deliberately: no consumer has needed it yet, and adding the seam before a second instance needs it would be speculative (see the extract-when-needed rule). When you scale out, the change is a pluggable key source on `ResponseEncryptionKeyStore` (create-from-salt, resolve-by-kid) backed by your KMS. Until then the in-memory default is correct and needs no configuration.
 
 `ResponseMode.DirectPost` (cleartext form posts) is also supported, but encrypted responses are the profile default so stay on `DirectPostJwt` unless you have a reason not to.
 
