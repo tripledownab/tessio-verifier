@@ -124,7 +124,13 @@ trust configuration before the tampering under test could matter. The evidence p
 when a rejection carries an untrusted issuer, precisely so this does not reach a screenshot.
 
 - **`mso_mdoc`**: anchors are mandatory, because mdoc trust is X.509 only (IACA roots). The harness
-  refuses to start without them rather than producing twelve worthless results.
+  refuses to start without them rather than producing worthless results. The OIDF suite signs every
+  mdoc with a fixed, self-signed multipaz test certificate that is both Document Signer and IACA
+  (subject `CN=certification.openid.net, O=OpenID Foundation`). Obtain it from the response's
+  `x5chain`, or copy the PEM constant from the suite source
+  (`src/main/kotlin/com/android/identity/testapp/TestAppUtils.kt`), save it as `suite-mdoc-iaca.pem`
+  (gitignored, like every `.pem` here) and list it in `Suite:TrustAnchors`. It rolls roughly annually
+  (this one expires 2027-08-03); re-extract it when the positive modules begin rejecting on trust.
 - **`dc+sd-jwt`**: depends on how the suite signs. Start with none, and if the modules reject with an
   untrusted issuer, export the suite's issuer certificate and list its path in `Suite:TrustAnchors`.
   PEM or DER both load.
