@@ -4,53 +4,94 @@ using System.Security.Cryptography.X509Certificates;
 namespace Tessio.Verifier.ConformanceHarness;
 
 /// <summary>
-/// The key and certificate the harness signs request objects with, persisted between runs.
+/// The key and certificate chain the harness signs request objects with, persisted between runs.
 /// </summary>
 /// <remarks>
-/// Persistence is the whole point. The HAIP plan has one configuration field,
-/// <c>client.request_object_trust_anchor_pem</c>, which is this certificate: the suite uses it to
-/// validate the signature on our request object. A certificate regenerated on every start would
-/// invalidate that field on every restart, and the symptom is the suite rejecting the request object
-/// with no hint that the cause is a restart rather than the code.
+/// A two-certificate chain, not a self-signed leaf: OpenID4VP 1.0 §5.9.3 requires the leaf in
+/// <c>x5c</c> to be issued by something, and the suite fails a self-signed one outright. So we mint a
+/// throwaway CA and issue the signing certificate from it. The CA is what goes in the plan's
+/// <c>client.request_object_trust_anchor_pem</c>; the leaf is what <c>client_id</c> hashes.
 /// <para>
-/// Self-signed is correct here. The suite checks that the hash in our client_id matches the leaf we
-/// send in x5c and that the signature chains to the anchor you pasted, neither of which needs a
-/// publicly trusted chain. No real access certificate should go anywhere near this tool.
+/// Persistence matters because that plan field would otherwise go stale on every restart, and the
+/// symptom is the suite rejecting the request object with no hint that a restart is the cause.
+/// </para>
+/// <para>
+/// Self-signed at the root is fine here. The suite checks that the leaf chains to the anchor you
+/// configured and that <c>client_id</c> matches the leaf, neither of which needs public trust. No real
+/// access certificate should go near this tool.
 /// </para>
 /// </remarks>
-internal sealed record HarnessCertificate(ECDsa Key, X509Certificate2 Certificate, string Pem)
+internal sealed record HarnessCertificate(
+    ECDsa Key,
+    X509Certificate2 Leaf,
+    X509Certificate2 Authority,
+    string LeafPem,
+    string AuthorityPem)
 {
-    private const string Subject = "CN=conformance.tessio.local";
+    /// <summary>Leaf first, per RFC 7515 §4.1.6.</summary>
+    public IReadOnlyList<X509Certificate2> Chain => [Leaf, Authority];
 
-    public static HarnessCertificate LoadOrCreate(string certPath, string keyPath)
+    public static HarnessCertificate LoadOrCreate(string leafPath, string keyPath, string caPath)
     {
-        if (File.Exists(certPath) && File.Exists(keyPath))
+        if (File.Exists(leafPath) && File.Exists(keyPath) && File.Exists(caPath))
         {
             var key = ECDsa.Create();
             key.ImportFromPem(File.ReadAllText(keyPath));
-            var certPem = File.ReadAllText(certPath);
-            return new HarnessCertificate(key, X509Certificate2.CreateFromPem(certPem), certPem);
+            var leafPem = File.ReadAllText(leafPath);
+            var caPem = File.ReadAllText(caPath);
+            return new HarnessCertificate(
+                key, X509Certificate2.CreateFromPem(leafPem), X509Certificate2.CreateFromPem(caPem), leafPem, caPem);
         }
 
-        // Deliberately long lived: a plan takes hours of manual clicking spread over days, and an
-        // expiry mid-run looks like a signature failure.
-        using var fresh = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var request = new CertificateRequest(Subject, fresh, HashAlgorithmName.SHA256);
-        using var created = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
+        // Long lived deliberately: a plan is hours of manual clicking spread over days, and an expiry
+        // mid-run looks like a signature failure.
+        var notBefore = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var notAfter = DateTimeOffset.UtcNow.AddYears(1);
 
-        var pem = new string(PemEncoding.Write("CERTIFICATE", created.RawData));
-        File.WriteAllText(certPath, pem);
-        File.WriteAllText(keyPath, new string(PemEncoding.Write("PRIVATE KEY", fresh.ExportPkcs8PrivateKey())));
+        using var caKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var caRequest = new CertificateRequest(
+            "CN=Tessio Conformance Harness CA", caKey, HashAlgorithmName.SHA256);
+        caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        caRequest.CertificateExtensions.Add(
+            new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        using var ca = caRequest.CreateSelfSigned(notBefore, notAfter);
 
-        var loadedKey = ECDsa.Create();
-        loadedKey.ImportFromPem(File.ReadAllText(keyPath));
-        return new HarnessCertificate(loadedKey, X509Certificate2.CreateFromPem(pem), pem);
+        using var leafKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var leafRequest = new CertificateRequest(
+            "CN=conformance.tessio.local", leafKey, HashAlgorithmName.SHA256);
+        leafRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        leafRequest.CertificateExtensions.Add(
+            new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
+        var san = new SubjectAlternativeNameBuilder();
+        san.AddDnsName("host.docker.internal");
+        san.AddDnsName("localhost");
+        leafRequest.CertificateExtensions.Add(san.Build());
+
+        using var issued = leafRequest.Create(
+            ca, notBefore, notAfter, RandomNumberGenerator.GetBytes(16));
+
+        File.WriteAllText(leafPath, new string(PemEncoding.Write("CERTIFICATE", issued.RawData)));
+        File.WriteAllText(caPath, new string(PemEncoding.Write("CERTIFICATE", ca.RawData)));
+        File.WriteAllText(keyPath, new string(PemEncoding.Write("PRIVATE KEY", leafKey.ExportPkcs8PrivateKey())));
+
+        return LoadOrCreate(leafPath, keyPath, caPath);
     }
+
+    /// <summary>The TLS certificate for Kestrel, which needs the private key attached.</summary>
+    /// <remarks>
+    /// The suite installs a trust-all X509TrustManager and a NoopHostnameVerifier, so it accepts this
+    /// without the CA being installed anywhere. Reusing the signing leaf keeps the harness to one
+    /// identity; it carries host.docker.internal and localhost as SANs for the same reason.
+    /// </remarks>
+    public X509Certificate2 TlsCertificate() =>
+        X509Certificate2.CreateFromPem(LeafPem, ExportKeyPem());
+
+    private string ExportKeyPem() => new(PemEncoding.Write("PRIVATE KEY", Key.ExportPkcs8PrivateKey()));
 
     public void Dispose()
     {
-        Certificate.Dispose();
+        Leaf.Dispose();
+        Authority.Dispose();
         Key.Dispose();
     }
 }
