@@ -55,7 +55,12 @@ public sealed class ResponseEncryptionKeyProvider : IDisposable
             ["y"] = y,
             ["kid"] = KeyId,
             ["use"] = "enc",
-            ["alg"] = SecurityAlgorithms.EcdhEsA256kw,
+
+            // SPEC: HAIP 1.0 §5 requires the client_metadata JWKS to carry a P-256 key with
+            // alg=ECDH-ES, that is Direct Key Agreement. This advertised ECDH-ES+A256KW, which is
+            // legal OpenID4VP and fails HAIP. EcdhEsJweDecryptor accepts both, so a wallet that
+            // still picks a key-wrapping variant keeps working.
+            ["alg"] = SecurityAlgorithms.EcdhEs,
         };
     }
 

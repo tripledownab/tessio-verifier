@@ -28,8 +28,16 @@ internal sealed record HarnessCertificate(
     string LeafPem,
     string AuthorityPem)
 {
-    /// <summary>Leaf first, per RFC 7515 §4.1.6.</summary>
-    public IReadOnlyList<X509Certificate2> Chain => [Leaf, Authority];
+    /// <summary>
+    /// What goes in the JAR <c>x5c</c> header: the leaf alone.
+    /// </summary>
+    /// <remarks>
+    /// Not the CA. The suite rejects a chain containing the configured trust anchor
+    /// ("Trust anchor certificate must not be included in x5c chain"), which is reasonable: the anchor
+    /// is known out of band, so repeating it in the chain proves nothing and lets a sender appear to
+    /// supply its own root.
+    /// </remarks>
+    public IReadOnlyList<X509Certificate2> Chain => [Leaf];
 
     public static HarnessCertificate LoadOrCreate(string leafPath, string keyPath, string caPath)
     {

@@ -120,16 +120,17 @@ internal sealed class MockWalletService : BackgroundService
     }
 
     /// <summary>
-    /// Encrypts the authorization response the way a HAIP wallet does: ephemeral EC key,
-    /// ECDH-ES+A256KW against the verifier's advertised public key, epk in the JWE header, A256GCM
-    /// content encryption.
+    /// Encrypts the authorization response the way a HAIP wallet does: ephemeral EC key, ECDH-ES
+    /// Direct Key Agreement against the verifier's advertised public key, epk in the JWE header,
+    /// A256GCM content encryption.
     /// </summary>
     /// <remarks>
     /// The JWE is assembled here rather than by <c>JsonWebTokenHandler</c> because that library cannot
     /// encrypt with AES-GCM at all: it answers <c>IDX10715: Encryption using algorithm 'A256GCM' is
-    /// not supported</c>. A256GCM is what our client_metadata advertises under HAIP 1.0 §5, so a mock
-    /// wallet using anything else would leave the algorithm real wallets actually pick untested. It
-    /// previously used A128CBC-HS256, which we never advertised.
+    /// not supported</c>. Both alg and enc here mirror exactly what client_metadata advertises under
+    /// HAIP 1.0 §5, because a mock wallet choosing anything else leaves the combination real wallets
+    /// actually pick untested. It previously used ECDH-ES+A256KW with A128CBC-HS256, neither of which
+    /// we advertise.
     /// </remarks>
     private string EncryptResponse(string presentation, string state)
     {
@@ -147,7 +148,7 @@ internal sealed class MockWalletService : BackgroundService
         // key agreement, and the header is the AAD, so it has to be built before encrypting.
         var header = JsonSerializer.Serialize(new Dictionary<string, object>
         {
-            ["alg"] = SecurityAlgorithms.EcdhEsA256kw,
+            ["alg"] = SecurityAlgorithms.EcdhEs,
             ["enc"] = SecurityAlgorithms.Aes256Gcm,
             ["epk"] = new Dictionary<string, string>
             {
@@ -158,15 +159,15 @@ internal sealed class MockWalletService : BackgroundService
             },
         });
 
-        // Derive the key-wrap key exactly as the verifier will, then wrap a fresh CEK with it.
+        // Direct Key Agreement, matching the alg=ECDH-ES our client_metadata advertises under HAIP
+        // 1.0 §5: the derived key IS the content encryption key, so there is no wrapped key and the
+        // JWE Encrypted Key segment stays empty.
         var ecdh = new EcdhKeyExchangeProvider(
-            new ECDsaSecurityKey(ephemeral), verifierJwk, SecurityAlgorithms.EcdhEsA256kw, SecurityAlgorithms.Aes256Gcm);
-        var kdfKey = ecdh.GenerateKdf();
-        var keyWrap = kdfKey.CryptoProviderFactory.CreateKeyWrapProvider(kdfKey, SecurityAlgorithms.Aes256KW);
-
-        var cek = RandomNumberGenerator.GetBytes(32);
-        var wrappedKey = keyWrap.WrapKey(cek);
-        kdfKey.CryptoProviderFactory.ReleaseKeyWrapProvider(keyWrap);
+            new ECDsaSecurityKey(ephemeral), verifierJwk, SecurityAlgorithms.EcdhEs, SecurityAlgorithms.Aes256Gcm)
+        {
+            KeyDataLen = 256,
+        };
+        var cek = ((SymmetricSecurityKey)ecdh.GenerateKdf()).Key;
 
         // SPEC: RFC 7518 §5.3 — AES-GCM uses a 96-bit IV and a 128-bit authentication tag.
         var iv = RandomNumberGenerator.GetBytes(12);
@@ -183,7 +184,7 @@ internal sealed class MockWalletService : BackgroundService
         // SPEC: RFC 7516 §3.1 — five dot-separated base64url segments.
         return string.Join('.', [
             encodedHeader,
-            Base64UrlEncoder.Encode(wrappedKey),
+            string.Empty, // Direct Key Agreement: no JWE Encrypted Key (RFC 7518 §4.6)
             Base64UrlEncoder.Encode(iv),
             Base64UrlEncoder.Encode(ciphertext),
             Base64UrlEncoder.Encode(tag),

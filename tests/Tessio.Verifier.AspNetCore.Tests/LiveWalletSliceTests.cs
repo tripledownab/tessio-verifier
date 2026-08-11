@@ -84,9 +84,22 @@ public class LiveWalletSliceTests
             options, new Uri("https://verifier.example/verify/callback"), provider.PublicJwk);
 
         Assert.NotNull(requestOptions.ClientMetadataJson);
-        Assert.Contains("\"use\":\"enc\"", requestOptions.ClientMetadataJson, StringComparison.Ordinal);
-        Assert.Contains("ECDH-ES+A256KW", requestOptions.ClientMetadataJson, StringComparison.Ordinal);
-        Assert.Contains("encrypted_response_enc_values_supported", requestOptions.ClientMetadataJson, StringComparison.Ordinal);
+
+        // Assert the HAIP 1.0 §5 requirements themselves rather than whichever strings we happen to
+        // emit: a P-256 encryption key with alg=ECDH-ES, and both A128GCM and A256GCM offered. The
+        // previous version pinned "ECDH-ES+A256KW" as a substring, so it stayed green for months while
+        // we advertised a combination HAIP rejects.
+        using var metadata = System.Text.Json.JsonDocument.Parse(requestOptions.ClientMetadataJson);
+        var jwk = metadata.RootElement.GetProperty("jwks").GetProperty("keys")[0];
+
+        Assert.Equal("enc", jwk.GetProperty("use").GetString());
+        Assert.Equal("ECDH-ES", jwk.GetProperty("alg").GetString());
+        Assert.Equal("P-256", jwk.GetProperty("crv").GetString());
+
+        var encValues = metadata.RootElement.GetProperty("encrypted_response_enc_values_supported")
+            .EnumerateArray().Select(v => v.GetString()).ToList();
+        Assert.Contains("A128GCM", encValues);
+        Assert.Contains("A256GCM", encValues);
     }
 
     // ---- Request-object hosting ---------------------------------------------------------------
