@@ -67,14 +67,16 @@ internal static class DemoRequestOptionsFactory
 
     private static string BuildClientMetadata(VerifierOptions options, JsonObject? responseEncryptionJwk)
     {
-        // HAIP verifier display metadata (OpenID4VP client_metadata) shown on the wallet consent screen.
+        // OpenID4VP 1.0 client_metadata, narrowed by openid/OpenID4VP#233 to exactly three members:
+        // vp_formats_supported, jwks and encrypted_response_enc_values_supported.
         //
-        // client_id deliberately does NOT appear here. It is an authorization request parameter, not
-        // verifier metadata, and OpenID4VP 1.0 §5.1 enumerates what client_metadata may carry.
+        // Neither client_id nor client_name belongs here. client_id is an authorization request
+        // parameter. client_name was here to give the wallet a display name, and dropping it is the
+        // safer behaviour rather than a loss: under an x509 client identifier the wallet takes the
+        // verifier's identity from the certificate, which is authenticated, whereas a name asserted in
+        // metadata is not, and would let anyone put "Tessio" on a consent screen.
         var metadata = new JsonObject
         {
-            ["client_name"] = "Tessio Demo Verifier",
-
             // SPEC: OpenID4VP 1.0 Appendix B.2.2 (mdoc) and B.3.4 (SD-JWT VC) — vp_formats_supported is
             // REQUIRED, keyed by credential format. Omitting it is what the conformance suite fails on,
             // and a wallet cannot otherwise learn which signature algorithms we accept.
