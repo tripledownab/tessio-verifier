@@ -14,6 +14,37 @@ internal static class Pages
     /// </summary>
     private static string Esc(string value) => System.Net.WebUtility.HtmlEncode(value);
 
+    /// <summary>
+    /// One or more evidence rows for a disclosed claim. mdoc discloses claims as
+    /// <c>namespace -&gt; { elementIdentifier -&gt; value }</c>, so a nested dictionary is flattened to a
+    /// row per element (<c>namespace / element = value</c>) rather than printing the dictionary's type
+    /// name. SD-JWT VC claims are scalar and render as a single row.
+    /// </summary>
+    private static string ClaimRows(string name, object? value)
+    {
+        if (value is System.Collections.IDictionary nested)
+        {
+            var rows = new List<string>();
+            foreach (System.Collections.DictionaryEntry e in nested)
+            {
+                rows.Add($"<tr><td><code>{Esc(name)} / {Esc(e.Key.ToString() ?? "null")}</code></td>"
+                    + $"<td>{Esc(FormatClaimValue(e.Value))}</td></tr>");
+            }
+
+            return string.Concat(rows);
+        }
+
+        return $"<tr><td><code>{Esc(name)}</code></td><td>{Esc(FormatClaimValue(value))}</td></tr>";
+    }
+
+    /// <summary>Renders a leaf claim value; shows byte strings (portrait, etc.) as a size, not raw bytes.</summary>
+    private static string FormatClaimValue(object? value) => value switch
+    {
+        null => "null",
+        byte[] bytes => $"[{bytes.Length} bytes]",
+        _ => value.ToString() ?? "null",
+    };
+
     private const string Style = """
         body { font: 15px/1.55 system-ui, sans-serif; margin: 2.5rem auto; max-width: 52rem; padding: 0 1rem; }
         dt { font-weight: 600; margin-top: .6rem; }
@@ -105,8 +136,7 @@ internal static class Pages
         var claims = result is null || result.DisclosedClaims.Count == 0
             ? "<p><em>No claims disclosed.</em></p>"
             : "<table><tr><th>Claim</th><th>Value</th></tr>"
-              + string.Concat(result.DisclosedClaims.Select(c =>
-                  $"<tr><td><code>{Esc(c.Key)}</code></td><td>{Esc(c.Value?.ToString() ?? "null")}</td></tr>"))
+              + string.Concat(result.DisclosedClaims.Select(c => ClaimRows(c.Key, c.Value)))
               + "</table>";
 
         var issuer = result is null
