@@ -68,8 +68,14 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         var store = http.RequestServices.GetRequiredService<ISessionStore>();
 
         var responseUri = new Uri($"{http.Request.Scheme}://{http.Request.Host}{prefix}/callback");
+
+        // A FRESH key per request (OpenID4VP 1.0 §8.3, HAIP 1.0 §5): reusing one is a correlation
+        // handle and a single point of retrospective compromise. Held until the session expires; the
+        // callback finds it again via the kid the wallet echoes in the JWE header.
         var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
-            ? http.RequestServices.GetRequiredService<ResponseEncryptionKeyProvider>().PublicJwk
+            ? http.RequestServices.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow() + options.SessionLifetime)
+                .PublicJwk
             : null;
         var requestOptions = DemoRequestOptionsFactory.Create(options, responseUri, encryptionJwk);
         var session = await store.CreateAsync(requestOptions, http.RequestAborted).ConfigureAwait(false);

@@ -1,8 +1,11 @@
+using Tessio.Verifier.OpenId4Vp;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace Tessio.Verifier.AspNetCore.Tests;
+
+
 
 /// <summary>
 /// TEST mode replays the pinned RFC 9901 conformance vector through the real verifier and completes
@@ -29,8 +32,12 @@ public sealed class TestModeEndToEndTests : IAsyncDisposable
 
         var store = _provider.GetRequiredService<InMemorySessionStore>();
         var options = _provider.GetRequiredService<IOptions<VerifierOptions>>().Value;
+        var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
+            ? _provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
+            : null;
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback")));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
 
         await _provider.GetRequiredService<TestFixtureQueue>().EnqueueAsync(session.SessionId);
 

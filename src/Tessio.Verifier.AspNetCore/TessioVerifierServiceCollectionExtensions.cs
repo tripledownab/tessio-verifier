@@ -44,7 +44,11 @@ public static class TessioVerifierServiceCollectionExtensions
         services.TryAddSingleton<MockWalletQueue>();
         services.TryAddSingleton<MockCredentialIssuer>();
         services.TryAddSingleton<MockMdocIssuer>();
-        services.TryAddSingleton<ResponseEncryptionKeyProvider>();
+        // One response-encryption key PER AUTHORIZATION REQUEST (OpenID4VP 1.0 §8.3, HAIP 1.0 §5).
+        // This used to register a process-wide ResponseEncryptionKeyProvider, which reused one key for
+        // every request; the conformance suite fails that, and a stable advertised key is a correlation
+        // handle whose compromise exposes every past response.
+        services.TryAddSingleton(sp => new ResponseEncryptionKeyStore(sp.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<RequestObjectStore>();
 
         // Default (demo) request builder — swap in SignedPresentationRequestBuilder for live wallets.
@@ -53,7 +57,9 @@ public static class TessioVerifierServiceCollectionExtensions
         // The real verification pipeline: response parsing (OpenID4VP) + credential verification (Core).
         services.TryAddSingleton(sp => new WalletResponseParser(new WalletResponseParserOptions
         {
-            ResponseDecryptionKey = sp.GetRequiredService<ResponseEncryptionKeyProvider>().DecryptionKey,
+            // Ephemeral keys are looked up by the kid the wallet echoes from our client_metadata.
+            ResponseDecryptionKeyResolver = kid =>
+                sp.GetRequiredService<ResponseEncryptionKeyStore>().Get(kid)?.DecryptionKey,
             PresentationFormat = sp.GetRequiredService<IOptions<VerifierOptions>>().Value.CredentialFormat,
         }));
         services.TryAddSingleton<IPresentationResponseParser>(sp => sp.GetRequiredService<WalletResponseParser>());

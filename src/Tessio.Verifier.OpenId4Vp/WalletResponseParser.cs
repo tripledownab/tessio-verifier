@@ -74,12 +74,6 @@ public sealed class WalletResponseParser : IPresentationResponseParser
 
     private async Task<(string VpTokenJson, string? State)> UnwrapResponseJwtAsync(string responseJwt)
     {
-        if (_options.ResponseDecryptionKey is null)
-        {
-            throw new WalletResponseException(
-                "Received a direct_post.jwt response but no ResponseDecryptionKey is configured.");
-        }
-
         JsonWebToken jwe;
         try
         {
@@ -90,13 +84,27 @@ public sealed class WalletResponseParser : IPresentationResponseParser
             throw new WalletResponseException("The direct_post.jwt response is not a well-formed JWT/JWE.");
         }
 
+        // Keys are ephemeral per authorization request, so the resolver picks the session's key by the
+        // kid the wallet echoes from our client_metadata. The fixed key remains for single-key callers.
+        var decryptionKey = _options.ResponseDecryptionKeyResolver is { } resolve
+            ? resolve(jwe.Kid is { Length: > 0 } kid ? kid : null)
+            : _options.ResponseDecryptionKey;
+
+        if (decryptionKey is null)
+        {
+            throw new WalletResponseException(_options.ResponseDecryptionKeyResolver is null
+                ? "Received a direct_post.jwt response but no ResponseDecryptionKey is configured."
+                : "The direct_post.jwt response names no known response-encryption key: its kid matches "
+                  + "no live session, so the session may have expired or the response may be a replay.");
+        }
+
         // SPEC: OpenID4VP 1.0 §8.3 — the response JWT is encrypted to the verifier's client_metadata
         // key (JARM). HAIP profiles it as encrypted-only, so no wallet signature is required here.
         // ECDH-ES (what HAIP wallets send) needs our own receive side; IdentityModel only ships the
         // sender half. Everything else (dir, RSA-OAEP, …) goes through the library handler.
         if (EcdhEsJweDecryptor.CanHandle(jwe))
         {
-            var plaintext = EcdhEsJweDecryptor.Decrypt(jwe, _options.ResponseDecryptionKey);
+            var plaintext = EcdhEsJweDecryptor.Decrypt(jwe, decryptionKey);
             return ExtractResponseClaims(NormalizeDecryptedPayload(plaintext));
         }
 
@@ -106,7 +114,7 @@ public sealed class WalletResponseParser : IPresentationResponseParser
             ValidateAudience = false,
             ValidateLifetime = false,
             RequireSignedTokens = false,
-            TokenDecryptionKey = _options.ResponseDecryptionKey,
+            TokenDecryptionKey = decryptionKey,
         }).ConfigureAwait(false);
 
         if (!result.IsValid)

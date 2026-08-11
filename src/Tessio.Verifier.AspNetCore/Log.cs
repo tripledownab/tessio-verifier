@@ -35,4 +35,8 @@ internal static partial class Log
     [LoggerMessage(EventId = 7, Level = LogLevel.Warning,
         Message = "Session {SessionId} completed: credential INVALID (issuer {Issuer}, errors: {ErrorCodes})")]
     public static partial void VerificationFailed(ILogger logger, string sessionId, string issuer, string errorCodes);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Mock wallet failed for session {SessionId}.")]
+    public static partial void MockWalletFailed(ILogger logger, Exception exception, string sessionId);
 }

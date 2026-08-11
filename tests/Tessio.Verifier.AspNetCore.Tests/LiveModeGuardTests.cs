@@ -93,8 +93,12 @@ public sealed class LiveModeGuardTests
         var options = provider.GetRequiredService<IOptions<VerifierOptions>>().Value;
         var processor = provider.GetRequiredService<WalletCallbackProcessor>();
 
+        var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
+            ? provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
+            : null;
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback")));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
 
         // An attacker's own issuer: same iss string and SAN as the trusted mock issuer, but a
         // self-signed certificate the trust anchor has never seen. Nonce and audience are correct,

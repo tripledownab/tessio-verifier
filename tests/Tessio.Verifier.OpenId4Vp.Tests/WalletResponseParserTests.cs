@@ -95,8 +95,12 @@ public class WalletResponseParserTests
     [Fact]
     public async Task DirectPostJwt_WithoutConfiguredKey_Throws()
     {
+        // A structurally valid five-segment JWE, so this asserts the missing-key error rather than the
+        // malformed-token one: well-formedness is now checked before key configuration.
+        const string wellFormedJwe = "eyJhbGciOiAiRUNESC1FUytBMjU2S1ciLCAiZW5jIjogIkEyNTZHQ00ifQ.AAAA.AAAA.AAAA.AAAA";
+
         var e = await Assert.ThrowsAsync<WalletResponseException>(
-            () => new WalletResponseParser().ParseAsync(FormResponse(("response", "eyJ.."))));
+            () => new WalletResponseParser().ParseAsync(FormResponse(("response", wellFormedJwe))));
 
         Assert.Contains("ResponseDecryptionKey", e.Message, StringComparison.Ordinal);
     }

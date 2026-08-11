@@ -35,8 +35,12 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
         var store = _provider.GetRequiredService<InMemorySessionStore>();
         var options = _provider.GetRequiredService<IOptions<VerifierOptions>>().Value;
 
+        var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
+            ? _provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
+            : null;
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback")));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
         beforeWallet?.Invoke(session);
 
         await _provider.GetRequiredService<MockWalletQueue>().EnqueueAsync(session.SessionId);
@@ -128,8 +132,12 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
         var issuer = _provider.GetRequiredService<MockCredentialIssuer>();
         var processor = _provider.GetRequiredService<WalletCallbackProcessor>();
 
+        var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
+            ? _provider.GetRequiredService<ResponseEncryptionKeyStore>()
+                .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
+            : null;
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback")));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
 
         // A presentation bound to the WRONG nonce simulates a replayed response.
         var replayed = issuer.IssuePresentation(

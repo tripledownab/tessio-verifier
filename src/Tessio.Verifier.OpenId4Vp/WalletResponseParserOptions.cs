@@ -13,6 +13,18 @@ public sealed class WalletResponseParserOptions
     public SecurityKey? ResponseDecryptionKey { get; set; }
 
     /// <summary>
+    /// Resolves the decryption key from the JWE's <c>kid</c> header. Takes precedence over
+    /// <see cref="ResponseDecryptionKey"/> when set.
+    /// </summary>
+    /// <remarks>
+    /// Needed because response-encryption keys are ephemeral per authorization request (OpenID4VP 1.0
+    /// §8.3, HAIP 1.0 §5) and for <c>direct_post.jwt</c> the session correlation handle (<c>state</c>)
+    /// is inside the encrypted payload, so the key cannot be picked by session. The <c>kid</c> the
+    /// wallet echoes from our <c>client_metadata.jwks</c> is the way back to the right key.
+    /// </remarks>
+    public Func<string?, SecurityKey?>? ResponseDecryptionKeyResolver { get; set; }
+
+    /// <summary>
     /// Credential format assigned to string presentations extracted from <c>vp_token</c>.
     /// Defaults to <c>dc+sd-jwt</c>, the SD-JWT VC format identifier.
     /// </summary>
