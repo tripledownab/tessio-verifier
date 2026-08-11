@@ -9,11 +9,15 @@ namespace Tessio.Verifier.Trust;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Credentials whose key was resolved from an <c>x5c</c> header are only trusted when their chain
-/// anchors on one of <c>trustAnchors</c> (or the leaf itself is a pinned anchor). Identifier
-/// membership alone proves nothing for those credentials: the signing key comes from the presented
-/// certificate, and anyone can put a trusted issuer's name in a self-signed certificate. Without
-/// configured anchors, x5c credentials are therefore rejected.
+/// The trust mechanism depends on how the key was resolved. A key resolved from issuer metadata is
+/// trusted exactly when its issuer identifier is on the configured list, proven by control of the
+/// issuer's HTTPS origin. A key resolved from an <c>x5c</c> (or <c>x5chain</c>) header is trusted when
+/// its chain anchors on one of <c>trustAnchors</c> (or the leaf itself is a pinned anchor); the
+/// identifier is <em>not</em> required to be on the list, because anyone can put any name in a
+/// certificate, so the X.509 chain is the proof. This is the only mechanism ISO mdoc has, where the
+/// issuer identifier is a Document Signer subject DN that no list enumerates. Binding the certificate
+/// to a claimed issuer, where that applies, is the caller's concern: SD-JWT VC ties <c>iss</c> to a
+/// certificate SAN before this point. Without configured anchors, x5c credentials are rejected.
 /// </para>
 /// <para>
 /// This is the open-source end of the trust seam. Production EU trust (LOTL, national lists, WRPAC)
@@ -50,18 +54,21 @@ public sealed class StaticTrustListResolver : ITrustListResolver
         ArgumentNullException.ThrowIfNull(issuer);
         ArgumentNullException.ThrowIfNull(x5c);
 
-        if (!_trustedIssuers.Contains(issuer))
-        {
-            return NotTrusted($"Issuer '{issuer}' is not on the configured trust list.");
-        }
-
+        // The trust mechanism is chosen by how the issuer key was resolved, not by the credential
+        // format. A key resolved from issuer metadata (no x5c) is trusted exactly when its identifier
+        // is on the list: control of the iss HTTPS origin is what proved that identifier.
         if (x5c.Length == 0)
         {
-            // Key resolved via issuer metadata: the identifier was proven by control of the iss
-            // HTTPS origin, so identifier membership is the whole check here.
-            return Trusted();
+            return _trustedIssuers.Contains(issuer)
+                ? Trusted()
+                : NotTrusted($"Issuer '{issuer}' is not on the configured trust list.");
         }
 
+        // A key resolved from an x5c chain is trusted by anchoring, not by identifier membership: the
+        // identifier is only as good as the certificate carrying it, and anyone can put any name in a
+        // certificate. This is the only mechanism ISO mdoc has, where the identifier is a Document
+        // Signer subject DN that no list enumerates. The caller binds the certificate to a claimed
+        // issuer where that applies (SD-JWT VC ties iss to a certificate SAN before this point).
         if (_trustAnchors.Count == 0)
         {
             return NotTrusted(
