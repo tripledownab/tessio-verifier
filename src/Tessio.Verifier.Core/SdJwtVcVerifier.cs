@@ -310,7 +310,8 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         }
 
         errors.AddRange(await KeyBindingVerifier.VerifyAsync(
-            presentation.KbJwt, holderKey, context, presentation.PresentationWithoutKbJwt, ct, transactionData).ConfigureAwait(false));
+            presentation.KbJwt, holderKey, context, presentation.PresentationWithoutKbJwt,
+            _clock.GetUtcNow(), _options.MaxKeyBindingAge, _options.ClockSkew, ct, transactionData).ConfigureAwait(false));
     }
 
     private static Dictionary<string, object> ExtractClaims(JsonObject processed)

@@ -9,6 +9,14 @@ internal static class ConformanceFixture
 {
     public const string Name = "rfc9901-a3-pid";
 
+    /// <summary>
+    /// The instant to evaluate this fixture at: shortly after the vector's KB-JWT iat (2025-05-29).
+    /// The fixture is a historical artifact of published bytes, so every time-based check (iat
+    /// freshness, exp, nbf, status) is evaluated as of the vector's era rather than wall-clock now,
+    /// which would reject a year-old presentation on freshness alone.
+    /// </summary>
+    public static readonly DateTimeOffset EvaluatedAt = DateTimeOffset.FromUnixTimeSeconds(1748537300);
+
     public const string Issuer = "https://pid-issuer.bund.de.example";
 
     public const string Vct = "urn:eudi:pid:de:1";
