@@ -64,6 +64,13 @@ Two networking facts that otherwise cost an afternoon:
 
 - The suite runs in Docker. `host.docker.internal` resolves **inside** the container but **not** on
   the host, so you browse `localhost:5099` while the suite must be told `host.docker.internal:5099`.
+- **HTTPS is required**, for `request_uri` (JAR-5.2) and `response_uri` (OID4VP §8.2). A self-signed
+  chain is enough: the suite installs a trust-all X509TrustManager and a `NoopHostnameVerifier`, so
+  nothing needs adding to the container's truststore. Kestrel is configured in `Program.cs` from
+  `PublicBaseUri`, so changing that one value moves both URIs.
+- **The signing leaf must not be self-signed** (OID4VP §5.9.3). The harness mints a throwaway CA and
+  issues the leaf from it, sending both in `x5c`. The **CA** is what goes in the plan's
+  `client.request_object_trust_anchor_pem`; the **leaf** is what `client_id` hashes.
 - The library derives `response_uri` from `Request.Host`, which is correct behind a proxy. There is no
   proxy here, so the harness rewrites the host to `PublicBaseUri` on every request. Without that,
   `response_uri` would be `localhost:5099`, which inside the container means the container itself: the

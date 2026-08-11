@@ -22,13 +22,22 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 // client.request_object_trust_anchor_pem field, so regenerating it would invalidate the suite
 // configuration on every restart. See HarnessCertificate.
 var signing = HarnessCertificate.LoadOrCreate(
-    builder.Configuration["Certificate:CertPath"] ?? "harness-cert.pem",
-    builder.Configuration["Certificate:KeyPath"] ?? "harness-key.pem");
+    builder.Configuration["Certificate:LeafPath"] ?? "harness-leaf.pem",
+    builder.Configuration["Certificate:KeyPath"] ?? "harness-key.pem",
+    builder.Configuration["Certificate:AuthorityPath"] ?? "harness-ca.pem");
+
+// HTTPS, because OpenID4VP 1.0 requires request_uri (JAR-5.2) and response_uri (§8.2) to be https.
+// A self-signed chain suffices: the suite installs a trust-all X509TrustManager and a
+// NoopHostnameVerifier, so nothing has to be added to the container's truststore.
+builder.WebHost.ConfigureKestrel(kestrel =>
+    kestrel.ListenAnyIP(
+        new Uri(builder.Configuration["PublicBaseUri"]!).Port,
+        listen => listen.UseHttps(signing.TlsCertificate())));
 
 var settings = HarnessSettings.Load(builder.Configuration) with
 {
-    ClientId = ClientIdentifier.X509Hash(signing.Certificate),
-    RequestObjectTrustAnchorPem = signing.Pem,
+    ClientId = ClientIdentifier.X509Hash(signing.Leaf),
+    RequestObjectTrustAnchorPem = signing.AuthorityPem,
 };
 
 builder.Services.AddSingleton(settings);
@@ -40,7 +49,7 @@ builder.Services.AddSingleton<IPresentationRequestBuilder>(new SignedPresentatio
             new ECDsaSecurityKey(signing.Key), SecurityAlgorithms.EcdsaSha256),
 
         // The wallet has no other way to obtain the certificate whose hash it must check.
-        SigningCertificateChain = [signing.Certificate],
+        SigningCertificateChain = signing.Chain,
 
         // HAIP pins request_method to request_uri_signed, so the JAR is fetched rather than inlined.
         // The suite runs in Docker and reaches us over host.docker.internal, hence PublicBaseUri.
