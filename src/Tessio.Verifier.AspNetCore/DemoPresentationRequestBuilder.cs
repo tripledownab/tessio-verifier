@@ -58,32 +58,7 @@ internal sealed class DemoPresentationRequestBuilder : IPresentationRequestBuild
             ["typ"] = "oauth-authz-req+jwt",
         };
 
-        var payload = new JsonObject
-        {
-            ["client_id"] = options.ClientId,
-            ["response_type"] = "vp_token",
-            ["response_mode"] = options.ResponseMode == ResponseMode.DirectPostJwt ? "direct_post.jwt" : "direct_post",
-            ["response_uri"] = options.ResponseUri.ToString(),
-            ["nonce"] = options.Nonce,
-            ["dcql_query"] = JsonNode.Parse(options.DcqlQueryJson),
-            ["iat"] = iat.ToUnixTimeSeconds(),
-            ["exp"] = exp.ToUnixTimeSeconds(),
-        };
-
-        if (options.State is not null)
-        {
-            payload["state"] = options.State;
-        }
-
-        if (options.TransactionDataJson is not null)
-        {
-            payload["transaction_data"] = JsonNode.Parse(options.TransactionDataJson);
-        }
-
-        if (options.ClientMetadataJson is not null)
-        {
-            payload["client_metadata"] = JsonNode.Parse(options.ClientMetadataJson);
-        }
+        var payload = RequestObjectClaims.Build(options, iat, exp);
 
         var headerSegment = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(header.ToJsonString(JsonDefaults.Relaxed)));
         var payloadSegment = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(payload.ToJsonString(JsonDefaults.Relaxed)));
