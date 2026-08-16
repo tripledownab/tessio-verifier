@@ -1,0 +1,9 @@
+# REUSE 3.3 licensing declaration (reuse.software). One license for the whole repo, declared
+# centrally instead of as a header comment in every file.
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) Triple Down AB"
+SPDX-License-Identifier = "Apache-2.0"
