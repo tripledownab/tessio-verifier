@@ -14,4 +14,8 @@
     <ProjectReference Include="..\..\src\Tessio.Verifier.Trust\Tessio.Verifier.Trust.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

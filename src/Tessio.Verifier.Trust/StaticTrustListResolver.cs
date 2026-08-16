@@ -76,12 +76,20 @@ public sealed class StaticTrustListResolver : ITrustListResolver
                 "An identifier-only list cannot vouch for x5c credentials; configure trustAnchors.");
         }
 
-        return ChainAnchorsOnConfiguredRoot(x5c)
+        var (anchored, because) = ChainAnchorsOnConfiguredRoot(x5c);
+        return anchored
             ? Trusted()
-            : NotTrusted($"The certificate chain presented by '{issuer}' does not anchor on a configured trust anchor.");
+            : NotTrusted(
+                $"The certificate chain presented by '{issuer}' does not anchor on a configured trust anchor. "
+                + $"Chain status: {because}");
     }
 
-    private bool ChainAnchorsOnConfiguredRoot(ReadOnlyMemory<byte>[] x5c)
+    /// <summary>
+    /// Whether the chain anchors, and when it does not, what the platform said. "Does not anchor" on
+    /// its own sends the reader hunting for a wrong certificate when the real cause is often a
+    /// validity window, a missing basic-constraints flag or an unsupported critical extension.
+    /// </summary>
+    private (bool Anchored, string? Because) ChainAnchorsOnConfiguredRoot(ReadOnlyMemory<byte>[] x5c)
     {
         var certificates = x5c.Select(der => LoadCertificate(der.ToArray())).ToList();
         try
@@ -91,7 +99,7 @@ public sealed class StaticTrustListResolver : ITrustListResolver
             // Pinned leaf: the exact end-entity certificate was configured as an anchor.
             if (_trustAnchors.Any(anchor => anchor.RawData.AsSpan().SequenceEqual(leaf.RawData)))
             {
-                return true;
+                return (true, null);
             }
 
             using var chain = new X509Chain();
@@ -109,7 +117,43 @@ public sealed class StaticTrustListResolver : ITrustListResolver
                 chain.ChainPolicy.ExtraStore.Add(intermediate);
             }
 
-            return chain.Build(leaf);
+            if (chain.Build(leaf))
+            {
+                return (true, null);
+            }
+
+            var status = string.Join("; ", chain.ChainStatus
+                .Select(s => $"{s.Status}: {s.StatusInformation.Trim()}")
+                .DefaultIfEmpty("no status reported by the platform"));
+
+            // Name the issuer the chain is looking for and the anchors we hold. A PartialChain with
+            // neither of those printed sends the reader guessing; with both, a mismatch is obvious on
+            // sight and a genuine "right names, still fails" points at the certificates instead.
+            var anchorSubjects = string.Join(" | ", _trustAnchors.Select(a => a.Subject));
+
+            // Key identifiers, not just names. When the names match and the chain still fails, the
+            // cause is almost always a certificate authority that was regenerated under the same
+            // distinguished name with a new key: the leaf points at the old key, the anchor holds the
+            // new one, and comparing subjects alone makes that look like it should have worked.
+            var wantedKey = leaf.Extensions
+                .OfType<X509AuthorityKeyIdentifierExtension>()
+                .FirstOrDefault()?.KeyIdentifier;
+            var haveKeys = string.Join(" | ", _trustAnchors
+                .Select(a => a.Extensions.OfType<X509SubjectKeyIdentifierExtension>()
+                    .FirstOrDefault()?.SubjectKeyIdentifier ?? "none"));
+
+            // Opt-in dump of the offending leaf, for when the names and key ids all match and the
+            // chain still will not build. Certificates are public, but this is noisy, so it is behind
+            // an environment variable rather than on by default.
+            var dump = Environment.GetEnvironmentVariable("TESSIO_TRUST_DUMP_LEAF") == "1"
+                ? $" Leaf (base64 DER): {Convert.ToBase64String(leaf.RawData)}"
+                : string.Empty;
+
+            return (false,
+                $"{status} The chain's leaf names its issuer as '{leaf.Issuer}'. "
+                + $"Configured anchor subjects: {anchorSubjects}. "
+                + $"Leaf's authority key id: {(wantedKey is null ? "none" : Convert.ToHexString(wantedKey.Value.Span))}. "
+                + $"Anchor subject key ids: {haveKeys}.{dump}");
         }
         finally
         {
