@@ -29,10 +29,14 @@ var signing = HarnessCertificate.LoadOrCreate(
 // HTTPS, because OpenID4VP 1.0 requires request_uri (JAR-5.2) and response_uri (§8.2) to be https.
 // A self-signed chain suffices: the suite installs a trust-all X509TrustManager and a
 // NoopHostnameVerifier, so nothing has to be added to the container's truststore.
+// LocalPort exists because PublicBaseUri is not always where we listen. Against the OIDF suite the
+// two match (host.docker.internal:5099). Behind a tunnel, PublicBaseUri is a public https URL on
+// port 443 that forwards to a port here, and binding 443 locally would be wrong.
+var localPort = builder.Configuration.GetValue<int?>("LocalPort")
+    ?? new Uri(builder.Configuration["PublicBaseUri"]!).Port;
+
 builder.WebHost.ConfigureKestrel(kestrel =>
-    kestrel.ListenAnyIP(
-        new Uri(builder.Configuration["PublicBaseUri"]!).Port,
-        listen => listen.UseHttps(signing.TlsCertificate())));
+    kestrel.ListenAnyIP(localPort, listen => listen.UseHttps(signing.TlsCertificate())));
 
 var settings = HarnessSettings.Load(builder.Configuration) with
 {
