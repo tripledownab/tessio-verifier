@@ -77,3 +77,7 @@ issuer-key.pem
 issuer-cert.pem
 issuer-signing.jwk
 suite-paste/
+
+# Local trust anchors for the harness. Public certificates, but they are per-run
+# configuration and the committed copy of one already drifted from the test fixture.
+tools/conformance-harness/*.cer

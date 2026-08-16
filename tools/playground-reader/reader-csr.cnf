@@ -1,0 +1,17 @@
+# CSR for an mdoc reader authentication certificate (EUDIW Unfold playground).
+# SPEC: ISO/IEC 18013-5 Annex B.1.2 - a reader certificate carries the mdlReaderAuth
+# extended key usage (1.0.18013.5.1.6) and digitalSignature key usage.
+[ req ]
+default_md         = sha256
+prompt             = no
+distinguished_name = dn
+req_extensions     = ext
+
+[ dn ]
+CN = Tessio Verifier Reader
+O  = Triple Down AB
+C  = SE
+
+[ ext ]
+keyUsage         = critical, digitalSignature
+extendedKeyUsage = critical, 1.0.18013.5.1.6
