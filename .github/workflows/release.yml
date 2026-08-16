@@ -13,7 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub Release for this tag
-      id-token: write # OIDC token issuance for NuGet Trusted Publishing
+      id-token: write # OIDC token issuance for NuGet Trusted Publishing, and provenance signing
+      attestations: write # store the build provenance attestation
     env:
       NUGET_USER: ${{ secrets.NUGET_USER }}
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
@@ -45,6 +46,13 @@ jobs:
         with:
           name: release-nupkgs
           path: release-artifacts/*.*nupkg
+
+      # SLSA-style build provenance: a signed statement that these exact nupkgs were built by this
+      # workflow from this commit. Verifiable by anyone with `gh attestation verify <pkg> -R <repo>`.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: 'release-artifacts/*.nupkg'
 
       # Preferred path: Trusted Publishing (OIDC -> 1-hour API key, no long-lived secret).
       # Requires a nuget.org trusted publishing policy for this repo + workflow, and the
