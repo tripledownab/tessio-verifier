@@ -1,6 +1,6 @@
 # Releasing Tessio.Verifier
 
-The packages are consumed by a consuming application (Tessio Cloud) and by Tessio Labs, both via
+The packages are consumed by a consuming application (Tessio.Cloud) and by Tessio.Labs, both via
 `PackageReference`. A library fix does not reach either until it is published and the consumer's
 version is bumped. Keep those two steps together: the gap between them is how two `client_metadata`
 builders once drifted for weeks until an external conformance suite caught production advertising

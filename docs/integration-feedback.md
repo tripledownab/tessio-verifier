@@ -1,6 +1,6 @@
 # Integration feedback — hosting the verifier multi-tenant
 
-Feedback from building **Tessio Cloud** on top of `Tessio.Verifier` — a hosted, multi-tenant EUDI
+Feedback from building **Tessio.Cloud** on top of `Tessio.Verifier` — a hosted, multi-tenant EUDI
 age-verification API where the customer calls `POST /v1/age-checks` and polls `GET /v1/age-checks/{id}`.
 We consumed the library via NuGet `Tessio.Verifier.AspNetCore` **0.2.1** and drove the flow ourselves: our
 own `IStateCorrelatingSessionStore` (Postgres), our own create + completion, **bypassing the built-in
@@ -200,6 +200,6 @@ already happens. Skip unless a `net9.0` TFM is specifically wanted for AOT/trimm
 
 ---
 
-*Authored from the Tessio Cloud integration (`a consuming application`,
+*Authored from the Tessio.Cloud integration (`a consuming application`,
 `the consuming project`), revised after maintainer review. Happy to turn #1, #6, #4 and #2 into
 issues/PRs (all additive) against this repo.*
