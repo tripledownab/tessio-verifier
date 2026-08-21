@@ -73,8 +73,9 @@ public sealed class MultiTenantVerificationTests
     }
 
     // An ENCRYPTED direct_post.jwt wallet POST: a single "response" JWE encrypted to the key the session
-    // advertised, produced by the same encryptor a real wallet uses. This is the path a self-driving host's
-    // callback handler runs on the HAIP default response mode, and the only one that exercises the verifier's own key resolver.
+    // advertised, produced by the same encryptor a real wallet uses. This is the path a self-driving host
+    // takes on the HAIP default response mode, and the only one that exercises the verifier's own key
+    // resolver.
     private static WalletResponseData EncryptedResponseFor(VerificationSession session, string presentation)
     {
         var recipientJwkJson = RequestObjectPayload.TryGetEncryptionJwkJson(session.Request.SignedRequestObject)!;

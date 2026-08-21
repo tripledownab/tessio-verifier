@@ -1,19 +1,10 @@
 /*
  * tessio-design.css — Tessio design tokens.
  *
- * Single source of truth for colors, fonts, and the typographic baseline used
- * across every Tessio web property (verifier.tessio.eu, tessio.eu, etc.).
- *
- * Cross-repo sharing path (when tessio.eu site comes online):
- *   1. Extract this file (and any future logo / asset siblings) into
- *      a new repo `a shared design-token package`.
- *   2. Publish as `a shared design-token package` to GitHub Packages.
- *   3. Both sites: `npm install a shared design-token package` and
- *      `@import "a shared design-token package/tessio-design.css";`
- *      in their site-local global.css.
- *
- * Until then this file is the canonical copy — duplicate by copy-paste when
- * scaffolding the second site, and we'll dedupe via the package later.
+ * Single source of truth for the colors, fonts and typographic baseline this
+ * documentation site uses. Kept in one file, separate from global.css, so the
+ * tokens stay portable: the DocFX API reference and the Astro landing page
+ * both read from here and therefore render as one site.
  */
 
 @theme {

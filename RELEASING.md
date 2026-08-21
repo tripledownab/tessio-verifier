@@ -1,10 +1,9 @@
 # Releasing Tessio.Verifier
 
-The packages are consumed by a consuming application (Tessio.Cloud) and by Tessio.Labs, both via
-`PackageReference`. A library fix does not reach either until it is published and the consumer's
-version is bumped. Keep those two steps together: the gap between them is how two `client_metadata`
-builders once drifted for weeks until an external conformance suite caught production advertising
-values HAIP rejects.
+Downstream applications consume these packages via `PackageReference`. A library fix does not reach any
+of them until it is published and the consumer's version is bumped. Keep those two steps together: the
+gap between them is how two `client_metadata` builders once drifted for weeks, until an external
+conformance suite caught a deployed consumer advertising values HAIP rejects.
 
 ## Publishing is tag-driven, not manual
 
@@ -40,21 +39,23 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 
 ## Bumping the consumers
 
-- **a consuming application**: `the consuming project/Tessio.Verification.csproj`, the
-  `Tessio.Verifier.AspNetCore` `Version`. Because the product calls the library's own types (for
-  example `Tessio.Verifier.OpenId4Vp.ClientMetadata`), an **API** change surfaces at compile time
-  against a stale package, which is the structural guard. A behaviour-only fix (same API) does not, so
-  the bump is the discipline that carries it.
-- **A second consumer**: its own project file, if it consumes the changed package.
+In each consuming project, raise the `Version` on the `PackageReference` for every package that changed.
+
+A consumer that calls the library's own types (for example `Tessio.Verifier.OpenId4Vp.ClientMetadata`)
+gets one structural guard for free: an **API** change fails to compile against a stale package. A
+behaviour-only fix keeps the same API and compiles fine, so nothing catches it. The bump is the only
+discipline that carries that case, which is why it belongs in the same session as the release.
 
 ## Co-developing before a release
 
-You do not have to publish to test a consumer against an unreleased change. In a consuming application:
+You do not have to publish to test a consumer against an unreleased change. Point an environment
+variable at a local checkout of this repository:
 
 ```sh
 export TessioVerifierSource=/path/to/tessio-verifier
 dotnet build      # references the verifier source projects, not the package
 ```
 
-Unset the env var to return to the published package. CI and production always use the package, because
-the env var is never set there.
+This requires the consumer's build to honour the variable, by swapping its `PackageReference` for a
+`ProjectReference` when it is set. Unset it to return to the published package. Keep it unset in CI and
+in production, so what ships is always the released package.

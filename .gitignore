@@ -81,3 +81,7 @@ suite-paste/
 # Local trust anchors for the harness. Public certificates, but they are per-run
 # configuration and the committed copy of one already drifted from the test fixture.
 tools/conformance-harness/*.cer
+
+# Local agent tooling. The skills here are symlinks into a private checkout,
+# so committing them publishes a path from one machine and nothing usable.
+.claude/

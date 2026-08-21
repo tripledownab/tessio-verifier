@@ -200,6 +200,5 @@ already happens. Skip unless a `net9.0` TFM is specifically wanted for AOT/trimm
 
 ---
 
-*Authored from the Tessio.Cloud integration (`a consuming application`,
-`the consuming project`), revised after maintainer review. Happy to turn #1, #6, #4 and #2 into
+*Authored from a real integration, revised after maintainer review. Happy to turn #1, #6, #4 and #2 into
 issues/PRs (all additive) against this repo.*

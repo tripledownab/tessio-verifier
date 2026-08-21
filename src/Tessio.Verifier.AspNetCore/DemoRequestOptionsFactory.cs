@@ -67,8 +67,8 @@ internal static class DemoRequestOptionsFactory
 
     /// <summary>
     /// Delegates to <see cref="Tessio.Verifier.OpenId4Vp.ClientMetadata"/>, which is the single builder
-    /// for this object. It used to be assembled here and again in a consuming application; the two drifted and the
-    /// conformance suite caught the product advertising values HAIP rejects.
+    /// for this object. It used to be assembled here and again in a consuming application; the two
+    /// drifted, and the conformance suite caught the consumer advertising values HAIP rejects.
     /// </summary>
     private static string BuildClientMetadata(VerifierOptions options, JsonObject? responseEncryptionJwk) =>
         Tessio.Verifier.OpenId4Vp.ClientMetadata.Build(options.CredentialFormat, responseEncryptionJwk);

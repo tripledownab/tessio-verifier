@@ -201,7 +201,7 @@ Why not the alternatives:
 - **Persisting the private key**, even as KMS-encrypted ciphertext in Postgres, puts key material in your database. Derivation avoids that entirely.
 - **Sticky sessions** (route the callback to the instance that issued the request) store nothing, but couple you to load-balancer affinity and lose the key if that instance restarts mid-flow. A reasonable stopgap, not the target.
 
-This derivation path is **not yet wired into the library**, deliberately: no consumer has needed it yet, and adding the seam before a second instance needs it would be speculative (see the extract-when-needed rule). When you scale out, the change is a pluggable key source on `ResponseEncryptionKeyStore` (create-from-salt, resolve-by-kid) backed by your KMS. Until then the in-memory default is correct and needs no configuration.
+This derivation path is **not yet wired into the library**, deliberately: no consumer has needed it yet, and adding the seam before one does would be speculative (see the extract-when-needed rule). When you scale out, the change is a pluggable key source on `ResponseEncryptionKeyStore` (create-from-salt, resolve-by-kid) backed by your KMS. On a single instance the in-memory default is correct and needs no configuration.
 
 `ResponseMode.DirectPost` (cleartext form posts) is also supported, but encrypted responses are the profile default so stay on `DirectPostJwt` unless you have a reason not to.
 

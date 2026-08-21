@@ -9,11 +9,11 @@ namespace Tessio.Verifier.OpenId4Vp;
 /// <see cref="PresentationRequestOptions.ClientMetadataJson"/>.
 /// </summary>
 /// <remarks>
-/// One builder, deliberately. This object used to be assembled independently by the library and by
-/// a consuming application, which is invisible to a duplicate detector because the two versions were structurally
-/// different while meaning the same thing. They drifted, and the OpenID Foundation conformance suite
-/// found the product advertising values HAIP rejects long after the library had been fixed. Anything
-/// that sends a presentation request should call this rather than hand-rolling the object.
+/// One builder, deliberately. This object used to be assembled independently by the library and by a
+/// consuming application, which is invisible to a duplicate detector because the two versions were
+/// structurally different while meaning the same thing. They drifted, and the OpenID Foundation
+/// conformance suite found the consumer advertising values HAIP rejects long after the library had been
+/// fixed. Anything that sends a presentation request should call this rather than hand-rolling the object.
 /// </remarks>
 // SPEC: OpenID4VP 1.0 §5.1, narrowed by openid/OpenID4VP#233 to exactly three members. HAIP 1.0 §5
 // constrains the encryption values further.
