@@ -108,6 +108,29 @@ dotnet run
 `appsettings.Local.json` is gitignored. The harness refuses to start without both values rather than
 guessing, because a wrong endpoint fails as a timeout twenty seconds later with no clue attached.
 
+### Where key material lives
+
+**Outside this working tree.** The harness signs with a self-signed certificate it generates per run,
+and the private key must not sit in a git working tree at all. `.gitignore` would catch it, but an
+ignore rule is one `git add -f`, one edited `.gitignore` or one tool that does not read `.gitignore`
+away from failing. A file that is not in the tree cannot be committed.
+
+Point the harness at wherever you keep it. Paths may be absolute or relative to this directory:
+
+```json
+{
+  "Certificate": {
+    "LeafPath":      "../../../tessio-verifier-local/conformance-harness/harness-leaf.pem",
+    "KeyPath":       "../../../tessio-verifier-local/conformance-harness/harness-key.pem",
+    "AuthorityPath": "../../../tessio-verifier-local/conformance-harness/harness-ca.pem"
+  }
+}
+```
+
+Omit the block entirely and the harness falls back to `harness-leaf.pem`, `harness-key.pem` and
+`harness-ca.pem` in this directory. That still works and is still gitignored, but it puts a private key
+one mistake away from a public repository. Prefer the explicit paths.
+
 Set `Request:CredentialFormat` in `appsettings.json` to **match the variant you chose**. A mismatch
 fails the module for the wrong reason, and you will not see it until the screenshot.
 
@@ -129,7 +152,8 @@ when a rejection carries an untrusted issuer, precisely so this does not reach a
   (subject `CN=certification.openid.net, O=OpenID Foundation`). Obtain it from the response's
   `x5chain`, or copy the PEM constant from the suite source
   (`src/main/kotlin/com/android/identity/testapp/TestAppUtils.kt`), save it as `suite-mdoc-iaca.pem`
-  (gitignored, like every `.pem` here) and list it in `Suite:TrustAnchors`. It rolls roughly annually
+  outside the repository (see "Where key material lives") and list its path in
+  `Suite:TrustAnchors`. It rolls roughly annually
   (this one expires 2027-08-03); re-extract it when the positive modules begin rejecting on trust.
 - **`dc+sd-jwt`**: depends on how the suite signs. Start with none, and if the modules reject with an
   untrusted issuer, export the suite's issuer certificate and list its path in `Suite:TrustAnchors`.
