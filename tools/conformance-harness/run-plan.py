@@ -34,6 +34,8 @@ EXPECTED = {
     # Only applies to a verifier that advertises request_uri_method=post. We do not, so the suite skips
     # it and the harness is never called.
     "oid4vp-1final-verifier-request-uri-method-post": SUITE_DECIDES,
+    # mdoc only: the device signature covers a session transcript the suite deliberately gets wrong.
+    "oid4vp-1final-verifier-invalid-session-transcript": REJECT,
     "oid4vp-1final-verifier-invalid-kb-jwt-signature": REJECT,
     "oid4vp-1final-verifier-invalid-credential-signature": REJECT,
     "oid4vp-1final-verifier-invalid-sd-hash": REJECT,
