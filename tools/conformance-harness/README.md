@@ -134,6 +134,14 @@ one mistake away from a public repository. Prefer the explicit paths.
 Set `Request:CredentialFormat` in `appsettings.json` to **match the variant you chose**. A mismatch
 fails the module for the wrong reason, and you will not see it until the screenshot.
 
+Set `Request:Claim` to a claim the suite's credential carries, which is not the same claim for both
+variants. The suite's `urn:eudi:pid:1` credential has no `age_over_18`; its mdoc mDL does. Asking for a
+claim the credential lacks is a **silent** failure: the suite logs `filtered_disclosures: 0`, sends a
+perfectly valid presentation with nothing disclosed, and the module still verifies. The evidence page
+then reads "No claims disclosed", which does not satisfy what the positive modules ask for, "a screenshot
+showing that the verifier successfully verified the presented credential (for example, a page displaying
+the credential contents)". Use `family_name` for `sd_jwt_vc` and `age_over_18` for `iso_mdl`.
+
 ### Trust anchors, and the failure they prevent
 
 `StaticTrustListResolver` trusts an issuer identifier outright only when the credential's key was
@@ -184,6 +192,41 @@ in a single pass:
 
 Each module finishes as **REVIEW**: the suite cannot decide for you, the screenshot is the evidence.
 
+## Running the whole plan without a browser
+
+`run-plan.py` drives every module from the command line. The suite does all the wallet work itself once
+it has the authorization request, so nothing here needs a person clicking.
+
+```sh
+# Regression: run every module, compare each against what it should do, exit non-zero on a mismatch.
+# About a minute for the whole plan. Run this after changing OpenID4VP behaviour.
+python3 run-plan.py --clone-plan <existing-plan-id>
+
+# Evidence: the same, plus screenshot each evidence page and upload it, so the plan completes with the
+# artifacts certification needs. Slower, because each module waits to finish.
+python3 run-plan.py --clone-plan <existing-plan-id> --evidence
+```
+
+`--clone-plan` copies an existing plan's configuration, which is where the harness CA and the credential
+signing key already live, so a fresh plan needs no new key material. Use `--plan` to run one that
+exists. `--harness` moves off the default `https://localhost:5099`.
+
+Three things the script knows that are easy to get wrong by hand:
+
+- **A module only leaves `WAITING` once its evidence is in.** Starting the next module first claims the
+  alias and marks the previous one `INTERRUPTED`, which is not a result you can submit.
+- **Hitting the authorization endpoint is not the same as satisfying the suite.** The suite tracks
+  "paste the authorization request URI" as an outstanding browser interaction, and closing it takes a
+  separate call. Without that the module never finishes.
+- **A positive module that discloses nothing is a failure**, even though the suite is happy. The script
+  fails the run and points at `Request:Claim`.
+
+`EXPECTED` in the script says what each module should do. A module missing from it stops the run rather
+than being assumed to pass: the suite gains modules over time, and a silent assumption there would
+report a pass nobody made.
+
+The script never publishes a plan. Publishing exposes the run and belongs with the decision to certify.
+
 ### The negative tests are the point
 
 Eight of the twelve modules are negative: invalid session transcript, invalid key-binding JWT
@@ -211,7 +254,7 @@ plan first and fix anything red before paying. See <https://openid.net/certifica
 | `Suite:Issuer` | The suite's credential issuer, which we must trust. |
 | `Request:CredentialFormat` | `dc+sd-jwt` or `mso_mdoc`. Match the plan variant. |
 | `Request:ResponseMode` | `DirectPostJwt`. The HAIP plan offers no other value. |
-| `Request:Claim` | Single claim to request. The suite requires DCQL to name exactly one credential. |
+| `Request:Claim` | Single claim to request. The suite requires DCQL to name exactly one credential. It must be a claim the suite's credential actually carries: `family_name` for `sd_jwt_vc`, `age_over_18` for `iso_mdl`. |
 | `Request:ExpectedVct` | `urn:eudi:pid:1` for the suite's SD-JWT VC credential. |
 
 The signing certificate is self-signed and generated per run. The suite checks that `client_id`'s hash
