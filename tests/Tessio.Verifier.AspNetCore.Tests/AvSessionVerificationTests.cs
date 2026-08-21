@@ -139,7 +139,9 @@ public sealed class AvSessionVerificationTests : IDisposable
     [Fact]
     public async Task An_av_session_rejects_a_response_that_answers_a_different_session()
     {
-        // The device signature covers this session's client_id and nonce, so a replay must not verify.
+        // The device signature covers this session's nonce, so a replay must not verify. Only the nonce
+        // is under test: both sessions are issued by the same deployment, so under this profile they
+        // share one client_id (it is the response_uri), and it cannot tell them apart.
         await using var provider = BuildVerifier();
         var session = await CreateAvSessionAsync();
         var other = await CreateAvSessionAsync();

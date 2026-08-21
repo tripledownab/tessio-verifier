@@ -34,12 +34,14 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
     }
 
     /// <summary>
-    /// Whether a stored request still carries the parameters verification checks a response against: the
-    /// credential format, the requested <c>vct</c> or docType, the response_uri and the response_mode.
+    /// Whether a stored request still carries the DCQL query verification checks a response against. It
+    /// is a check on the request being present and readable, not on every parameter in it: a request that
+    /// passes here can still be missing a <c>response_uri</c>, and an mdoc response would then fail
+    /// device authentication.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// For a host that persists sessions itself. A request delivers those parameters either as claims in
+    /// For a host that persists sessions itself. A request delivers its parameters either as claims in
     /// its signed request object or as plain query parameters, and rows written before a host persisted
     /// either one have neither. Call this first and refuse such a session.
     /// </para>

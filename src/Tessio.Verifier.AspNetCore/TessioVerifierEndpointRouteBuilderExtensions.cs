@@ -269,6 +269,9 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             CallbackOutcome.Completed => (StatusCodes.Status200OK, (string?)null),
             CallbackOutcome.UnknownSession => (StatusCodes.Status400BadRequest, "unknown_session"),
             CallbackOutcome.SessionNotPending => (StatusCodes.Status409Conflict, "session_not_pending"),
+            // The response may be perfectly well formed. It is the stored session that cannot be checked
+            // against, so this is a conflict with the session's state rather than a bad request.
+            CallbackOutcome.SessionNotVerifiable => (StatusCodes.Status409Conflict, "session_not_verifiable"),
             _ => (StatusCodes.Status400BadRequest, "invalid_response"),
         };
 

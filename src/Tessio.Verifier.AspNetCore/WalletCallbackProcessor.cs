@@ -10,6 +10,7 @@ internal enum CallbackOutcome
     ResponseInvalid = 1,
     UnknownSession = 2,
     SessionNotPending = 3,
+    SessionNotVerifiable = 4,
 }
 
 /// <summary>
@@ -83,6 +84,17 @@ internal sealed class WalletCallbackProcessor
         {
             Log.CallbackNotPending(_logger, session.SessionId, session.Status);
             return new CallbackResult(CallbackOutcome.SessionNotPending, session.SessionId); // Sessions complete exactly once (replay protection).
+        }
+
+        // A host store can hand back a session whose request no longer says what was asked for, in either
+        // encoding. Verifying that one accepts a credential of any type, because a null ExpectedVct skips
+        // the type comparison in SdJwtVcVerifier and a null ExpectedDocType skips it in MdocVerifier. The
+        // built-in store never loses the request; a host store that persisted less than the whole request
+        // can, and AddTessioVerifier invites hosts to register one.
+        if (!WalletResponseVerifier.CanVerify(session.Request))
+        {
+            Log.CallbackSessionNotVerifiable(_logger, session.SessionId);
+            return new CallbackResult(CallbackOutcome.SessionNotVerifiable, session.SessionId);
         }
 
         // Verify every presented credential; the verifier derives audience, nonce, vct, docType and the

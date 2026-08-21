@@ -137,6 +137,9 @@ if (!WalletResponseVerifier.CanVerify(session.Request))
 }
 ```
 
+If you keep the built-in callback endpoint and only replace the store, you get this check already: it answers
+409 `session_not_verifiable` and leaves the session pending.
+
 ## 4. Verify the callback
 
 Correlate the response to a session by `state`, then verify. `IWalletResponseVerifier` parses the raw

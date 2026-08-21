@@ -36,6 +36,10 @@ internal static partial class Log
         Message = "Session {SessionId} completed: credential INVALID (issuer {Issuer}, errors: {ErrorCodes})")]
     public static partial void VerificationFailed(ILogger logger, string sessionId, string issuer, string errorCodes);
 
+    [LoggerMessage(EventId = 8, Level = LogLevel.Error,
+        Message = "Session {SessionId} carries no readable request parameters, so a wallet response cannot be checked against what was asked for")]
+    public static partial void CallbackSessionNotVerifiable(ILogger logger, string sessionId);
+
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Mock wallet failed for session {SessionId}.")]
     public static partial void MockWalletFailed(ILogger logger, Exception exception, string sessionId);
