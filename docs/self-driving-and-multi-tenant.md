@@ -103,19 +103,39 @@ Two things that cost real debugging time if you miss them:
   maps `timestamptz` to `DateTime` by default, so map the columns back to `DateTimeOffset` explicitly (Dapper
   type handler or read the value and construct the offset) rather than letting a `DateTime` flow in.
 
-## 3. Persist the whole request object
+## 3. Persist the whole request
 
-When you store and rebuild a session, keep the real `SignedRequestObject` on the `PresentationRequest`. The
-verifier reads it to recover what the frozen request contract does not otherwise retain:
+The verifier recovers what the frozen request contract does not otherwise retain by reading the request
+back:
 
 - `response_uri`, for the mdoc device-authentication transcript
 - `transaction_data`, which the wallet's Key Binding JWT must acknowledge
 - the DCQL, from which the expected `vct`, `docType` and credential format are derived
 
-Do not substitute an empty string. An empty value only appears to work for an SD-JWT request that carries no
-transaction data. It breaks mdoc device authentication and any transaction-data binding. The `ClientId`,
-`Nonce` and `State` on `PresentationRequest` must round-trip too, since the seam reads the audience and nonce
-from there.
+A request carries those in one of two encodings, and the verifier reads either.
+
+**JAR profiles (`SignedPresentationRequestBuilder`).** They live in the signed request object, so keep the
+real `SignedRequestObject` on the `PresentationRequest`. Do not substitute an empty string. An empty value
+only appears to work for an SD-JWT request that carries no transaction data. It breaks mdoc device
+authentication and any transaction-data binding.
+
+**The EU Age Verification profile (`AvPresentationRequestBuilder`).** It sends no request object at all, and
+its parameters ride in the authorization request URI. Store `AuthorizationRequestUri` verbatim and set
+`SignedRequestObject = ""`, which is the only value the frozen contract allows for "there is none".
+
+Either way the `ClientId`, `Nonce` and `State` on `PresentationRequest` must round-trip too, since the seam
+reads the audience and nonce from there.
+
+Rows written before you persisted either encoding have neither, and a response cannot be checked against
+them. Call `WalletResponseVerifier.CanVerify(session.Request)` and refuse those, rather than verifying
+against a request that says nothing:
+
+```csharp
+if (!WalletResponseVerifier.CanVerify(session.Request))
+{
+    return Results.Conflict(new { error = "check_not_verifiable" });
+}
+```
 
 ## 4. Verify the callback
 
@@ -161,11 +181,13 @@ request, nothing is process-wide. Give every tenant its own `client_id` and DCQL
 process verifies them all, including a mix of SD-JWT and mdoc tenants. There is no per-request option to set
 at the call site and nothing to keep in sync.
 
-One current limitation to design around: response decryption and the mdoc transcript thumbprint use the
-app-wide `ResponseEncryptionKeyProvider`. A single shared response-encryption key works across tenants (the
-key is the verifier's, see [going-live.md](going-live.md) section 6). Distinct per-tenant response keys are
-not yet resolved per session, so if you need encrypted responses start with one shared key, or start on
-unencrypted `direct_post` and add encryption once per-session key resolution lands.
+Response encryption is per session too. `ResponseEncryptionKeyStore.CreateForRequest` mints a key for each
+authorization request, the request advertises it in `client_metadata`, and the callback resolves it again by
+the `kid` the wallet echoes. Two tenants, and two in-flight requests of one tenant, each get their own key.
+
+The keys are held in memory, so a callback must reach the instance that issued the request. On more than one
+instance, wire a shared key source: see [going-live.md](going-live.md) section 6, which recommends deriving
+each request's key from one KMS master secret and storing only a per-request salt.
 
 ## 6. Completing sessions without a wallet
 
