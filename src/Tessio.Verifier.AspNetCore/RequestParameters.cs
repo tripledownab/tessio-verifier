@@ -232,7 +232,15 @@ internal static class RequestParameters
             var root = new JsonObject();
             foreach (var (name, values) in query)
             {
-                if (values.Count != 1 || values[0] is not { Length: > 0 } value)
+                // A parameter given twice makes the request ambiguous, and picking either value would be
+                // a guess about what the wallet saw. Refuse the whole request, as the dcql_query check
+                // above already does, rather than reading a parameter this session may not have sent.
+                if (values.Count > 1)
+                {
+                    return null;
+                }
+
+                if (values[0] is not { Length: > 0 } value)
                 {
                     continue;
                 }

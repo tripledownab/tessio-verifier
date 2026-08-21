@@ -140,6 +140,19 @@ public sealed class RequestParametersTests
     }
 
     [Fact]
+    public async Task A_parameter_given_twice_makes_the_request_unreadable()
+    {
+        // Picking one of two response_uri values would be a guess about what the wallet was told, and the
+        // mdoc device signature covers that exact string. Refusing matches how a duplicated dcql_query is
+        // already treated, rather than silently reading the request without it.
+        var av = await BuildAvRequestAsync();
+        var doubled = new Uri(
+            $"{av.AuthorizationRequestUri.AbsoluteUri}&response_uri={Uri.EscapeDataString("https://other.example/cb")}");
+
+        Assert.False(WalletResponseVerifier.CanVerify(AsSessionRequest(doubled, requestObject: "")));
+    }
+
+    [Fact]
     public void A_request_object_that_carries_no_dcql_is_not_verifiable()
     {
         // It decodes, so "did anything parse" would call it recoverable. It asks for no credential, so
