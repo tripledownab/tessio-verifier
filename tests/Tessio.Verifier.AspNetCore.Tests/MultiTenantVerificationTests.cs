@@ -78,7 +78,7 @@ public sealed class MultiTenantVerificationTests
     // resolver.
     private static WalletResponseData EncryptedResponseFor(VerificationSession session, string presentation)
     {
-        var recipientJwkJson = RequestObjectPayload.TryGetEncryptionJwkJson(session.Request.SignedRequestObject)!;
+        var recipientJwkJson = RequestParameters.TryGetEncryptionJwkJson(session.Request)!;
         var payload = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
         {
             ["vp_token"] = new Dictionary<string, string[]> { ["credential"] = [presentation] },

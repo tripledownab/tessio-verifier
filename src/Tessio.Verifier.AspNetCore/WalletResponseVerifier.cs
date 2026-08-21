@@ -33,6 +33,32 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
         _encryptionKeys = encryptionKeys;
     }
 
+    /// <summary>
+    /// Whether a stored request still carries the parameters verification checks a response against: the
+    /// credential format, the requested <c>vct</c> or docType, the response_uri and the response_mode.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For a host that persists sessions itself. A request delivers those parameters either as claims in
+    /// its signed request object or as plain query parameters, and rows written before a host persisted
+    /// either one have neither. Call this first and refuse such a session.
+    /// </para>
+    /// <para>
+    /// Verifying one instead does not fail cleanly, it fails in two different wrong ways. The audience
+    /// and nonce still hold, because those come from the session rather than from the request, but the
+    /// credential type goes unchecked: a null <c>ExpectedVct</c> skips the type comparison
+    /// (<c>SdJwtVcVerifier</c>) and a null <c>ExpectedDocType</c> skips the document-type comparison
+    /// (<c>MdocVerifier</c>), so a credential of the wrong type passes. Meanwhile an mdoc response fails
+    /// device authentication, because the transcript it signs covers a response_uri this session can no
+    /// longer produce. Neither outcome tells the caller what actually went wrong.
+    /// </para>
+    /// </remarks>
+    public static bool CanVerify(PresentationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return RequestParameters.AreRecoverable(request);
+    }
+
     /// <inheritdoc />
     public async Task<VerificationResult> VerifyAsync(
         VerificationSession session, WalletResponseData response, CancellationToken ct = default)
@@ -50,7 +76,7 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
             var parser = new WalletResponseParser(new WalletResponseParserOptions
             {
                 ResponseDecryptionKeyResolver = kid => _encryptionKeys.Get(kid)?.DecryptionKey,
-                PresentationFormat = RequestObjectPayload.TryGetRequestedFormat(session.Request.SignedRequestObject)
+                PresentationFormat = RequestParameters.TryGetRequestedFormat(session.Request)
                     ?? DefaultCredentialFormat,
             });
             parsed = await parser.ParseDetailedAsync(response, ct).ConfigureAwait(false);
@@ -75,7 +101,7 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
         VerificationSession session, ParsedWalletResponse response, CancellationToken ct)
     {
         // Transaction data is bound into the request object; the KB-JWT must acknowledge these exact bytes.
-        var transactionData = RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject) is { } tds
+        var transactionData = RequestParameters.TryGetTransactionData(session.Request) is { } tds
             ? new TransactionDataExpectation { TransactionData = tds }
             : null;
 
@@ -114,7 +140,7 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
             // multi-tenant process each session was issued under its tenant's client_id.
             Nonce = session.Request.Nonce,
             Audience = session.Request.ClientId,
-            ExpectedVct = RequestObjectPayload.TryGetExpectedVct(session.Request.SignedRequestObject),
+            ExpectedVct = RequestParameters.TryGetExpectedVct(session.Request),
         };
 
         // Only the concrete SD-JWT verifier carries the transaction-data overload; fall back for any
@@ -132,34 +158,20 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
     private static MdocVerificationContext BuildMdocContext(VerificationSession session)
     {
         var encrypted = string.Equals(
-            RequestObjectPayload.TryGetResponseMode(session.Request.SignedRequestObject),
+            RequestParameters.TryGetResponseMode(session.Request),
             "direct_post.jwt",
             StringComparison.Ordinal);
 
         return new MdocVerificationContext
         {
-            ExpectedDocType = RequestObjectPayload.TryGetExpectedDocType(session.Request.SignedRequestObject),
+            ExpectedDocType = RequestParameters.TryGetExpectedDocType(session.Request),
             ClientId = session.Request.ClientId,
             Nonce = session.Request.Nonce,
-            // From the session's own request object, because that is the key THIS session advertised.
-            // The process-wide singleton this used to read from is gone: with ephemeral keys there is
-            // no one thumbprint, and using the wrong session's would fail the device signature.
-            EncryptionKeyThumbprint = encrypted ? ThumbprintFromRequest(session.Request.SignedRequestObject) : null,
-            ResponseUri = RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject),
+            // From the session's own request, because that is the key THIS session advertised. The
+            // process-wide singleton this used to read from is gone: with ephemeral keys there is no one
+            // thumbprint, and using the wrong session's would fail the device signature.
+            EncryptionKeyThumbprint = encrypted ? RequestParameters.TryGetEncryptionKeyThumbprint(session.Request) : null,
+            ResponseUri = RequestParameters.TryGetResponseUri(session.Request),
         };
-    }
-
-    /// <summary>The RFC 7638 thumbprint of the encryption JWK this request advertised, from its kid.</summary>
-    private static byte[]? ThumbprintFromRequest(string requestObject)
-    {
-        if (RequestObjectPayload.TryGetEncryptionJwkJson(requestObject) is not { } jwkJson)
-        {
-            return null;
-        }
-
-        using var jwk = System.Text.Json.JsonDocument.Parse(jwkJson);
-        return jwk.RootElement.TryGetProperty("kid", out var kid) && kid.GetString() is { Length: > 0 } value
-            ? Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes(value)
-            : null;
     }
 }

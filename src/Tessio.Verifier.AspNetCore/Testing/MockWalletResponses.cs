@@ -73,7 +73,7 @@ public sealed class MockWalletResponses : IDisposable
             vct ?? DemoRequestOptionsFactory.DefaultVct,
             session.Request.Nonce,
             audience ?? session.Request.ClientId,
-            RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject),
+            RequestParameters.TryGetTransactionData(session.Request),
             claimValues);
 
         return new WalletResponseData
@@ -107,7 +107,7 @@ public sealed class MockWalletResponses : IDisposable
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var recipientJwkJson = RequestObjectPayload.TryGetEncryptionJwkJson(session.Request.SignedRequestObject)
+        var recipientJwkJson = RequestParameters.TryGetEncryptionJwkJson(session.Request)
             ?? throw new InvalidOperationException(
                 "This session advertised no encryption key, so it cannot receive an encrypted response. " +
                 "Build it with ResponseMode.DirectPostJwt and register a ResponseEncryptionKeyStore key.");
@@ -117,7 +117,7 @@ public sealed class MockWalletResponses : IDisposable
             vct ?? DemoRequestOptionsFactory.DefaultVct,
             session.Request.Nonce,
             audience ?? session.Request.ClientId,
-            RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject),
+            RequestParameters.TryGetTransactionData(session.Request),
             claimValues);
 
         var payload = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
@@ -185,7 +185,7 @@ public sealed class MockWalletResponses : IDisposable
         // it the device signature simply fails to verify, which reads as a crypto bug rather than the
         // missing argument it is, so refuse up front and say which one is missing.
         var encrypted = string.Equals(
-            RequestObjectPayload.TryGetResponseMode(session.Request.SignedRequestObject),
+            RequestParameters.TryGetResponseMode(session.Request),
             "direct_post.jwt",
             StringComparison.Ordinal);
         if (encrypted && encryptionKeyThumbprint is null)
@@ -196,13 +196,14 @@ public sealed class MockWalletResponses : IDisposable
                 "key thumbprint. Pass ResponseEncryptionKeyProvider.ThumbprintBytes, or build the session " +
                 "with ResponseMode.DirectPost.");
         }
-        // The device signature covers the response_uri, which is only readable from the signed request
-        // object. Guessing one would produce a response that fails verification for a reason unrelated to
-        // whatever the test is actually checking, so say so plainly instead.
-        var responseUri = RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject)
+        // The device signature covers the response_uri, which is read back from the request this session
+        // issued: from its signed request object, or from its plain query parameters. Guessing one would
+        // produce a response that fails verification for a reason unrelated to whatever the test is
+        // actually checking, so say so plainly instead.
+        var responseUri = RequestParameters.TryGetResponseUri(session.Request)
             ?? throw new InvalidOperationException(
-                "An mdoc response needs a signed request object carrying response_uri, because the device " +
-                "signature covers it. Build the session with a signing credential source.");
+                "An mdoc response needs a request carrying response_uri, because the device signature " +
+                "covers it. Build the session with a signing credential source, or with the AV builder.");
 
         var deviceResponse = _mdocIssuer.IssueDeviceResponse(
             claimNames ?? ["age_over_18"],

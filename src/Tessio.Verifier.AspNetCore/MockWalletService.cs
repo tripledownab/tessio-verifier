@@ -1,12 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Tokens;
 using Tessio.Verifier.OpenId4Vp;
 
 namespace Tessio.Verifier.AspNetCore;
@@ -81,15 +77,15 @@ internal sealed class MockWalletService : BackgroundService
                         session.Request.ClientId,
                         session.Request.Nonce,
                         _options.ResponseMode == ResponseMode.DirectPostJwt
-                            ? ThumbprintFromRequest(session.Request.SignedRequestObject)
+                            ? RequestParameters.TryGetEncryptionKeyThumbprint(session.Request)
                             : null,
-                        RequestObjectPayload.TryGetResponseUri(session.Request.SignedRequestObject) ?? string.Empty)
+                        RequestParameters.TryGetResponseUri(session.Request) ?? string.Empty)
                     : _issuer.IssuePresentation(
                         claims,
                         _options.ExpectedVct ?? DemoRequestOptionsFactory.DefaultVct,
                         session.Request.Nonce,
                         _options.ClientId,
-                        RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject));
+                        RequestParameters.TryGetTransactionData(session.Request));
 
                 // Mirror what a wallet POSTs: cleartext form for direct_post (OpenID4VP 1.0 §8.2),
                 // or an ECDH-ES-encrypted response JWT for direct_post.jwt (§8.3, the HAIP default).
@@ -101,7 +97,7 @@ internal sealed class MockWalletService : BackgroundService
                             EncryptResponse(
                                 presentation,
                                 session.Request.State ?? string.Empty,
-                                RequestObjectPayload.TryGetEncryptionJwkJson(session.Request.SignedRequestObject)
+                                RequestParameters.TryGetEncryptionJwkJson(session.Request)
                                     ?? throw new InvalidOperationException(
                                         "direct_post.jwt session advertised no encryption key in client_metadata.")),
                         },
@@ -133,20 +129,6 @@ internal sealed class MockWalletService : BackgroundService
                 Log.MockWalletFailed(_logger, e, sessionId);
             }
         }
-    }
-
-    /// <summary>The thumbprint of the encryption JWK this session's request advertised, from its kid.</summary>
-    private static byte[]? ThumbprintFromRequest(string requestObject)
-    {
-        if (RequestObjectPayload.TryGetEncryptionJwkJson(requestObject) is not { } jwkJson)
-        {
-            return null;
-        }
-
-        using var jwk = System.Text.Json.JsonDocument.Parse(jwkJson);
-        return jwk.RootElement.TryGetProperty("kid", out var kid) && kid.GetString() is { Length: > 0 } value
-            ? Base64UrlEncoder.DecodeBytes(value)
-            : null;
     }
 
     /// <summary>Encrypts the response the way a HAIP wallet does. See <see cref="EcdhEsJweEncryptor"/>.</summary>

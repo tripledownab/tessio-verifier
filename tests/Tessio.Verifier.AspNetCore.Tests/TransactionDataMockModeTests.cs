@@ -45,7 +45,7 @@ public sealed class TransactionDataMockModeTests : IAsyncDisposable
             options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
 
         // The request object carries the encoded transaction data for the wallet to hash.
-        var tds = RequestObjectPayload.TryGetTransactionData(session.Request.SignedRequestObject);
+        var tds = RequestParameters.TryGetTransactionData(session.Request);
         Assert.NotNull(tds);
         var decoded = System.Text.Encoding.UTF8.GetString(
             Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes(Assert.Single(tds!)));
