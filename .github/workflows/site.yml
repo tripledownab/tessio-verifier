@@ -71,7 +71,7 @@ jobs:
         # on every DocFX upgrade; sed survives upgrades as long as </head>
         # exists. Mirrors site/preview.sh.
         run: |
-          UMAMI_TAG='<script defer src="https://analytics.quaterio.com/script.js" data-website-id="a4075622-7115-4bb5-bc15-17b62a02408e"></script>'
+          UMAMI_TAG='<script defer src="https://analytics.tessio.eu/script.js" data-website-id="a4075622-7115-4bb5-bc15-17b62a02408e"></script>'
           find site/web/dist/docs -name "*.html" -type f -exec \
             sed -i "s|</head>|${UMAMI_TAG}</head>|" {} +
 
