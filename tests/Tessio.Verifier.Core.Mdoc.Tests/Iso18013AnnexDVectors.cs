@@ -104,11 +104,7 @@ internal static class Iso18013AnnexDVectors
         43e2425caf90d422422c04a8ee0304c0d3a68d
         """;
 
-    public static byte[] DeviceResponse => Decode(DeviceResponseHex);
+    public static byte[] DeviceResponse => WrappedHex.Decode(DeviceResponseHex);
 
-    public static byte[] DsCertificate => Decode(DsCertificateHex);
-
-    // Keep only hex digits: git checkout rewrites the raw string's line endings per platform.
-    private static byte[] Decode(string wrappedHex) =>
-        Convert.FromHexString(string.Concat(wrappedHex.Where(char.IsAsciiHexDigit)));
+    public static byte[] DsCertificate => WrappedHex.Decode(DsCertificateHex);
 }

@@ -57,6 +57,5 @@ internal static class WalletFrameworkInteropVectors
 
     public static string DeviceResponse => DeviceResponseBase64Url.ReplaceLineEndings(string.Empty).Replace(" ", string.Empty);
 
-    public static byte[] IacaCertificate =>
-        Convert.FromHexString(string.Concat(IacaCertificateHex.Where(char.IsAsciiHexDigit)));
+    public static byte[] IacaCertificate => WrappedHex.Decode(IacaCertificateHex);
 }
