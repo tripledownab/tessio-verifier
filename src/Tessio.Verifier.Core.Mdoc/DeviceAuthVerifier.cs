@@ -1,4 +1,3 @@
-using System.Formats.Cbor;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Cose;
 
@@ -36,7 +35,7 @@ internal static class DeviceAuthVerifier
         try
         {
             var message = CoseMessage.DecodeSign1(deviceSigned.DeviceSignature);
-            using var deviceKey = ReadDeviceKey(mso.DeviceKeyEncoded);
+            using var deviceKey = ECDsa.Create(CoseKey.ReadEc2PublicKey(mso.DeviceKeyEncoded));
             if (!message.VerifyDetached(deviceKey, deviceAuthenticationBytes))
             {
                 return [Error("The deviceSignature does not verify over this request's session transcript.")];
@@ -48,57 +47,6 @@ internal static class DeviceAuthVerifier
         }
 
         return [];
-    }
-
-    // SPEC: RFC 9053 §7 — COSE_Key EC2: kty(1)=2, crv(-1)∈{1,2,3}, x(-2), y(-3).
-    private static ECDsa ReadDeviceKey(byte[] coseKey)
-    {
-        var reader = new CborReader(coseKey, CborConformanceMode.Lax);
-        long? kty = null, crv = null;
-        byte[]? x = null, y = null;
-
-        reader.ReadStartMap();
-        while (reader.PeekState() != CborReaderState.EndMap)
-        {
-            var label = reader.ReadInt64();
-            switch (label)
-            {
-                case 1:
-                    kty = reader.ReadInt64();
-                    break;
-                case -1:
-                    crv = reader.ReadInt64();
-                    break;
-                case -2:
-                    x = reader.ReadByteString();
-                    break;
-                case -3:
-                    y = reader.ReadByteString();
-                    break;
-                default:
-                    reader.SkipValue();
-                    break;
-            }
-        }
-
-        reader.ReadEndMap();
-
-        if (kty != 2 || x is null || y is null)
-        {
-            throw new MdocProcessingException(
-                MdocErrorCodes.DeviceAuthInvalid, "The MSO device key is not an EC2 COSE_Key with x and y coordinates.");
-        }
-
-        var curve = crv switch
-        {
-            1 => ECCurve.NamedCurves.nistP256,
-            2 => ECCurve.NamedCurves.nistP384,
-            3 => ECCurve.NamedCurves.nistP521,
-            _ => throw new MdocProcessingException(
-                MdocErrorCodes.DeviceAuthInvalid, $"The MSO device key uses unsupported curve {crv}."),
-        };
-
-        return ECDsa.Create(new ECParameters { Curve = curve, Q = new ECPoint { X = x, Y = y } });
     }
 
     private static VerificationError Error(string message) =>

@@ -258,21 +258,8 @@ internal sealed class MdocTestBuilder : IDisposable
         return w.Encode();
     }
 
-    // SPEC: RFC 9053 — COSE_Key for EC2/P-256: {1:2, -1:1, -2:x, -3:y}.
-    private static void WriteCoseKey(CborWriter w, ECDsa key)
-    {
-        var p = key.ExportParameters(false);
-        w.WriteStartMap(4);
-        w.WriteInt32(1);
-        w.WriteInt32(2);
-        w.WriteInt32(-1);
-        w.WriteInt32(1);
-        w.WriteInt32(-2);
-        w.WriteByteString(p.Q.X!);
-        w.WriteInt32(-3);
-        w.WriteByteString(p.Q.Y!);
-        w.WriteEndMap();
-    }
+    private static void WriteCoseKey(CborWriter w, ECDsa key) =>
+        w.WriteEncodedValue(CoseKey.EncodeP256(key.ExportParameters(false)));
 
     private static void WriteTDate(CborWriter w, DateTimeOffset value)
     {

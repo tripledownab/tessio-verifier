@@ -47,6 +47,41 @@ public sealed class MdocVerifierTests : IDisposable
     }
 
     [Fact]
+    public async Task ExternalSessionTranscript_IsUsedVerbatimForDeviceAuth()
+    {
+        // The builder signs over the redirect transcript of its own values. Handing the verifier
+        // those same bytes externally, with every redirect field left null, must verify: the
+        // override is used as given and nothing else is consulted to build one.
+        var transcript = SessionTranscriptBuilder.Build(
+            _builder.ClientId, _builder.Nonce, _builder.EncryptionKeyThumbprint, _builder.ResponseUri);
+        var context = new MdocVerificationContext
+        {
+            ExpectedDocType = MdocTestBuilder.DefaultDocType,
+            SessionTranscript = transcript,
+        };
+
+        var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), context);
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    }
+
+    [Fact]
+    public async Task ExternalSessionTranscript_TheDeviceDidNotSign_FailsDeviceAuth()
+    {
+        var context = new MdocVerificationContext
+        {
+            ExpectedDocType = MdocTestBuilder.DefaultDocType,
+            SessionTranscript = SessionTranscriptBuilder.BuildForIso18013AnnexC(
+                [0x01], "https://verifier.example.com", encryptionParameters: null),
+        };
+
+        var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), context);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == MdocErrorCodes.DeviceAuthInvalid);
+    }
+
+    [Fact]
     public async Task SpoofedDocumentSigner_IsUntrusted()
     {
         // A second issuer with its own IACA: same doctype and claims, but its chain does not anchor

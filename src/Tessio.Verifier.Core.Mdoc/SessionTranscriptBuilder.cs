@@ -1,13 +1,15 @@
 using System.Formats.Cbor;
 using System.Security.Cryptography;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Tessio.Verifier.Core.Mdoc;
 
 /// <summary>
-/// Builds the ISO 18013-5 <c>SessionTranscript</c> for OpenID4VP, on either transport. The device
-/// signature covers these bytes, binding the presentation to this verifier's request. A redirect flow
-/// binds client_id, nonce, the response encryption key thumbprint and the response_uri; a Digital
-/// Credentials API flow binds the origin, nonce and thumbprint, and has no response_uri to bind.
+/// Builds the ISO 18013-5 <c>SessionTranscript</c> for each transport this library supports. The
+/// device signature covers these bytes, binding the presentation to this verifier's request. An
+/// OpenID4VP redirect flow binds client_id, nonce, the response encryption key thumbprint and the
+/// response_uri; OpenID4VP over the Digital Credentials API binds the origin, nonce and thumbprint;
+/// ISO/IEC 18013-7 Annex C over the same API binds the origin and the EncryptionInfo bytes.
 /// </summary>
 // SPEC: OpenID4VP 1.0 Annex B.2.6.1, redirect flows —
 //   SessionTranscript = [null, null, OpenID4VPHandover]
@@ -24,11 +26,10 @@ public static class SessionTranscriptBuilder
     /// Builds the SessionTranscript for a presentation made over the W3C Digital Credentials API.
     /// </summary>
     /// <remarks>
-    /// <see cref="MdocVerifier"/> does not use this. It builds the redirect-flow transcript from
-    /// <see cref="MdocVerificationContext"/>, which carries a <c>ResponseUri</c> and no Origin, so there
-    /// is no way to route a Digital Credentials API presentation through it. A caller verifying one takes
-    /// the bytes from here, pairs them with <see cref="BuildDeviceAuthenticationBytes"/>, and checks the
-    /// device signature over the result.
+    /// <see cref="MdocVerifier"/> does not call this. A caller verifying a Digital Credentials API
+    /// presentation takes the bytes from here and passes them via
+    /// <see cref="MdocVerificationContext.SessionTranscript"/>, which the verifier checks the device
+    /// signature over.
     /// </remarks>
     /// <param name="origin">
     /// The request's Origin, WITHOUT the <c>origin:</c> prefix. The prefix belongs on the Client
@@ -57,6 +58,58 @@ public static class SessionTranscriptBuilder
         WrapHandover("OpenID4VPDCAPIHandover", BuildDcApiHandoverInfo(origin, nonce, encryptionKeyThumbprint));
 
     /// <summary>
+    /// Builds the SessionTranscript for a presentation over the W3C Digital Credentials API under
+    /// ISO/IEC 18013-7 Annex C: the mdoc-native mechanism, distinct from OpenID4VP's DC API
+    /// handover on <see cref="BuildForDcApi"/>. The handover digest commits to the exact
+    /// EncryptionInfo bytes sent with the request and to the origin the browser reports.
+    /// </summary>
+    /// <param name="encryptionInfo">The encoded EncryptionInfo, byte for byte as sent.</param>
+    /// <param name="origin">The request's Origin, without the <c>origin:</c> prefix.</param>
+    /// <param name="encryptionParameters">
+    /// Null builds the base form, whose second element is null; the profile's examples print that
+    /// form. Non-null builds the form whose second element is these bytes tag-24 wrapped, which the
+    /// reference implementations derive the response's HPKE keys over. Pass the parameters exactly
+    /// as they sit inside <paramref name="encryptionInfo"/>, never re-encoded, because the second
+    /// element carries the bytes and not the values.
+    /// </param>
+    // SPEC (shape): the profile's published request example prints
+    //   SessionTranscript = [null, null, ["dcapi", h'...']]
+    // but no text this library can cite states the digest preimage. The construction
+    //   sha-256(cbor([base64url(EncryptionInfo), origin]))
+    // reproduces the profile's own published digest, which the conformance test pins.
+    public static byte[] BuildForIso18013AnnexC(byte[] encryptionInfo, string origin, byte[]? encryptionParameters)
+    {
+        ArgumentNullException.ThrowIfNull(encryptionInfo);
+        RequireBareOrigin(origin);
+
+        var info = new CborWriter(CborConformanceMode.Lax);
+        info.WriteStartArray(2);
+        info.WriteTextString(Base64UrlEncoder.Encode(encryptionInfo));
+        info.WriteTextString(origin);
+        info.WriteEndArray();
+
+        var w = new CborWriter(CborConformanceMode.Lax);
+        w.WriteStartArray(3);
+        w.WriteNull(); // DeviceEngagementBytes: none over this transport
+        if (encryptionParameters is null)
+        {
+            w.WriteNull();
+        }
+        else
+        {
+            w.WriteTag((CborTag)24);
+            w.WriteByteString(encryptionParameters);
+        }
+
+        w.WriteStartArray(2);
+        w.WriteTextString("dcapi");
+        w.WriteByteString(SHA256.HashData(info.Encode()));
+        w.WriteEndArray();
+        w.WriteEndArray();
+        return w.Encode();
+    }
+
+    /// <summary>
     /// The outer transcript, which both transports share: two nulls and a handover of
     /// <c>[label, sha-256(handoverInfo)]</c>. Only the label and the handover info differ between them,
     /// so this is stated once rather than twice.
@@ -75,20 +128,26 @@ public static class SessionTranscriptBuilder
         return w.Encode();
     }
 
-    internal static byte[] BuildDcApiHandoverInfo(string origin, string nonce, byte[]? encryptionKeyThumbprint)
+    /// <summary>
+    /// The <c>origin:</c> prefix belongs to the Client Identifier, never to a transcript. Refuse
+    /// rather than strip it: a caller passing the prefixed form has confused the two values, and
+    /// silently accepting it would produce a transcript that verifies here and nowhere else.
+    /// </summary>
+    private static void RequireBareOrigin(string origin)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        ArgumentNullException.ThrowIfNull(nonce);
-
-        // The prefix belongs to the Client Identifier, never to the transcript. Refuse rather than strip
-        // it: a caller passing the prefixed form has confused the two values, and silently accepting it
-        // would produce a transcript that verifies here and nowhere else.
         if (origin.StartsWith("origin:", StringComparison.Ordinal))
         {
             throw new ArgumentException(
                 "The Origin must not carry the 'origin:' Client Identifier Prefix. Pass the bare origin, " +
                 "for example https://verifier.example.com.", nameof(origin));
         }
+    }
+
+    internal static byte[] BuildDcApiHandoverInfo(string origin, string nonce, byte[]? encryptionKeyThumbprint)
+    {
+        ArgumentNullException.ThrowIfNull(nonce);
+        RequireBareOrigin(origin);
 
         var w = new CborWriter(CborConformanceMode.Lax);
         w.WriteStartArray(3);

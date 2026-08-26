@@ -171,6 +171,11 @@ public sealed class MdocVerifier
             return [];
         }
 
+        if (context.SessionTranscript is { } externalTranscript)
+        {
+            return DeviceAuthVerifier.Verify(document, mso, externalTranscript);
+        }
+
         if (context.ClientId is null || context.Nonce is null || context.ResponseUri is null)
         {
             return [new VerificationError

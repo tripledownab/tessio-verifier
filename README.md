@@ -21,6 +21,7 @@ The EUDI Wallet arrives under Regulation (EU) 2024/1183: member states must make
 - OpenID4VP 1.0 verifier flow (cross-device / QR), **DCQL** queries, JAR-signed requests (RFC 9101)
 - **SD-JWT VC** verification: issuer signature (JWT VC Issuer Metadata and X.509), selective disclosure, key binding (KB-JWT), transaction data
 - **mdoc** (`mso_mdoc`) verification: ISO 18013-5/-7 mobile documents like the mDL, validated against the spec's own vectors and an independent implementation
+- **W3C Digital Credentials API transport** (ISO/IEC 18013-7 Annex C): build the `{deviceRequest, encryptionInfo}` request pair, open the HPKE-encrypted response (RFC 9180, checked against the RFC's own vectors) and verify device auth over the Annex C session transcript (`Iso18013AnnexC`)
 - Token Status List revocation checking
 - **Demo / Mock / Test / Live** modes so you can build before wallets exist, then serve real ones
 - Idiomatic ASP.NET Core integration (DI + minimal APIs) and a runnable sample
