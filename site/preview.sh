@@ -35,7 +35,7 @@ if [[ "${1:-}" != "--skip-build" ]]; then
   # arbitrary scripts (only _googleAnalyticsTagId is built-in). Forking the
   # master template would drift on every DocFX upgrade; post-build sed is
   # decoupled and survives upgrades as long as </head> exists.
-  UMAMI_TAG='<script defer src="https://analytics.quaterio.com/script.js" data-website-id="a4075622-7115-4bb5-bc15-17b62a02408e"></script>'
+  UMAMI_TAG='<script defer src="https://analytics.tessio.eu/script.js" data-website-id="a4075622-7115-4bb5-bc15-17b62a02408e"></script>'
   find "$DIST_DIR/docs" -name "*.html" -type f | while read -r f; do
     sed -i.bak "s|</head>|${UMAMI_TAG}</head>|" "$f" && rm "$f.bak"
   done

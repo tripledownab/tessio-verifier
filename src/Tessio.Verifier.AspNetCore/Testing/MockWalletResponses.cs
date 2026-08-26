@@ -227,6 +227,38 @@ public sealed class MockWalletResponses : IDisposable
         };
     }
 
+    /// <summary>
+    /// Answers an ISO/IEC 18013-7 Annex C request the way a wallet reached over the W3C Digital
+    /// Credentials API does: mints an mdoc DeviceResponse whose device signature covers the derived
+    /// Annex C session transcript, and seals it to the request's recipient key. Returns the
+    /// base64url <c>EncryptedResponse</c> the browser would deliver.
+    /// </summary>
+    /// <param name="encryptionInfo">The request's encoded EncryptionInfo, byte for byte as issued.</param>
+    /// <param name="origin">The origin of the page making the browser call.</param>
+    /// <param name="claimNames">Elements to disclose. Defaults to <c>age_over_18</c>.</param>
+    /// <param name="docType">mdoc docType. Defaults to the EU age-verification attestation.</param>
+    /// <param name="mdocNamespace">Namespace holding the elements. Defaults to <paramref name="docType"/>.</param>
+    /// <param name="claimValues">Values to disclose, by claim name, overriding the sample persona.</param>
+    public string CreateAnnexCEncryptedResponse(
+        byte[] encryptionInfo,
+        string origin,
+        IEnumerable<string>? claimNames = null,
+        string? docType = null,
+        string? mdocNamespace = null,
+        IReadOnlyDictionary<string, object>? claimValues = null)
+    {
+        ArgumentNullException.ThrowIfNull(encryptionInfo);
+
+        var type = docType ?? EuAgeVerificationDocType;
+        var transcript = Core.Mdoc.Iso18013AnnexC.BuildEncryptionSessionTranscript(encryptionInfo, origin);
+        var deviceResponse = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes(
+            _mdocIssuer.IssueDeviceResponseOverTranscript(
+                claimNames ?? ["age_over_18"], type, mdocNamespace ?? type, transcript, claimValues));
+
+        return Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(
+            Core.Mdoc.Iso18013AnnexC.SealResponse(deviceResponse, encryptionInfo, origin));
+    }
+
     /// <summary>Releases the ephemeral issuer keys and certificates.</summary>
     public void Dispose()
     {

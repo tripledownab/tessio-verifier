@@ -54,6 +54,22 @@ internal sealed class MockMdocIssuer : IDisposable
         string nonce,
         byte[]? encryptionKeyThumbprint,
         string responseUri,
+        IReadOnlyDictionary<string, object>? claimValues = null) =>
+        IssueDeviceResponseOverTranscript(
+            claimNames, docType, mdocNamespace,
+            SessionTranscriptBuilder.Build(clientId, nonce, encryptionKeyThumbprint, responseUri),
+            claimValues);
+
+    /// <summary>
+    /// The same DeviceResponse with the device signature over caller-supplied transcript bytes, for
+    /// transports whose transcript is not the OpenID4VP redirect form, such as ISO/IEC 18013-7
+    /// Annex C over the Digital Credentials API.
+    /// </summary>
+    public string IssueDeviceResponseOverTranscript(
+        IEnumerable<string> claimNames,
+        string docType,
+        string mdocNamespace,
+        byte[] sessionTranscript,
         IReadOnlyDictionary<string, object>? claimValues = null)
     {
         List<byte[]> encodedItems = [];
@@ -93,7 +109,7 @@ internal sealed class MockMdocIssuer : IDisposable
         w.WriteTextString("issuerAuth");
         w.WriteEncodedValue(issuerAuth);
         w.WriteEndMap();
-        WriteDeviceSigned(w, docType, clientId, nonce, encryptionKeyThumbprint, responseUri);
+        WriteDeviceSigned(w, docType, sessionTranscript);
         w.WriteEndMap();
         w.WriteEndArray();
         w.WriteTextString("status");
@@ -102,8 +118,7 @@ internal sealed class MockMdocIssuer : IDisposable
         return Base64UrlEncoder.Encode(w.Encode());
     }
 
-    private void WriteDeviceSigned(
-        CborWriter w, string docType, string clientId, string nonce, byte[]? encryptionKeyThumbprint, string responseUri)
+    private void WriteDeviceSigned(CborWriter w, string docType, byte[] sessionTranscript)
     {
         var emptyMap = new CborWriter(CborConformanceMode.Lax);
         emptyMap.WriteStartMap(0);
@@ -113,8 +128,8 @@ internal sealed class MockMdocIssuer : IDisposable
         nameSpacesBytes.WriteByteString(emptyMap.Encode());
         var encodedNameSpaces = nameSpacesBytes.Encode();
 
-        var transcript = SessionTranscriptBuilder.Build(clientId, nonce, encryptionKeyThumbprint, responseUri);
-        var deviceAuthBytes = SessionTranscriptBuilder.BuildDeviceAuthenticationBytes(transcript, docType, encodedNameSpaces);
+        var deviceAuthBytes = SessionTranscriptBuilder.BuildDeviceAuthenticationBytes(
+            sessionTranscript, docType, encodedNameSpaces);
         var signature = CoseSign1Message.SignDetached(deviceAuthBytes, new CoseSigner(_deviceKey, HashAlgorithmName.SHA256));
 
         w.WriteTextString("deviceSigned");

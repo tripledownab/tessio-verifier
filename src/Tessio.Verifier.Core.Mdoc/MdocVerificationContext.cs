@@ -30,4 +30,12 @@ public sealed record MdocVerificationContext
 
     /// <summary>The <c>response_uri</c> of the request. Fourth element of the handover info.</summary>
     public string? ResponseUri { get; init; }
+
+    /// <summary>
+    /// An externally built session transcript. When set, device authentication is verified over
+    /// exactly these bytes and none of the fields above are used to build one. Set it for
+    /// presentations whose transcript this type cannot describe, such as ISO/IEC 18013-7 Annex C
+    /// over the Digital Credentials API (<see cref="Iso18013AnnexCResponse.EncryptionSessionTranscript"/>).
+    /// </summary>
+    public byte[]? SessionTranscript { get; init; }
 }
