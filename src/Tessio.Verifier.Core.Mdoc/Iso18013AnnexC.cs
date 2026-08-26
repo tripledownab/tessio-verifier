@@ -96,7 +96,7 @@ public sealed record Iso18013AnnexCResponse
 
     /// <summary>
     /// The transcript whose second element carries the tag-24 EncryptionParameters. The response's
-    /// HPKE keys are derived over it, and the reference wallet implementations sign device
+    /// HPKE keys are derived over it, and the reference implementations verify device
     /// authentication over it: pass it to <see cref="MdocVerificationContext.SessionTranscript"/>.
     /// </summary>
     public required byte[] EncryptionSessionTranscript { get; init; }

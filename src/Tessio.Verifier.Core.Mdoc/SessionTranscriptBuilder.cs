@@ -110,9 +110,10 @@ public static class SessionTranscriptBuilder
     }
 
     /// <summary>
-    /// The outer transcript, which both transports share: two nulls and a handover of
-    /// <c>[label, sha-256(handoverInfo)]</c>. Only the label and the handover info differ between them,
-    /// so this is stated once rather than twice.
+    /// The outer transcript the two OpenID4VP transports share: two nulls and a handover of
+    /// <c>[label, sha-256(handoverInfo)]</c>. Only the label and the handover info differ between
+    /// them, so this is stated once rather than twice. The Annex C transcript does not come through
+    /// here, because its second element is not always null.
     /// </summary>
     private static byte[] WrapHandover(string handoverLabel, byte[] handoverInfo)
     {

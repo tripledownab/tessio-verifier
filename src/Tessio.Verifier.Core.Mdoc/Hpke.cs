@@ -18,7 +18,7 @@ internal static class Hpke
     private static readonly byte[] KemSuiteId = [.. "KEM"u8, 0x00, 0x10];
     private static readonly byte[] HpkeSuiteId = [.. "HPKE"u8, 0x00, 0x10, 0x00, 0x01, 0x00, 0x01];
 
-    // RFC 9180 §5.1: mode_base = 0x00, the first byte of key_schedule_context.
+    // RFC 9180 §5: mode_base = 0x00, used by §5.1 as the first byte of key_schedule_context.
     private const byte ModeBase = 0x00;
 
     // RFC 9180 §7.1 and §7.3 for this suite: Npk = 65 (uncompressed SEC 1 point),
