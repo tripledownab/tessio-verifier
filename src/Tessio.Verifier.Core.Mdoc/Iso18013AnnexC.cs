@@ -64,6 +64,22 @@ public static class Iso18013AnnexC
                 encryptionInfo, origin, encryptionParameters: null),
         };
     }
+
+    /// <summary>
+    /// Produces the <c>EncryptedResponse</c> a wallet would return for a request: seals
+    /// <paramref name="deviceResponse"/> to the request's recipient key over the derived session
+    /// transcript, with a fresh ephemeral sender key. For tests, fixtures and mock wallets; a
+    /// verifier never seals in production.
+    /// </summary>
+    public static byte[] SealResponse(byte[] deviceResponse, byte[] encryptionInfo, string origin)
+    {
+        var parameters = EncryptionInfo.ExtractEncryptionParameters(encryptionInfo);
+        var transcript = SessionTranscriptBuilder.BuildForIso18013AnnexC(encryptionInfo, origin, parameters);
+        using var recipient = ECDiffieHellman.Create(EncryptionInfo.ReadRecipientKey(encryptionInfo));
+        using var ephemeral = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var (enc, cipherText) = Hpke.Seal(ephemeral, recipient, info: transcript, aad: [], deviceResponse);
+        return EncryptedResponse.Encode(enc, cipherText);
+    }
 }
 
 /// <summary>What the browser call carries, and what the verifier keeps to open the answer.</summary>

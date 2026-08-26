@@ -96,38 +96,10 @@ public sealed class Iso18013AnnexCFlowTests
         Assert.Equal([0x02], cipherText);
     }
 
-    private static byte[] SealLikeAWallet(byte[] encryptionInfo, string origin, byte[] plaintext)
-    {
-        var parameters = EncryptionInfo.ExtractEncryptionParameters(encryptionInfo);
-        var transcript = SessionTranscriptBuilder.BuildForIso18013AnnexC(encryptionInfo, origin, parameters);
-        using var recipient = ECDiffieHellman.Create(ReadRecipientKey(encryptionInfo));
-        using var ephemeral = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var (enc, cipherText) = Hpke.Seal(ephemeral, recipient, info: transcript, aad: [], plaintext);
-        return WrapEncryptedResponse(enc, cipherText);
-    }
-
-    private static ECParameters ReadRecipientKey(byte[] encryptionInfo)
-    {
-        var reader = new CborReader(encryptionInfo, CborConformanceMode.Lax);
-        reader.ReadStartArray();
-        reader.ReadTextString(); // "dcapi"
-        reader.ReadStartMap();
-        ECParameters? key = null;
-        while (reader.PeekState() != CborReaderState.EndMap)
-        {
-            if (reader.ReadTextString() == "recipientPublicKey")
-            {
-                key = CoseKey.ReadEc2PublicKey(reader.ReadEncodedValue().ToArray());
-            }
-            else
-            {
-                reader.SkipValue();
-            }
-        }
-
-        Assert.NotNull(key);
-        return key.Value;
-    }
+    // The wallet side of the round trip is the library's own SealResponse, so this suite also
+    // covers the public seal-open pair end to end.
+    private static byte[] SealLikeAWallet(byte[] encryptionInfo, string origin, byte[] plaintext) =>
+        Iso18013AnnexC.SealResponse(plaintext, encryptionInfo, origin);
 
     private static byte[] WrapEncryptedResponse(
         byte[] enc, byte[] cipherText, string label = "dcapi", bool extraMember = false)

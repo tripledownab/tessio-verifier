@@ -38,6 +38,38 @@ internal static class EncryptionInfo
         return w.Encode();
     }
 
+    /// <summary>Reads the recipient public key back out of an encoded EncryptionInfo.</summary>
+    public static ECParameters ReadRecipientKey(byte[] encryptionInfo)
+    {
+        var parameters = ExtractEncryptionParameters(encryptionInfo);
+        try
+        {
+            var reader = new CborReader(parameters, CborConformanceMode.Lax);
+            reader.ReadStartMap();
+            ECParameters? key = null;
+            while (reader.PeekState() != CborReaderState.EndMap)
+            {
+                if (reader.ReadTextString() == "recipientPublicKey")
+                {
+                    key = CoseKey.ReadEc2PublicKey(reader.ReadEncodedValue().ToArray());
+                }
+                else
+                {
+                    reader.SkipValue();
+                }
+            }
+
+            reader.ReadEndMap();
+            return key ?? throw new MdocProcessingException(
+                MdocErrorCodes.StructureInvalid, "The EncryptionInfo carries no recipientPublicKey.");
+        }
+        catch (Exception e) when (e is CborContentException or InvalidOperationException)
+        {
+            throw new MdocProcessingException(
+                MdocErrorCodes.StructureInvalid, $"The EncryptionInfo parameters are not the expected CBOR shape: {e.Message}");
+        }
+    }
+
     /// <summary>
     /// Returns the encoded bytes of the EncryptionParameters map, exactly as they sit inside
     /// <paramref name="encryptionInfo"/>. The derived session transcript embeds these bytes
