@@ -49,8 +49,7 @@ public static class Iso18013AnnexC
         byte[] encryptedResponse, byte[] responseKeyPkcs8, byte[] encryptionInfo, string origin)
     {
         var (enc, cipherText) = EncryptedResponse.Decode(encryptedResponse);
-        var parameters = EncryptionInfo.ExtractEncryptionParameters(encryptionInfo);
-        var encryptionTranscript = SessionTranscriptBuilder.BuildForIso18013AnnexC(encryptionInfo, origin, parameters);
+        var encryptionTranscript = BuildEncryptionSessionTranscript(encryptionInfo, origin);
 
         using var responseKey = ECDiffieHellman.Create();
         responseKey.ImportPkcs8PrivateKey(responseKeyPkcs8, out _);
@@ -66,6 +65,15 @@ public static class Iso18013AnnexC
     }
 
     /// <summary>
+    /// The derived session transcript for a request: the base transcript with the request's
+    /// EncryptionParameters bytes, verbatim, as the second element. The response's HPKE keys are
+    /// derived over it, and it is what a wallet-side signer needs before sealing.
+    /// </summary>
+    public static byte[] BuildEncryptionSessionTranscript(byte[] encryptionInfo, string origin) =>
+        SessionTranscriptBuilder.BuildForIso18013AnnexC(
+            encryptionInfo, origin, EncryptionInfo.ExtractEncryptionParameters(encryptionInfo));
+
+    /// <summary>
     /// Produces the <c>EncryptedResponse</c> a wallet would return for a request: seals
     /// <paramref name="deviceResponse"/> to the request's recipient key over the derived session
     /// transcript, with a fresh ephemeral sender key. For tests, fixtures and mock wallets; a
@@ -73,8 +81,7 @@ public static class Iso18013AnnexC
     /// </summary>
     public static byte[] SealResponse(byte[] deviceResponse, byte[] encryptionInfo, string origin)
     {
-        var parameters = EncryptionInfo.ExtractEncryptionParameters(encryptionInfo);
-        var transcript = SessionTranscriptBuilder.BuildForIso18013AnnexC(encryptionInfo, origin, parameters);
+        var transcript = BuildEncryptionSessionTranscript(encryptionInfo, origin);
         using var recipient = ECDiffieHellman.Create(EncryptionInfo.ReadRecipientKey(encryptionInfo));
         using var ephemeral = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         var (enc, cipherText) = Hpke.Seal(ephemeral, recipient, info: transcript, aad: [], deviceResponse);
