@@ -38,37 +38,13 @@ public sealed class Iso18013AnnexCConformanceTests
     public void AnnexCTranscript_ReproducesThePublishedDigest()
     {
         var transcript = SessionTranscriptBuilder.BuildForIso18013AnnexC(
-            Iso18013AnnexCVectors.EncryptionInfo, Iso18013AnnexCVectors.Origin, encryptionParameters: null);
+            Iso18013AnnexCVectors.EncryptionInfo, Iso18013AnnexCVectors.Origin);
 
         // 83 = array(3), f6 f6 = null null, 82 = array(2), 65 + "dcapi", 5820 = 32-byte bstr,
         // then the digest the specification prints.
         byte[] expected =
             [.. Convert.FromHexString("83f6f6826564636170695820"), .. Iso18013AnnexCVectors.TranscriptDigest];
         Assert.Equal(expected, transcript);
-    }
-
-    [Fact]
-    public void AnnexCEncryptionTranscript_EmbedsTheSentParameterBytesVerbatim()
-    {
-        // No published vector exists for this form; the construction comes from the reference
-        // implementations, and this pins its shape against drift: the base transcript with the
-        // second null replaced by the tag-24-wrapped EncryptionParameters bytes as sent.
-        var parameters = EncryptionInfo.ExtractEncryptionParameters(Iso18013AnnexCVectors.EncryptionInfo);
-
-        var transcript = SessionTranscriptBuilder.BuildForIso18013AnnexC(
-            Iso18013AnnexCVectors.EncryptionInfo, Iso18013AnnexCVectors.Origin, parameters);
-
-        var w = new CborWriter(CborConformanceMode.Lax);
-        w.WriteStartArray(3);
-        w.WriteNull();
-        w.WriteTag((CborTag)24);
-        w.WriteByteString(parameters);
-        w.WriteStartArray(2);
-        w.WriteTextString("dcapi");
-        w.WriteByteString(Iso18013AnnexCVectors.TranscriptDigest);
-        w.WriteEndArray();
-        w.WriteEndArray();
-        Assert.Equal(w.Encode(), transcript);
     }
 
     [Fact]

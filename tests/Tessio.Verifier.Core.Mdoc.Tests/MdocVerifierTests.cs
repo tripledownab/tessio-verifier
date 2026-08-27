@@ -71,8 +71,7 @@ public sealed class MdocVerifierTests : IDisposable
         var context = new MdocVerificationContext
         {
             ExpectedDocType = MdocTestBuilder.DefaultDocType,
-            SessionTranscript = SessionTranscriptBuilder.BuildForIso18013AnnexC(
-                [0x01], "https://verifier.example.com", encryptionParameters: null),
+            SessionTranscript = SessionTranscriptBuilder.BuildForIso18013AnnexC([0x01], "https://verifier.example.com"),
         };
 
         var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), context);

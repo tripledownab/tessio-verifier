@@ -250,7 +250,7 @@ public sealed class MockWalletResponses : IDisposable
         ArgumentNullException.ThrowIfNull(encryptionInfo);
 
         var type = docType ?? EuAgeVerificationDocType;
-        var transcript = Core.Mdoc.Iso18013AnnexC.BuildEncryptionSessionTranscript(encryptionInfo, origin);
+        var transcript = Core.Mdoc.Iso18013AnnexC.BuildSessionTranscript(encryptionInfo, origin);
         var deviceResponse = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes(
             _mdocIssuer.IssueDeviceResponseOverTranscript(
                 claimNames ?? ["age_over_18"], type, mdocNamespace ?? type, transcript, claimValues));

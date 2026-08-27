@@ -41,7 +41,7 @@ public sealed class AnnexCMockWalletTests
             new MdocVerificationContext
             {
                 ExpectedDocType = AvDocType,
-                SessionTranscript = opened.EncryptionSessionTranscript,
+                SessionTranscript = opened.SessionTranscript,
             });
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));

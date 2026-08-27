@@ -36,11 +36,17 @@ public static class Iso18013AnnexC
     }
 
     /// <summary>
-    /// Decrypts an <c>EncryptedResponse</c>. The HPKE keys are derived with the encryption
-    /// session transcript as <c>info</c> and no aad, the reference implementations' construction.
-    /// Throws <see cref="AuthenticationTagMismatchException"/> when the key, the EncryptionInfo
-    /// bytes or the origin do not match what the wallet sealed to.
+    /// Decrypts an <c>EncryptedResponse</c>. The HPKE keys are derived with the session transcript
+    /// as <c>info</c> and no aad. Throws <see cref="AuthenticationTagMismatchException"/> when the
+    /// key, the EncryptionInfo bytes or the origin do not match what the wallet sealed to.
     /// </summary>
+    /// <remarks>
+    /// The transcript is the plain one, whose second element is null. A wallet reached over the
+    /// Digital Credentials API was observed on 2026-08-27 to derive its keys and sign device
+    /// authentication over exactly that, and to produce an undecryptable response otherwise.
+    /// Some implementations instead derive over a variant carrying the EncryptionParameters, which
+    /// this does NOT use; the observed exchange is what governs here.
+    /// </remarks>
     /// <param name="encryptedResponse">The wallet's response, decoded from base64url.</param>
     /// <param name="responseKeyPkcs8">The stored <see cref="Iso18013AnnexCRequest.ResponseKeyPkcs8"/>.</param>
     /// <param name="encryptionInfo">The stored <see cref="Iso18013AnnexCRequest.EncryptionInfo"/>, byte for byte.</param>
@@ -49,39 +55,36 @@ public static class Iso18013AnnexC
         byte[] encryptedResponse, byte[] responseKeyPkcs8, byte[] encryptionInfo, string origin)
     {
         var (enc, cipherText) = EncryptedResponse.Decode(encryptedResponse);
-        var encryptionTranscript = BuildEncryptionSessionTranscript(encryptionInfo, origin);
+        var transcript = BuildSessionTranscript(encryptionInfo, origin);
 
         using var responseKey = ECDiffieHellman.Create();
         responseKey.ImportPkcs8PrivateKey(responseKeyPkcs8, out _);
-        var deviceResponse = Hpke.Open(responseKey, enc, info: encryptionTranscript, aad: [], cipherText);
+        var deviceResponse = Hpke.Open(responseKey, enc, info: transcript, aad: [], cipherText);
 
         return new Iso18013AnnexCResponse
         {
             DeviceResponse = deviceResponse,
-            EncryptionSessionTranscript = encryptionTranscript,
-            SessionTranscript = SessionTranscriptBuilder.BuildForIso18013AnnexC(
-                encryptionInfo, origin, encryptionParameters: null),
+            SessionTranscript = transcript,
         };
     }
 
     /// <summary>
-    /// The derived session transcript for a request: the base transcript with the request's
-    /// EncryptionParameters bytes, verbatim, as the second element. The response's HPKE keys are
-    /// derived over it, and it is what a wallet-side signer needs before sealing.
+    /// The session transcript for a request: what the response's HPKE keys are derived over, and
+    /// what device authentication is signed over. One construction for both, because a wallet was
+    /// observed using one.
     /// </summary>
-    public static byte[] BuildEncryptionSessionTranscript(byte[] encryptionInfo, string origin) =>
-        SessionTranscriptBuilder.BuildForIso18013AnnexC(
-            encryptionInfo, origin, EncryptionInfo.ExtractEncryptionParameters(encryptionInfo));
+    public static byte[] BuildSessionTranscript(byte[] encryptionInfo, string origin) =>
+        SessionTranscriptBuilder.BuildForIso18013AnnexC(encryptionInfo, origin);
 
     /// <summary>
     /// Produces the <c>EncryptedResponse</c> a wallet would return for a request: seals
-    /// <paramref name="deviceResponse"/> to the request's recipient key over the derived session
+    /// <paramref name="deviceResponse"/> to the request's recipient key over the session
     /// transcript, with a fresh ephemeral sender key. For tests, fixtures and mock wallets; a
     /// verifier never seals in production.
     /// </summary>
     public static byte[] SealResponse(byte[] deviceResponse, byte[] encryptionInfo, string origin)
     {
-        var transcript = BuildEncryptionSessionTranscript(encryptionInfo, origin);
+        var transcript = BuildSessionTranscript(encryptionInfo, origin);
         using var recipient = ECDiffieHellman.Create(EncryptionInfo.ReadRecipientKey(encryptionInfo));
         using var ephemeral = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         var (enc, cipherText) = Hpke.Seal(ephemeral, recipient, info: transcript, aad: [], deviceResponse);
@@ -108,7 +111,7 @@ public sealed record Iso18013AnnexCRequest
     public required byte[] ResponseKeyPkcs8 { get; init; }
 }
 
-/// <summary>An opened Annex C response: the decrypted bytes and the transcripts.</summary>
+/// <summary>An opened Annex C response: the decrypted bytes and the transcript that binds them.</summary>
 public sealed record Iso18013AnnexCResponse
 {
     /// <summary>
@@ -118,16 +121,9 @@ public sealed record Iso18013AnnexCResponse
     public required byte[] DeviceResponse { get; init; }
 
     /// <summary>
-    /// The transcript whose second element carries the tag-24 EncryptionParameters. The response's
-    /// HPKE keys are derived over it, and the reference implementations verify device
-    /// authentication over it: pass it to <see cref="MdocVerificationContext.SessionTranscript"/>.
-    /// </summary>
-    public required byte[] EncryptionSessionTranscript { get; init; }
-
-    /// <summary>
-    /// The base transcript, second element null, the form the profile's examples print for the
-    /// response. Kept alongside because published examples and reference code differ on which form
-    /// device authentication signs; verify over <see cref="EncryptionSessionTranscript"/> first.
+    /// The transcript this response is bound to. Pass it to
+    /// <see cref="MdocVerificationContext.SessionTranscript"/>: the device signature covers it, and
+    /// the response was decrypted with it, so a response that opened will verify against this one.
     /// </summary>
     public required byte[] SessionTranscript { get; init; }
 }
