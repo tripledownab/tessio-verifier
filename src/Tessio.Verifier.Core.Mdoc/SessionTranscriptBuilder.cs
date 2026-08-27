@@ -65,19 +65,18 @@ public static class SessionTranscriptBuilder
     /// </summary>
     /// <param name="encryptionInfo">The encoded EncryptionInfo, byte for byte as sent.</param>
     /// <param name="origin">The request's Origin, without the <c>origin:</c> prefix.</param>
-    /// <param name="encryptionParameters">
-    /// Null builds the base form, whose second element is null; the profile's examples print that
-    /// form. Non-null builds the form whose second element is these bytes tag-24 wrapped, which the
-    /// reference implementations derive the response's HPKE keys over. Pass the parameters exactly
-    /// as they sit inside <paramref name="encryptionInfo"/>, never re-encoded, because the second
-    /// element carries the bytes and not the values.
-    /// </param>
+    /// <remarks>
+    /// The second element is null. Some implementations instead place the request's
+    /// EncryptionParameters there, tag-24 wrapped, and derive the response's HPKE keys over that;
+    /// a wallet reached over the Digital Credentials API was observed on 2026-08-27 using the form
+    /// built here, for both the response encryption and the device signature.
+    /// </remarks>
     // SPEC (shape): the profile's published request example prints
     //   SessionTranscript = [null, null, ["dcapi", h'...']]
     // but no text this library can cite states the digest preimage. The construction
     //   sha-256(cbor([base64url(EncryptionInfo), origin]))
     // reproduces the profile's own published digest, which the conformance test pins.
-    public static byte[] BuildForIso18013AnnexC(byte[] encryptionInfo, string origin, byte[]? encryptionParameters)
+    public static byte[] BuildForIso18013AnnexC(byte[] encryptionInfo, string origin)
     {
         ArgumentNullException.ThrowIfNull(encryptionInfo);
         RequireBareOrigin(origin);
@@ -91,16 +90,7 @@ public static class SessionTranscriptBuilder
         var w = new CborWriter(CborConformanceMode.Lax);
         w.WriteStartArray(3);
         w.WriteNull(); // DeviceEngagementBytes: none over this transport
-        if (encryptionParameters is null)
-        {
-            w.WriteNull();
-        }
-        else
-        {
-            w.WriteTag((CborTag)24);
-            w.WriteByteString(encryptionParameters);
-        }
-
+        w.WriteNull(); // EReaderKeyBytes: none either
         w.WriteStartArray(2);
         w.WriteTextString("dcapi");
         w.WriteByteString(SHA256.HashData(info.Encode()));

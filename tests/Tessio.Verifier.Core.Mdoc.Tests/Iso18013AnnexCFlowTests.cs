@@ -29,7 +29,7 @@ public sealed class Iso18013AnnexCFlowTests
     }
 
     [Fact]
-    public void OpenResponse_ReturnsWhatAWalletSealed_AndBothTranscripts()
+    public void OpenResponse_ReturnsWhatAWalletSealed_AndTheTranscriptItIsBoundTo()
     {
         var request = Request();
         var plaintext = "stand-in DeviceResponse bytes"u8.ToArray();
@@ -39,12 +39,8 @@ public sealed class Iso18013AnnexCFlowTests
             request.ResponseKeyPkcs8, request.EncryptionInfo, Origin);
 
         Assert.Equal(plaintext, opened.DeviceResponse);
-        var parameters = EncryptionInfo.ExtractEncryptionParameters(request.EncryptionInfo);
         Assert.Equal(
-            SessionTranscriptBuilder.BuildForIso18013AnnexC(request.EncryptionInfo, Origin, parameters),
-            opened.EncryptionSessionTranscript);
-        Assert.Equal(
-            SessionTranscriptBuilder.BuildForIso18013AnnexC(request.EncryptionInfo, Origin, null),
+            SessionTranscriptBuilder.BuildForIso18013AnnexC(request.EncryptionInfo, Origin),
             opened.SessionTranscript);
     }
 
