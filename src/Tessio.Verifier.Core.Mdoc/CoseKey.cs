@@ -36,7 +36,10 @@ internal static class CoseKey
         return w.Encode();
     }
 
-    /// <summary>Reads an EC2 COSE_Key into curve and point. Unknown labels are skipped.</summary>
+    /// <summary>
+    /// Reads an EC2 COSE_Key into curve and point, and validates that the point is on that curve.
+    /// Unknown labels are skipped.
+    /// </summary>
     public static ECParameters ReadEc2PublicKey(byte[] coseKey)
     {
         var reader = new CborReader(coseKey, CborConformanceMode.Lax);
@@ -84,6 +87,8 @@ internal static class CoseKey
                 MdocErrorCodes.StructureInvalid, $"The COSE_Key uses unsupported curve {crv}."),
         };
 
-        return new ECParameters { Curve = curve, Q = new ECPoint { X = x, Y = y } };
+        // The device key arrives inside a presented credential, so the point is attacker-chosen
+        // and is validated here rather than left to the platform's key import.
+        return NistPrimeCurves.PublicKeyParameters(curve, x, y);
     }
 }
