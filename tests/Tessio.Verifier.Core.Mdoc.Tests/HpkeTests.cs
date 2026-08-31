@@ -101,16 +101,17 @@ public sealed class HpkeTests
     [Fact]
     public void Open_WithAnOffCurvePoint_Throws()
     {
-        // Right length, right prefix, but the point is not on P-256. The platform's key import
-        // must reject it; this pins that on every OS the tests run on, because computing a key
-        // agreement on an attacker-chosen off-curve point must never happen. The exception type
-        // is the platform's own, so only the base type is asserted.
+        // Right length, right prefix, but the point is not on P-256. Computing a key agreement on
+        // an attacker-chosen off-curve point must never happen, and the rejection must read the
+        // same on every OS, so this asserts the library's own exception rather than the
+        // platform's: Windows CNG answers an off-curve point with PlatformNotSupportedException.
         using var recipient = VectorKey(Rfc9180Vectors.SkRm, Rfc9180Vectors.PkRm);
         var offCurve = Rfc9180Vectors.Enc;
         Array.Clear(offCurve, 33, 32);
 
-        Assert.ThrowsAny<CryptographicException>(() => Hpke.Open(
+        var e = Assert.Throws<CryptographicException>(() => Hpke.Open(
             recipient, offCurve, Rfc9180Vectors.Info, Rfc9180Vectors.Aad, Rfc9180Vectors.Ciphertext));
+        Assert.Contains("not on P-256", e.Message, StringComparison.Ordinal);
     }
 
     [Fact]

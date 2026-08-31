@@ -142,10 +142,9 @@ internal static class Hpke
                 $"The encapsulated key is not an uncompressed P-256 point ({PublicKeyLength} bytes starting 0x04).");
         }
 
-        return ECDiffieHellman.Create(new ECParameters
-        {
-            Curve = ECCurve.NamedCurves.nistP256,
-            Q = new ECPoint { X = enc[1..33], Y = enc[33..] },
-        });
+        // RFC 9180 §7.1.1 requires DeserializePublicKey to validate the point. An attacker chooses
+        // these bytes, and a key agreement must never run on a point that is not on the curve.
+        return ECDiffieHellman.Create(NistPrimeCurves.PublicKeyParameters(
+            ECCurve.NamedCurves.nistP256, enc[1..33], enc[33..]));
     }
 }
