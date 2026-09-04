@@ -118,12 +118,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
                 ErrorCodes.StructureInvalid, "The credential is not a valid SD-JWT compact serialization (<jwt>~<disclosures…>~[kb-jwt]).");
         }
 
-        JsonWebToken issuerJwt;
-        try
-        {
-            issuerJwt = new JsonWebToken(presentation.IssuerJwt);
-        }
-        catch (ArgumentException)
+        if (!CompactJwt.TryParse(presentation.IssuerJwt, out var issuerJwt))
         {
             throw new SdJwtProcessingException(ErrorCodes.StructureInvalid, "The issuer-signed JWT is malformed.");
         }

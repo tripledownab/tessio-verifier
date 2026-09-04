@@ -74,12 +74,11 @@ public sealed class WalletResponseParser : IPresentationResponseParser
 
     private async Task<(string VpTokenJson, string? State)> UnwrapResponseJwtAsync(string responseJwt)
     {
-        JsonWebToken jwe;
-        try
-        {
-            jwe = new JsonWebToken(responseJwt);
-        }
-        catch (ArgumentException)
+        // Through CompactJwt, which is where this library states what a malformed token looks like.
+        // Written inline this named one of the constructor's two complaints and let the other escape the
+        // parser, so a caller that had correctly wrapped this in a WalletResponseException handler could
+        // still meet an exception it had no reason to expect.
+        if (!CompactJwt.TryParse(responseJwt, out var jwe))
         {
             throw new WalletResponseException("The direct_post.jwt response is not a well-formed JWT/JWE.");
         }
@@ -145,14 +144,15 @@ public sealed class WalletResponseParser : IPresentationResponseParser
             return plaintext;
         }
 
-        try
-        {
-            return Base64UrlEncoder.Decode(new JsonWebToken(plaintext).EncodedPayload);
-        }
-        catch (ArgumentException)
+        // The plaintext is attacker-reachable despite arriving from a decryption: ECDH-ES is anonymous
+        // key agreement, so anyone holding the client_metadata public key can encrypt a payload of their
+        // choosing to it. The nested JWT here is therefore untrusted input like any other.
+        if (!CompactJwt.TryParse(plaintext, out var nested))
         {
             throw new WalletResponseException("The decrypted wallet response is neither JSON nor a nested JWT.");
         }
+
+        return Base64UrlEncoder.Decode(nested.EncodedPayload);
     }
 
     private static (string VpTokenJson, string? State) ExtractResponseClaims(string payloadJson)

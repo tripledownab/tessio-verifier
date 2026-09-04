@@ -10,6 +10,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tessio.Verifier.Core.Tests" />
+    <!-- For CompactJwt, which the wallet response parser needs and no consumer of this package does.
+         Mirrors the grant Tessio.Verifier.OpenId4Vp already makes to Tessio.Verifier.AspNetCore. -->
+    <InternalsVisibleTo Include="Tessio.Verifier.OpenId4Vp" />
   </ItemGroup>
 
   <PropertyGroup>

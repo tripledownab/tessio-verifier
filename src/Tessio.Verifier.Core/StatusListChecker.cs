@@ -102,12 +102,7 @@ internal sealed class StatusListChecker
     private async Task<List<VerificationError>> ValidateStatusListTokenAsync(
         string statusListJwt, string uri, long idx, string credentialIssuer, CancellationToken ct)
     {
-        JsonWebToken token;
-        try
-        {
-            token = new JsonWebToken(statusListJwt);
-        }
-        catch (ArgumentException)
+        if (!CompactJwt.TryParse(statusListJwt, out var token))
         {
             return [Error(ErrorCodes.StatusInvalid, "The status list response is not a well-formed JWT.")];
         }

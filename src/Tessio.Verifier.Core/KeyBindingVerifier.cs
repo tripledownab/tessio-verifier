@@ -25,12 +25,7 @@ internal static class KeyBindingVerifier
     {
         var errors = new List<VerificationError>();
 
-        JsonWebToken token;
-        try
-        {
-            token = new JsonWebToken(kbJwt);
-        }
-        catch (ArgumentException)
+        if (!CompactJwt.TryParse(kbJwt, out var token))
         {
             errors.Add(Error(ErrorCodes.KeyBindingInvalid, "The KB-JWT is not a well-formed JWT."));
             return errors;
