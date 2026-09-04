@@ -120,9 +120,9 @@ Point the harness at wherever you keep it. Paths may be absolute or relative to 
 ```json
 {
   "Certificate": {
-    "LeafPath":      "../../../tessio-verifier-local/conformance-harness/harness-leaf.pem",
-    "KeyPath":       "../../../tessio-verifier-local/conformance-harness/harness-key.pem",
-    "AuthorityPath": "../../../tessio-verifier-local/conformance-harness/harness-ca.pem"
+    "LeafPath":      "/path/to/private-keys/conformance-harness/harness-leaf.pem",
+    "KeyPath":       "/path/to/private-keys/conformance-harness/harness-key.pem",
+    "AuthorityPath": "/path/to/private-keys/conformance-harness/harness-ca.pem"
   }
 }
 ```

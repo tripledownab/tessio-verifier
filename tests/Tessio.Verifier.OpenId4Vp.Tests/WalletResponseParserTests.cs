@@ -118,6 +118,27 @@ public class WalletResponseParserTests
         await Assert.ThrowsAsync<WalletResponseException>(() => new WalletResponseParser().ParseAsync(response));
     }
 
+    /// <summary>
+    /// Every malformed `response` is refused as a wallet-response fault, whatever shape the malformation
+    /// takes.
+    /// </summary>
+    /// <remarks>
+    /// JsonWebToken's constructor reports a bad token two ways, and a guard written inline names one of
+    /// them: a segment that is not valid base64url raises FormatException (IDX10400) rather than any
+    /// ArgumentException. The cases below cover both complaints, so a guard that goes back to naming
+    /// only one fails here.
+    /// </remarks>
+    [Theory]
+    [InlineData("eyJhbGciOiJFQ0RILUVTIn0.not.a.real.jwe")] // base64url that will not decode
+    [InlineData("!!!.???.***")]                            // no valid segment at all
+    [InlineData("one-segment-only")]                       // too few segments
+    [InlineData("a.b.c.d.e.f")]                            // too many segments
+    public async Task MalformedResponseJwt_ThrowsWalletResponseException(string responseJwt)
+    {
+        await Assert.ThrowsAsync<WalletResponseException>(
+            () => new WalletResponseParser().ParseAsync(FormResponse(("response", responseJwt))));
+    }
+
     [Fact]
     public async Task MissingVpTokenAndResponse_Throws()
     {
