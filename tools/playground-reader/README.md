@@ -21,7 +21,7 @@ no secret and are tracked, so the request stays reproducible.
 Choose a directory outside the repository and keep the key there:
 
 ```sh
-KEYDIR=../tessio-verifier-local/playground-reader   # anywhere outside this working tree
+KEYDIR=/path/to/private-keys/playground-reader   # anywhere outside this working tree
 mkdir -p "$KEYDIR" && chmod 700 "$KEYDIR"
 
 openssl ecparam -name prime256v1 -genkey -noout -out "$KEYDIR/reader-key.pem"
