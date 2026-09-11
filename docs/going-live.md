@@ -133,6 +133,24 @@ builder.Services.AddSingleton<ITrustListResolver>(new StaticTrustListResolver(
     trustAnchors: [rootCertificate]));   // CA roots or pinned issuer certificates
 ```
 
+**Certificate validity is read on both paths.** Pinning a certificate says "this exact certificate",
+not "this certificate forever": a pinned issuer certificate that has expired, or has not yet begun, is
+rejected, and the reason names its window. An anchored chain is judged the same way, by the chain
+builder. Expiry is what bounds how long a key stays trusted once nobody is looking after it, and a
+pinned leaf is no exception to that.
+
+Pass `clock:` when you verify at a chosen instant rather than at now, such as re-checking a stored
+presentation or running a published conformance vector whose certificates have since expired. It
+governs **both** paths, the pinned leaf and the chain build, so the answer cannot depend on which of
+them a given configuration happens to take. Give it the **same** `TimeProvider` you give the verifier,
+or the two halves judge one presentation at two different moments and disagree about exactly the
+certificates whose window has closed.
+
+```csharp
+var clock = TimeProvider.System;   // or a fixed one, when replaying something frozen
+new StaticTrustListResolver(issuers, trustAnchors: [rootCertificate], clock: clock);
+```
+
 For metadata-only issuers a plain identifier list works, loaded from a JSON document of the form `{"trusted_issuers": ["https://issuer.example", ...]}` on disk or at an HTTPS URL:
 
 ```csharp
