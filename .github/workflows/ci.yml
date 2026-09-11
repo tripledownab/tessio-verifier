@@ -59,6 +59,23 @@ jobs:
       - name: Test
         run: dotnet test Tessio.Verifier.sln --no-build --configuration Release --logger "trx;LogFileName=test-results.trx"
 
+      # The run above happens on a UTC machine, and some of what this library decides is a comparison
+      # against a certificate's validity window. X509Certificate2 reports NotBefore and NotAfter in
+      # LOCAL time, so code that compares them against a UTC clock is exactly right on a UTC machine
+      # and wrong by the offset everywhere else. A suite that only ever runs at UTC cannot see that.
+      #
+      # Re-running the trust tests east of Greenwich is what turns the guarantee into something CI
+      # enforces rather than something a comment claims. It is the trust project only, and reuses the
+      # build above, so it costs seconds rather than a job.
+      #
+      # TZ is read by .NET on Linux and macOS. On the Windows matrix entry it is ignored, so this step
+      # re-runs the tests at that runner's own zone and adds nothing there. Harmless, and worth saying
+      # rather than leaving a reader to assume the coverage is on every platform.
+      - name: Test the trust decisions again, away from UTC
+        env:
+          TZ: Pacific/Kiritimati
+        run: dotnet test tests/Tessio.Verifier.Trust.Tests --no-build --configuration Release
+
       - name: Pack
         run: dotnet pack Tessio.Verifier.sln --no-build --configuration Release --output ./artifacts
 

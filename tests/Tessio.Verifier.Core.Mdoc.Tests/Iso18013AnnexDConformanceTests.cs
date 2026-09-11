@@ -16,7 +16,15 @@ public sealed class Iso18013AnnexDConformanceTests
     private const string MdlDocType = "org.iso.18013.5.1.mDL";
     private const string MdlNamespace = "org.iso.18013.5.1";
 
-    /// <summary>Inside the vector's MSO validity window (signed 2020-10-01, validUntil 2021-10-01).</summary>
+    /// <summary>
+    /// Inside the vector's MSO validity window (signed 2020-10-01, validUntil 2021-10-01).
+    /// </summary>
+    /// <remarks>
+    /// TWO constraints now, not one. The trust resolver reads the Document Signer certificate's own
+    /// window at this same clock, and that certificate runs 2020-10-01 to 2021-10-01 (read from the
+    /// vector with openssl, not assumed). The two happen to coincide, so a single instant satisfies
+    /// both; moving this clock means checking it against both.
+    /// </remarks>
     private sealed class AnnexDClock : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => new(2021, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -92,9 +100,16 @@ public sealed class Iso18013AnnexDConformanceTests
     public async Task FullPipeline_PassesEverything_ExceptTheProximityDeviceMac()
     {
         using var dsCert = DsCertificate();
+        // THE SAME CLOCK ON BOTH HALVES. The resolver reads a pinned certificate's own validity
+        // window, and this vector's certificate expired years ago in wall-clock terms. Giving the
+        // verifier a 2021 clock and leaving the resolver on the system one would judge one frozen
+        // artifact at two different instants, and the trust half would reject what the signature half
+        // had just accepted.
+        var clock = new AnnexDClock();
         var verifier = new MdocVerifier(
-            new StaticTrustListResolver([dsCert.Subject], source: "iso-annex-d", trustAnchors: [dsCert]),
-            clock: new AnnexDClock());
+            new StaticTrustListResolver(
+                [dsCert.Subject], source: "iso-annex-d", trustAnchors: [dsCert], clock: clock),
+            clock: clock);
 
         var result = await verifier.VerifyAsync(
             new PresentedCredential { Format = MdocVerifier.Format, RawValue = DeviceResponseBase64Url() },

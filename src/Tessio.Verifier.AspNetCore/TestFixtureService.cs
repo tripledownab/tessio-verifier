@@ -39,12 +39,20 @@ internal sealed class TestFixtureService : BackgroundService
         _store = store;
 
         // A dedicated verifier instance: fixture metadata served offline, fixture issuer trusted.
+        //
+        // ONE CLOCK, GIVEN TO BOTH HALVES. The resolver reads certificate validity at whatever clock
+        // it holds, so leaving it on the system one would evaluate a single historical vector in two
+        // eras at once. It is inert as configured, because this resolver holds identifiers and no
+        // trust anchors and the clock is only consulted for an anchor. Wiring it costs one local and
+        // means adding an anchor here later cannot quietly reintroduce the split.
+        var evaluateAsOf = new FixedInstant(ConformanceFixture.EvaluatedAt);
         _verifier = new SdJwtVcVerifier(
-            new StaticTrustListResolver([ConformanceFixture.Issuer], source: "rfc9901-fixture"),
+            new StaticTrustListResolver(
+                [ConformanceFixture.Issuer], source: "rfc9901-fixture", clock: evaluateAsOf),
             httpClient: new HttpClient(new FixtureMetadataHandler()),
             // Evaluate the historical vector as of its own era, so iat freshness and exp/nbf hold. See
             // ConformanceFixture.EvaluatedAt.
-            clock: new FixedInstant(ConformanceFixture.EvaluatedAt));
+            clock: evaluateAsOf);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

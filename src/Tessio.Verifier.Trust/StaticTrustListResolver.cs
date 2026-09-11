@@ -20,6 +20,11 @@ namespace Tessio.Verifier.Trust;
 /// certificate SAN before this point. Without configured anchors, x5c credentials are rejected.
 /// </para>
 /// <para>
+/// Either way the certificate must be inside its own validity window, read at <c>clock</c>. Anchoring
+/// is not the whole answer: a pinned certificate whose window has closed is refused, exactly as the
+/// chain check refuses an expired one on the path that builds a chain.
+/// </para>
+/// <para>
 /// This is the open-source end of the trust seam. Production EU trust (LOTL, national lists, WRPAC)
 /// is a separate concern behind the same <see cref="ITrustListResolver"/> interface.
 /// </para>
@@ -29,23 +34,33 @@ public sealed class StaticTrustListResolver : ITrustListResolver
     private readonly HashSet<string> _trustedIssuers;
     private readonly List<X509Certificate2> _trustAnchors;
     private readonly string _source;
+    private readonly TimeProvider _clock;
 
     /// <summary>Creates a resolver trusting exactly the given issuer identifiers.</summary>
     /// <param name="trustedIssuers">Issuer identifiers (iss values or certificate subjects).</param>
     /// <param name="source">Optional label reported as <see cref="IssuerTrustStatus.TrustListSource"/>.</param>
     /// <param name="trustAnchors">
     /// Root or pinned certificates that x5c chains must anchor on. Credentials presenting an x5c
-    /// chain are rejected when this is empty.
+    /// chain are rejected when this is empty, and an anchor is only usable inside its own validity
+    /// window.
+    /// </param>
+    /// <param name="clock">
+    /// Time source for every certificate validity decision here, on both the pinned-leaf and the
+    /// chain-building path; system clock when null. Pass the same one given to the verifier, or a
+    /// presentation verified at a chosen instant is judged against wall-clock time instead, and the
+    /// two disagree for exactly the certificates whose window has since closed.
     /// </param>
     public StaticTrustListResolver(
         IEnumerable<string> trustedIssuers,
         string source = "static",
-        IEnumerable<X509Certificate2>? trustAnchors = null)
+        IEnumerable<X509Certificate2>? trustAnchors = null,
+        TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(trustedIssuers);
         _trustedIssuers = new HashSet<string>(trustedIssuers, StringComparer.Ordinal);
         _trustAnchors = trustAnchors?.ToList() ?? [];
         _source = source;
+        _clock = clock ?? TimeProvider.System;
     }
 
     /// <inheritdoc />
@@ -96,14 +111,36 @@ public sealed class StaticTrustListResolver : ITrustListResolver
         {
             var leaf = certificates[0];
 
-            // Pinned leaf: the exact end-entity certificate was configured as an anchor.
+            // Pinned leaf: the exact end-entity certificate was configured as an anchor. Its own bytes
+            // are the proof, so there is no chain to build and no signature to verify.
+            //
+            // ITS VALIDITY WINDOW IS STILL READ. Pinning says "this exact certificate", not "this
+            // certificate forever", and the window is what bounds how long a key stays trusted after
+            // anyone stops looking after it. Without this, a document signer pinned two years ago goes
+            // on verifying credentials, and there is no way to withdraw it except by editing the anchor
+            // list, which is the one thing expiry exists to avoid depending on.
+            //
+            // Read here rather than by sending this case through the X509Chain below, because a pinned
+            // leaf is frequently not self-signed, and platforms do not agree on how to treat a
+            // non-self-signed certificate placed in a trust store. The answer must not depend on the
+            // operating system underneath.
             if (_trustAnchors.Any(anchor => anchor.RawData.AsSpan().SequenceEqual(leaf.RawData)))
             {
-                return (true, null);
+                return IsWithinItsValidityWindow(leaf)
+                    ? (true, null)
+                    : (false,
+                        $"The pinned certificate '{leaf.Subject}' is outside its own validity window "
+                        + $"({leaf.NotBefore.ToUniversalTime():u} to {leaf.NotAfter.ToUniversalTime():u}).");
             }
 
             using var chain = new X509Chain();
             chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            // THE SAME INSTANT THE PINNED BRANCH ABOVE USES. X509Chain reads the system clock unless
+            // it is told otherwise, so leaving this unset would judge one question at two different
+            // times: a caller replaying a stored presentation would get their chosen instant when the
+            // operator pinned a leaf, and wall-clock time when the operator pinned a root. Which
+            // branch runs is a configuration detail, and it must not decide what "expired" means.
+            chain.ChainPolicy.VerificationTime = _clock.GetUtcNow().UtcDateTime;
             // Certificate revocation is the production trust layer's concern; credential revocation
             // is checked separately via Token Status Lists.
             chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
@@ -162,6 +199,25 @@ public sealed class StaticTrustListResolver : ITrustListResolver
                 certificate.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// Whether the certificate may be relied on at the verification time, by the window it states.
+    /// </summary>
+    /// <remarks>
+    /// Both sides are compared in UTC, and that conversion is the whole point of the method.
+    /// <see cref="X509Certificate2.NotBefore"/> and <see cref="X509Certificate2.NotAfter"/> are
+    /// reported in LOCAL time. A <see cref="DateTime"/> comparison ignores
+    /// <see cref="DateTime.Kind"/> and compares ticks, so comparing them raw against a UTC clock is
+    /// wrong by the machine's offset: east of Greenwich it keeps accepting a certificate for hours
+    /// after it expired. The error is invisible on a server set to UTC, which is most of them, and
+    /// appears only on someone's laptop.
+    /// </remarks>
+    private bool IsWithinItsValidityWindow(X509Certificate2 certificate)
+    {
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
+        return nowUtc >= certificate.NotBefore.ToUniversalTime()
+            && nowUtc <= certificate.NotAfter.ToUniversalTime();
     }
 
     private static X509Certificate2 LoadCertificate(byte[] der) =>
