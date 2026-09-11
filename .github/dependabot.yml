@@ -23,6 +23,13 @@ updates:
       actions:
         patterns:
           - "*"
+        # MAJORS STAY OUT. A group with no update-types folds a major bump in with the patches, and a
+        # major is the one action update that can change a workflow's inputs or outputs and break CI.
+        # Bundled, the safe half cannot be merged without the risky half. Left ungrouped, a major
+        # arrives alone and gets the reading it needs.
+        update-types:
+          - minor
+          - patch
 
   # Marketing site (Astro).
   - package-ecosystem: npm
