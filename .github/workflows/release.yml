@@ -21,6 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # First, so a tag that has not been through the conformance suite fails in seconds rather than
+      # after a full build and pack. CI cannot run the suite itself: it is a local Docker stack driven
+      # by key material that deliberately never enters this repository. So it checks that someone did,
+      # by comparing the shipped src tree against the committed record. See RELEASING.md step 2.
+      - name: Conformance record covers this source
+        run: python3 tools/check-conformance-record.py
+
       - name: Set up .NET (8 + 10)
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
