@@ -1,6 +1,15 @@
-# CSR for an mdoc reader authentication certificate (EUDIW Unfold playground).
+# CSR for an mdoc reader authentication certificate (interoperability playground).
 # SPEC: ISO/IEC 18013-5 Annex B.1.2 - a reader certificate carries the mdlReaderAuth
 # extended key usage (1.0.18013.5.1.6) and digitalSignature key usage.
+#
+# READER_DNS is read from the environment and has NO DEFAULT, on purpose. openssl fails when it is
+# unset, and that failure is the feature: an OpenID4VP verifier whose client_id uses the
+# x509_san_dns scheme needs that host in the certificate's subjectAltName, and a CSR that omits it
+# yields a certificate that looks correct in every other respect and is refused by every wallet.
+# Nothing surfaces the mistake until a presentation fails, which is far too late to notice it.
+#
+# Set READER_DNS to the host in your client_id: with client_id "x509_san_dns:verifier.example.com",
+# READER_DNS is verifier.example.com. See README.md for the full command.
 [ req ]
 default_md         = sha256
 prompt             = no
@@ -8,10 +17,22 @@ distinguished_name = dn
 req_extensions     = ext
 
 [ dn ]
-CN = Tessio Verifier Reader
-O  = Triple Down AB
-C  = SE
+CN = $ENV::READER_CN
+O  = $ENV::READER_ORG
+C  = $ENV::READER_COUNTRY
 
 [ ext ]
 keyUsage         = critical, digitalSignature
 extendedKeyUsage = critical, 1.0.18013.5.1.6
+subjectAltName   = DNS:$ENV::READER_DNS
+
+# Both of these are usually the issuing CA's job rather than the requester's, so it is easy to leave
+# them out. An issuer that validates a request against the full mdoc reader profile checks for them
+# anyway and refuses the request by OID: 2.5.29.14 for the Subject Key Identifier and 2.5.29.31 for
+# CRL Distribution Points.
+#
+# READER_CRL is the CRL distribution point URI. Read it off the issuing CA's own certificate rather
+# than inventing one: a certificate advertising a CRL nobody publishes is worse than one that does not,
+# because a verifier that fetches it gets a 404 instead of an answer.
+subjectKeyIdentifier  = hash
+crlDistributionPoints = URI:$ENV::READER_CRL
