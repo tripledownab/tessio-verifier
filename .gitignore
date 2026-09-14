@@ -88,3 +88,8 @@ tools/conformance-harness/*.cer
 
 # Python bytecode from the conformance tooling. Machine specific, regenerated on every run.
 __pycache__/
+
+# Certificate requests. Reproducible from tools/playground-reader/reader-csr.cnf plus its environment,
+# so committing one adds nothing, and a committed CSR is a file someone can submit without checking
+# whose values it carries or whether it names a SAN at all.
+*.csr
