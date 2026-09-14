@@ -22,9 +22,29 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 ## Steps
 
 1. `dotnet build && dotnet test` green, 0 warnings.
-2. If the change touched OpenID4VP behaviour, re-run the affected OIDF conformance modules against the
-   local suite (`tools/conformance-harness/README.md`). The SD-JWT VC HAIP plan passing is the bar for
-   a verifier release.
+2. Run **both** OIDF conformance plans against the local suite and commit the record
+   (`tools/conformance-harness/README.md` has the setup):
+
+   ```sh
+   cd tools/conformance-harness
+   python3 run-plan.py --clone-plan <sd_jwt_vc plan> --harness https://localhost:5100 \
+     --record ../../conformance-record.json
+   # kill the harness, swap appsettings.Local.json to the other variant, start it again
+   python3 run-plan.py --clone-plan <iso_mdl plan> --harness https://localhost:5100 \
+     --record ../../conformance-record.json
+   ```
+
+   `--record` writes only after the run passes, and refuses a dirty `src/`, so the record cannot
+   describe bytes the suite did not see. `release.yml` compares the recorded src tree against the
+   tag's and refuses to publish when they differ, which makes a skipped run a build failure rather
+   than an oversight.
+
+   **There is deliberately no "only if the change touched OpenID4VP behaviour" here.** This step used
+   to carry that conditional, and it asks the releaser to judge a blast radius that is not visible
+   from a change's subject line. A package name does not bound what the modules exercise: every
+   positive module depends on the issuer's certificate resolving to a trusted anchor, so a change
+   filed under trust is on the tested path. Neither does "dependency bumps only", because a JWT or
+   CBOR library sits directly under the verification code. Run both plans, every time.
 3. Bump `<Version>` in `Directory.Build.props`, commit, push `main`.
 4. Tag and push:
 

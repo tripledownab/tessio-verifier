@@ -205,11 +205,21 @@ python3 run-plan.py --clone-plan <existing-plan-id>
 # Evidence: the same, plus screenshot each evidence page and upload it, so the plan completes with the
 # artifacts certification needs. Slower, because each module waits to finish.
 python3 run-plan.py --clone-plan <existing-plan-id> --evidence
+
+# Release: the regression run, plus the stamp that lets a tag publish. Both variants need one.
+python3 run-plan.py --clone-plan <existing-plan-id> --record ../../conformance-record.json
 ```
 
 `--clone-plan` copies an existing plan's configuration, which is where the harness CA and the credential
 signing key already live, so a fresh plan needs no new key material. Use `--plan` to run one that
 exists. `--harness` moves off the default `https://localhost:5099`.
+
+`--record` is what makes a release possible. It writes the run's `credential_format` variant, the git
+tree of `src/` and the plan id into `conformance-record.json`, and `release.yml` refuses to publish a
+tag whose `src` tree is not listed there. It writes only after the run passes, and refuses a dirty
+`src/`, because the harness builds from the working tree: uncommitted source would mean the suite
+tested something `HEAD:src` does not name. Both variants must be recorded, so run it twice, killing the
+harness and swapping `appsettings.Local.json` in between. See `RELEASING.md` step 2.
 
 Three things the script knows that are easy to get wrong by hand:
 
