@@ -23,7 +23,7 @@ EU List of Trusted Lists (LOTL) → national trusted list → trust service prov
 
 across all 27 member states, kept current as trust lists and the ARF evolve.
 
-**That hierarchy is where the EUDIW profile is going, and it is not where it is today.** The national PID-issuer lists are expected to ride the same ETSI TS 119 612 infrastructure and **are not published yet**, so no resolver can read them, ours included. A live 27-state issuer resolver for wallet credentials is a plan, not a product, whoever is offering it.
+**That hierarchy is where the EUDIW profile is going, and it is not where it is today.** The national PID-issuer lists are expected to ride the same ETSI TS 119 612 infrastructure and **are not published yet**, so there is nothing for a resolver to read, this library's included.
 
 What exists, and what this library reads today:
 
