@@ -27,6 +27,20 @@ if (!dist || !origin) {
 /** DocFX emits navigation partials alongside real pages; those are not content and must not be listed. */
 const SKIP = new Set(['toc.html']);
 
+/**
+ * The generated API reference is not LISTED, while staying live, linked and crawlable.
+ *
+ * A sitemap is a request to crawl. 67 of the 69 pages here were generated type documentation: one
+ * page per class, titled after the class, carrying prose nobody wrote for a reader. They answer a
+ * question somebody already inside the library has, they are reached from the table of contents, and
+ * they will not earn a search visit. Listing them spends crawl budget on them and buries the two
+ * pages that were actually written.
+ *
+ * Not listed is not hidden, and that distinction is the whole point: these pages carry no robots
+ * directive and remain linked, so an engine that wants them can still have them.
+ */
+const UNLISTED_PREFIX = 'docs/api/';
+
 async function walk(dir) {
   let out = [];
   let entries;
@@ -51,15 +65,38 @@ if (files.length === 0) {
   process.exit(0);
 }
 
-const urls = files
-  .map((f) => {
-    // index.html is served as the directory itself, which is the URL people and links actually use.
-    const rel = relative(dist, f).split(sep).join('/');
-    return `${origin}/${rel.replace(/index\.html$/, '')}`;
-  })
-  .sort();
+// lastmod from the file's own mtime, which for a generated site is its build time. An engine uses it
+// to decide whether a recrawl is worth it, and a sitemap without one tells it nothing, so every URL
+// looks equally stale and equally fresh.
+const entries = (
+  await Promise.all(
+    files.map(async (f) => {
+      // index.html is served as the directory itself, which is the URL people and links actually use.
+      const rel = relative(dist, f).split(sep).join('/');
+      if (rel.startsWith(UNLISTED_PREFIX)) return null;
+      const { mtime } = await stat(f);
+      return { loc: `${origin}/${rel.replace(/index\.html$/, '')}`, lastmod: mtime.toISOString() };
+    }),
+  )
+)
+  .filter(Boolean)
+  .sort((a, b) => a.loc.localeCompare(b.loc));
 
-const body = urls.map((u) => `  <url><loc>${u}</loc></url>`).join('\n');
+const unlisted = files.length - entries.length;
+if (unlisted > 0) {
+  // Said out loud, because a silent drop reads as "the sitemap covers everything" when it does not.
+  console.log(`[sitemap] ${unlisted} generated API reference pages left unlisted, and still crawlable`);
+}
+
+if (entries.length === 0) {
+  console.warn('[sitemap] every page under dist/docs is unlisted; leaving the sitemap alone.');
+  process.exit(0);
+}
+
+const urls = entries.map((e) => e.loc);
+const body = entries
+  .map((e) => `  <url><loc>${e.loc}</loc><lastmod>${e.lastmod}</lastmod></url>`)
+  .join('\n');
 await writeFile(
   join(dist, 'sitemap-docs.xml'),
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`,

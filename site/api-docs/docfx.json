@@ -37,17 +37,16 @@
     ],
     "output": "_site",
     "template": ["default", "modern", "templates/tessio"],
+    "// no sitemap block": "Deliberate. DocFX emitted one at /docs/sitemap.xml whose every URL was a 404: baseUrl was https://verifier.tessio.eu/api and DocFX appends its own api/ beneath that, giving /api/api/<Type>.html for pages that live at /docs/api/<Type>.html. It also duplicated work, because site/web/scripts/add-docs-to-sitemap.mjs walks the merged output and writes sitemap-docs.xml, which is the one robots.txt leads to. Two generators writing sitemaps for the same pages is how one drifts and nobody notices.",
     "globalMetadata": {
+      "// _appTitle": "The SITE name, not a page description. DocFX renders <title>{page} | {_appTitle}</title>, so setting this to what the docs index page is already called produced 'Tessio.Verifier API reference | Tessio.Verifier API reference' on that one page.",
       "_appName": "Tessio.Verifier",
-      "_appTitle": "Tessio.Verifier API reference",
+      "_appTitle": "Tessio.Verifier",
       "_appFooter": "Apache-2.0 · Triple Down AB · <a href=\"/\">tessio.verifier home</a>",
       "_enableSearch": true,
       "_disableContribution": true,
       "_appLogoPath": "logo.svg",
       "_appFaviconPath": "favicon.svg"
-    },
-    "sitemap": {
-      "baseUrl": "https://verifier.tessio.eu/api"
     }
   }
 }
