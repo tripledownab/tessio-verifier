@@ -89,6 +89,25 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 - EUDI Architecture & Reference Framework: <https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework>
 - WRPAC profile: ETSI TS 119 475
 
+## Free validators
+
+When a credential will not verify, the quickest way to find out why is to look at it outside your own
+code. These are free, need no account, and cover the formats this library handles:
+
+| Validator | What it answers |
+| --- | --- |
+| [SD-JWT VC Validator](https://labs.tessio.eu/sd-jwt) | Does each disclosure bind to a signed `_sd` digest? |
+| [mdoc / mDL Validator](https://labs.tessio.eu/mdoc) | Is the Mobile Security Object intact, and does the IACA chain hold? |
+| [eIDAS Signature Validator](https://labs.tessio.eu/ades) | Is this PAdES, CAdES or JAdES signature valid, and is it qualified? |
+| [EU Trusted List Checker](https://labs.tessio.eu/trusted-list) | Is this certificate a qualified CA on an EU trusted list? |
+| [EUDI Trusted Entity Checker](https://labs.tessio.eu/lote) | Does the EUDI ecosystem trust this certificate, and in which role? |
+
+The SD-JWT VC validator runs in your browser by default, so nothing you paste leaves the machine
+unless you opt into issuer-trust anchoring. The other four check against EU trust data that only a
+server can fetch, so they post what you give them to the hosted service. Each tool states which it is
+doing. They are built by the maintainers of this library, on the same verification engine, and
+nothing here depends on them.
+
 ## Repository
 
 - **Source:** <https://github.com/tripledownab/tessio-verifier>
