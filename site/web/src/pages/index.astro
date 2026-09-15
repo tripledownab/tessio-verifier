@@ -33,7 +33,7 @@ const features = [
   },
   {
     title: 'Pluggable trust',
-    body: 'A clean `ITrustListResolver` seam. Use the dev resolver to iterate, then swap to the managed 27-state trust layer when you go live.',
+    body: 'Trust is a seam, not a hardcode. `ITrustListResolver` already backs a dev resolver, pinned anchors, and a refreshing reader for the live EU age verification trusted list. The national issuer lists are not published yet; when they are, it is a swap behind the same API.',
   },
 ];
 
