@@ -17,7 +17,13 @@ public static class Dcql
     private const string SdJwtVcFormat = "dc+sd-jwt";
     private const string MdocFormat = "mso_mdoc";
 
-    /// <summary>The credential id the verifier's request/verify pipeline expects for a single-credential query.</summary>
+    /// <summary>The credential id this builder puts on a single-credential query.</summary>
+    /// <remarks>
+    /// Nothing on the verify side REQUIRES this value. <c>WalletResponseParser.ExtractCredentials</c>
+    /// enumerates every property of the <c>vp_token</c> object whatever its key, per OpenID4VP 1.0
+    /// section 8.1, so a query using other ids parses fine. Said the other way because the previous
+    /// wording said the pipeline "expects" it, which reads as a constraint that is not there.
+    /// </remarks>
     public const string DefaultCredentialId = "credential";
 
     // Relaxed escaping keeps characters such as '+' literal (e.g. "dc+sd-jwt"); these are JWT/JSON

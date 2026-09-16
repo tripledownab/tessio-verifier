@@ -69,7 +69,7 @@ public sealed class MockWalletResponses : IDisposable
         ArgumentNullException.ThrowIfNull(session);
 
         var presentation = _issuer.IssuePresentation(
-            claims ?? ["age_over_18"],
+            claims ?? claimValues?.Keys ?? ["age_over_18"],
             vct ?? DemoRequestOptionsFactory.DefaultVct,
             session.Request.Nonce,
             audience ?? session.Request.ClientId,
@@ -113,7 +113,7 @@ public sealed class MockWalletResponses : IDisposable
                 "Build it with ResponseMode.DirectPostJwt and register a ResponseEncryptionKeyStore key.");
 
         var presentation = _issuer.IssuePresentation(
-            claims ?? ["age_over_18"],
+            claims ?? claimValues?.Keys ?? ["age_over_18"],
             vct ?? DemoRequestOptionsFactory.DefaultVct,
             session.Request.Nonce,
             audience ?? session.Request.ClientId,
@@ -153,7 +153,12 @@ public sealed class MockWalletResponses : IDisposable
     /// </para>
     /// </remarks>
     /// <param name="session">The pending session to answer. Supplies client_id, nonce, response_uri and state.</param>
-    /// <param name="claimNames">Elements to disclose. Defaults to <c>age_over_18</c>.</param>
+    /// <param name="claimNames">
+    /// Elements to disclose. Defaults to the keys of <paramref name="claimValues"/> when that is given,
+    /// and to <c>age_over_18</c> otherwise. The default matters: these two parameters used to be
+    /// independent, so passing values alone disclosed <c>age_over_18</c> and silently ignored every name
+    /// the caller had asked for. A test written that way is green whatever the code under test does.
+    /// </param>
     /// <param name="docType">mdoc docType. Defaults to the EU age-verification attestation.</param>
     /// <param name="mdocNamespace">Namespace holding the elements. Defaults to <paramref name="docType"/>.</param>
     /// <param name="encryptionKeyThumbprint">
@@ -206,7 +211,7 @@ public sealed class MockWalletResponses : IDisposable
                 "covers it. Build the session with a signing credential source, or with the AV builder.");
 
         var deviceResponse = _mdocIssuer.IssueDeviceResponse(
-            claimNames ?? ["age_over_18"],
+            claimNames ?? claimValues?.Keys ?? ["age_over_18"],
             type,
             mdocNamespace ?? type,
             session.Request.ClientId,
@@ -235,7 +240,12 @@ public sealed class MockWalletResponses : IDisposable
     /// </summary>
     /// <param name="encryptionInfo">The request's encoded EncryptionInfo, byte for byte as issued.</param>
     /// <param name="origin">The origin of the page making the browser call.</param>
-    /// <param name="claimNames">Elements to disclose. Defaults to <c>age_over_18</c>.</param>
+    /// <param name="claimNames">
+    /// Elements to disclose. Defaults to the keys of <paramref name="claimValues"/> when that is given,
+    /// and to <c>age_over_18</c> otherwise. The default matters: these two parameters used to be
+    /// independent, so passing values alone disclosed <c>age_over_18</c> and silently ignored every name
+    /// the caller had asked for. A test written that way is green whatever the code under test does.
+    /// </param>
     /// <param name="docType">mdoc docType. Defaults to the EU age-verification attestation.</param>
     /// <param name="mdocNamespace">Namespace holding the elements. Defaults to <paramref name="docType"/>.</param>
     /// <param name="claimValues">Values to disclose, by claim name, overriding the sample persona.</param>
@@ -253,7 +263,7 @@ public sealed class MockWalletResponses : IDisposable
         var transcript = Core.Mdoc.Iso18013AnnexC.BuildSessionTranscript(encryptionInfo, origin);
         var deviceResponse = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes(
             _mdocIssuer.IssueDeviceResponseOverTranscript(
-                claimNames ?? ["age_over_18"], type, mdocNamespace ?? type, transcript, claimValues));
+                claimNames ?? claimValues?.Keys ?? ["age_over_18"], type, mdocNamespace ?? type, transcript, claimValues));
 
         return Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(
             Core.Mdoc.Iso18013AnnexC.SealResponse(deviceResponse, encryptionInfo, origin));
