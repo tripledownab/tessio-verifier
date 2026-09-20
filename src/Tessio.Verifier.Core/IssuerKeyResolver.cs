@@ -28,6 +28,14 @@ internal sealed record IssuerKeyResolution
 // SPEC: draft-ietf-oauth-sd-jwt-vc §2.5 (key resolution) and §3 (JWT VC Issuer Metadata).
 internal sealed class IssuerKeyResolver
 {
+    /// <summary>id-ce-subjectAltName, RFC 5280 section 4.2.1.6.</summary>
+    /// <remarks>
+    /// Matched as an OID rather than as a parsed extension type because this value decides whether a
+    /// certificate asserts any name at all, and that answer must not depend on whether a given runtime
+    /// chose to parse the extension. See <c>CertificateMatchesIssuer</c>.
+    /// </remarks>
+    private const string SubjectAltNameOid = "2.5.29.17";
+
     private readonly HttpClient _httpClient;
 
     public IssuerKeyResolver(HttpClient httpClient) => _httpClient = httpClient;
@@ -140,6 +148,41 @@ internal sealed class IssuerKeyResolver
         var issHost = Uri.TryCreate(iss, UriKind.Absolute, out var issUri) ? issUri.Host : null;
         var sanExtensions = certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().ToList();
 
+        // A certificate that asserts NO names cannot contradict iss, so there is nothing to check.
+        // SPEC: draft-ietf-oauth-sd-jwt-vc-10 section 3.5 says that with an x5c header "the Issuer of the
+        // Verifiable Credential is the subject of the end-entity certificate", and section 3.2.2.2 makes
+        // iss OPTIONAL precisely because the certificate conveys the issuer. Requiring a SAN match
+        // unconditionally invents a requirement the specification does not make. (Later drafts renumber
+        // these to 2.5 and 2.2.2.3; the text is unchanged. This file cites the -10 numbering throughout.)
+        //
+        // It is not hypothetical. The EUDI Wallet Reference Implementation's PID issuer signs SD-JWT VC
+        // PIDs with a leaf carrying NO subjectAltName, while its iss is https://issuer-backend.eudiw.dev.
+        // Every such credential was rejected as issuer_certificate_mismatch, which is the Commission's own
+        // reference PID refused by us. Found 2026-09-20 from a real presentation, not from review.
+        //
+        // NO subjectAltName, not "no extensions": that leaf carries six others. An earlier note here said
+        // it had none, from misreading `openssl x509 -ext subjectAltName`, whose "No extensions in
+        // certificate" means none MATCHING, not none at all. The distinction matters because one of the
+        // six is an ISSUER Alternative Name, OID 2.5.29.18, one digit from the OID below and carrying an
+        // unrelated URL. Widening the fallback to "any name-ish extension" would pull that URL into
+        // issuer matching.
+        //
+        // The check is KEPT where it has something to compare, so a certificate naming one host cannot
+        // vouch for an iss naming another. Authenticity still rests on the chain reaching a configured
+        // trust anchor, which is the control that was doing the real work all along.
+        //
+        // ASKED BY OID, not by the CLR type above, and the difference is a security one. This branch is
+        // the only place that turns "we found nothing" into "accept". X509SubjectAlternativeNameExtension
+        // is a PARSED view, so a runtime that returned a plain X509Extension for this OID would make the
+        // typed list empty on a certificate that does assert names, and keying on that would accept a
+        // certificate naming somebody else. The OID is present or it is not, on every platform. When the
+        // extension exists but the runtime did not parse it, the loop below finds no names and the format
+        // fallback finds no match, so the answer is refusal. Wrong in the safe direction.
+        if (!certificate.Extensions.Any(e => string.Equals(e.Oid?.Value, SubjectAltNameOid, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
         foreach (var san in sanExtensions)
         {
             foreach (var dns in san.EnumerateDnsNames())
@@ -151,9 +194,48 @@ internal sealed class IssuerKeyResolver
             }
         }
 
-        // SAN uniformResourceIdentifier entries are not enumerable via the platform API; fall back to
+        // SAN uniformResourceIdentifier entries are not enumerable via the platform API, so fall back to
         // the formatted extension text, which includes URI entries on all platforms.
-        return sanExtensions.Any(san => san.Format(false).Contains(iss, StringComparison.OrdinalIgnoreCase));
+        //
+        // ENTRY BY ENTRY, NEVER A SUBSTRING. This was `Format(false).Contains(iss)`, and a substring test
+        // over a URI matches any longer name that starts with it: a SAN of
+        // `URI:https://issuer.example.attacker.test/` satisfies `iss = https://issuer.example`. Registering
+        // a lookalike domain was the whole attack. Verified against the platform's own formatter rather
+        // than reasoned about, 2026-09-20.
+        return sanExtensions.SelectMany(san => SplitFormattedEntries(san.Format(false)))
+            .Any(entry => IsUriEntryFor(entry, iss));
+    }
+
+    /// <summary>Splits the platform's formatted SAN text into one string per entry.</summary>
+    /// <remarks>
+    /// Separators differ by platform, so both a comma and a newline end an entry. Splitting too eagerly
+    /// is safe here: an over-split entry fails to match and the answer is refusal.
+    /// </remarks>
+    private static string[] SplitFormattedEntries(string formatted) =>
+        formatted.Split([',', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>Whether one formatted SAN entry is a URI naming exactly <paramref name="iss"/>.</summary>
+    /// <remarks>
+    /// Compared as URIs when both parse, so that a trailing slash is not a mismatch, and as exact strings
+    /// otherwise. Never as a prefix or a substring.
+    /// </remarks>
+    private static bool IsUriEntryFor(string entry, string iss)
+    {
+        const string UriLabel = "URI:";
+        if (!entry.StartsWith(UriLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var value = entry[UriLabel.Length..].Trim();
+        if (Uri.TryCreate(value, UriKind.Absolute, out var entryUri)
+            && Uri.TryCreate(iss, UriKind.Absolute, out var issAsUri))
+        {
+            return Uri.Compare(
+                entryUri, issAsUri, UriComponents.AbsoluteUri, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
+        }
+
+        return string.Equals(value, iss, StringComparison.OrdinalIgnoreCase);
     }
 
     // ---- JWT VC Issuer Metadata ---------------------------------------------------------------

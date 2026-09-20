@@ -43,8 +43,12 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         _options = options ?? new SdJwtVcVerifierOptions();
         _keyResolver = new IssuerKeyResolver(httpClient ?? DefaultHttpClient);
         _clock = clock ?? TimeProvider.System;
+        // The SAME trust seam the credential's own chain goes through. A status list token is a signed
+        // statement about this credential's validity, so it deserves the deployment's trust rules rather
+        // than a rule of its own.
         _statusChecker = new StatusListChecker(
-            httpClient ?? DefaultHttpClient, _keyResolver, _clock, _options.ClockSkew, _options.StatusListCacheDuration);
+            httpClient ?? DefaultHttpClient, _keyResolver, _trustListResolver, _clock,
+            _options.ClockSkew, _options.StatusListCacheDuration);
     }
 
     /// <inheritdoc />
@@ -175,7 +179,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         // SPEC: draft-ietf-oauth-status-list §8.3 — enforce the status claim when present (revocation).
         if (_options.CheckStatus)
         {
-            errors.AddRange(await _statusChecker.CheckAsync(processed, resolution.Issuer, ct).ConfigureAwait(false));
+            errors.AddRange(await _statusChecker.CheckAsync(processed, ct).ConfigureAwait(false));
         }
 
         // 9. Issuer trust via the pluggable trust seam.

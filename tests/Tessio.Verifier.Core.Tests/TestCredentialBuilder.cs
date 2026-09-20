@@ -84,12 +84,35 @@ internal sealed class TestCredentialBuilder : IDisposable
     public ECDsaSecurityKey IssuerPublicKey => new(ECDsa.Create(_issuerEcdsa.ExportParameters(false)));
 
     /// <summary>Creates a self-signed ES256 certificate whose SAN DNS matches the issuer host, and switches to x5c mode.</summary>
-    public X509Certificate2 UseCertificate(string? sanDnsName = null)
+    /// <param name="sanDnsName">The DNS name to assert, or null for the issuer's own host.</param>
+    /// <param name="withSan">
+    /// False builds a leaf carrying NO subject alternative name, which is what the EUDI Wallet
+    /// Reference Implementation's PID issuer ships. Every other caller here asserts a name, so the
+    /// no-name case was unreachable from the tests and went unnoticed until a real credential met it.
+    /// </param>
+    /// <param name="sanUri">
+    /// When set, the SAN carries ONLY this uniformResourceIdentifier and no dNSName. That certificate
+    /// asserts a name the platform's DNS enumeration cannot see, which is a different case from
+    /// asserting none, and only the URI fallback can answer it.
+    /// </param>
+    public X509Certificate2 UseCertificate(string? sanDnsName = null, bool withSan = true, string? sanUri = null)
     {
         var request = new CertificateRequest("CN=Test Issuer", _issuerEcdsa, HashAlgorithmName.SHA256);
-        var san = new SubjectAlternativeNameBuilder();
-        san.AddDnsName(sanDnsName ?? new Uri(Issuer).Host);
-        request.CertificateExtensions.Add(san.Build());
+        if (withSan)
+        {
+            var san = new SubjectAlternativeNameBuilder();
+            if (sanUri is not null)
+            {
+                san.AddUri(new Uri(sanUri));
+            }
+            else
+            {
+                san.AddDnsName(sanDnsName ?? new Uri(Issuer).Host);
+            }
+
+            request.CertificateExtensions.Add(san.Build());
+        }
+
         Certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
         return Certificate;
     }
@@ -238,9 +261,16 @@ internal sealed class TestCredentialBuilder : IDisposable
     /// Builds a signed Token Status List JWT for the given per-index status values, packed LSB-first
     /// and zlib-deflate compressed per draft-ietf-oauth-status-list §4.1/§4.2.
     /// </summary>
+    /// <remarks>
+    /// Set <c>signWith</c> to sign with that certificate's key and carry it in an <c>x5c</c> header.
+    /// Without it every status list token here resolves by METADATA with an empty chain, which a trust
+    /// seam judges by identifier rather than by anchoring. The real tokens this code meets carry x5c,
+    /// so a suite with no x5c status token says nothing about the anchoring path. Added 2026-09-20
+    /// after review found that gap.
+    /// </remarks>
     public string BuildStatusListToken(
         string uri, int bits, byte[] statuses, long? exp = null, string typ = "statuslist+jwt", string? sub = null,
-        long? ttl = null)
+        long? ttl = null, X509Certificate2? signWith = null)
     {
         var packed = new byte[(statuses.Length * bits + 7) / 8];
         for (var i = 0; i < statuses.Length; i++)
@@ -282,7 +312,16 @@ internal sealed class TestCredentialBuilder : IDisposable
 
         var payload = JsonSerializer.Serialize(claims);
 
-        return SignJwt(payload, new ECDsaSecurityKey(_issuerEcdsa), typ, x5c: null);
+        if (signWith is null)
+        {
+            return SignJwt(payload, new ECDsaSecurityKey(_issuerEcdsa), typ, x5c: null);
+        }
+
+        return SignJwt(
+            payload,
+            new ECDsaSecurityKey(signWith.GetECDsaPrivateKey() ?? throw new InvalidOperationException("signWith has no EC private key.")),
+            typ,
+            [Convert.ToBase64String(signWith.RawData)]);
     }
 
     public static string MakeDisclosure(string name, object? value) =>

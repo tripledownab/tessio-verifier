@@ -15,15 +15,24 @@ internal sealed class FakeTrustListResolver : ITrustListResolver
 
     public int SeenChainLength { get; private set; }
 
+    /// <summary>
+    /// Issuers this resolver refuses regardless of the fixed verdict. The verifier asks it about two
+    /// different identities now, the credential's issuer and the status list token's signer, so a
+    /// single global verdict cannot express "the credential is trusted and its status list is not",
+    /// which is the case the status authenticity test has to build.
+    /// </summary>
+    public HashSet<string> Untrusted { get; } = new(StringComparer.Ordinal);
+
     public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default)
     {
         SeenIssuer = issuer;
         SeenChainLength = x5c.Length;
+        var trusted = _trusted && !Untrusted.Contains(issuer);
         return Task.FromResult(new IssuerTrustStatus
         {
-            Trusted = _trusted,
-            TrustListSource = _trusted ? "fake://trust-list" : null,
-            Reason = _trusted ? null : "issuer not on the test trust list",
+            Trusted = trusted,
+            TrustListSource = trusted ? "fake://trust-list" : null,
+            Reason = trusted ? null : "issuer not on the test trust list",
         });
     }
 }
