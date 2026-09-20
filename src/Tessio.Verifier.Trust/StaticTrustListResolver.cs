@@ -17,12 +17,22 @@ namespace Tessio.Verifier.Trust;
 /// certificate, so the X.509 chain is the proof. This is the only mechanism ISO mdoc has, where the
 /// issuer identifier is a Document Signer subject DN that no list enumerates. Binding the certificate
 /// to a claimed issuer, where that applies, is the caller's concern: SD-JWT VC ties <c>iss</c> to a
-/// certificate SAN before this point. Without configured anchors, x5c credentials are rejected.
+/// certificate SAN before this point, but ONLY where the leaf asserts a name. A leaf that asserts none
+/// cannot contradict <c>iss</c>, and the specification makes its subject the issuer, so for that leaf
+/// anchoring is the whole of the proof. Without configured anchors, x5c credentials are rejected.
 /// </para>
 /// <para>
 /// Either way the certificate must be inside its own validity window, read at <c>clock</c>. Anchoring
 /// is not the whole answer: a pinned certificate whose window has closed is refused, exactly as the
 /// chain check refuses an expired one on the path that builds a chain.
+/// </para>
+/// <para>
+/// <b>What a trusted issuer is trusted FOR.</b> This resolver answers one question, "is this signer
+/// trusted", and callers ask it about more than credential issuance: a Token Status List token's
+/// signer is judged here too. So adding an entry to <c>trustedIssuers</c> or to <c>trustAnchors</c>
+/// authorises that party for every purpose the deployment asks about, including signing revocation
+/// status for credentials issued by somebody else. That is the cost of a flat list, and it is worth
+/// knowing before adding an entry to clear a rejection.
 /// </para>
 /// <para>
 /// This is the open-source end of the trust seam. Production EU trust (LOTL, national lists, WRPAC)

@@ -341,6 +341,73 @@ public class SdJwtVcVerifierTests
         Assert.Equal("issuer_certificate_mismatch", result.Errors.Single().Code);
     }
 
+    // A leaf with NO subject alternative name asserts no name, so there is nothing for iss to
+    // contradict. SPEC: draft-ietf-oauth-sd-jwt-vc section 3.5, "the Issuer of the Verifiable
+    // Credential is the subject of the end-entity certificate". The EUDI Wallet Reference
+    // Implementation's PID issuer ships exactly such a leaf, and we rejected its every credential
+    // until 2026-09-20. The test above covers a certificate that names the WRONG host; this one
+    // covers a certificate that names nothing, and only the pair pins the rule.
+    [Fact]
+    public async Task X5cWithoutSan_IsAccepted()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.UseCertificate(withSan: false);
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+        Assert.Equal("x5c", result.Issuer.KeyResolutionMethod);
+    }
+
+    // ASSERTING NO NAME and ASSERTING A NAME WE CANNOT ENUMERATE are different, and only the first may
+    // be accepted. The test above covers a certificate with no SAN extension. These two cover one whose
+    // SAN carries a uniformResourceIdentifier and no dNSName, so EnumerateDnsNames yields nothing and
+    // the URI fallback is the only thing that can answer. Without them, a resolver that stopped finding
+    // the parsed extension would look correct here while accepting a certificate naming someone else.
+    [Fact]
+    public async Task X5cWithUriSanNamingAnother_IsRejected()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.UseCertificate(sanUri: "https://not-the-issuer.example/");
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.False(result.IsValid);
+        Assert.Equal("issuer_certificate_mismatch", result.Errors.Single().Code);
+    }
+
+    [Fact]
+    public async Task X5cWithUriSanMatchingIss_IsAccepted()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.UseCertificate(sanUri: TestCredentialBuilder.DefaultIssuer);
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+        Assert.Equal("x5c", result.Issuer.KeyResolutionMethod);
+    }
+
+    // A LOOKALIKE DOMAIN IS NOT A MATCH. The URI comparison used to be a substring test over the
+    // formatted extension, so any name that merely STARTS with iss satisfied it and registering
+    // `issuer.example.attacker.test` was the whole attack. The entry below differs from the accepted one
+    // above only by a suffix, which is exactly what the old test pair could not tell apart.
+    [Fact]
+    public async Task X5cWithLookalikeUriSan_IsRejected()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.UseCertificate(sanUri: TestCredentialBuilder.DefaultIssuer + ".attacker.test/");
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.False(result.IsValid);
+        Assert.Equal("issuer_certificate_mismatch", result.Errors.Single().Code);
+    }
+
     [Fact]
     public async Task IssuerMetadataUnreachable_IsRejected()
     {
