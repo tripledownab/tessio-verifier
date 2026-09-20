@@ -21,7 +21,24 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 
 ## Steps
 
-1. `dotnet build && dotnet test` green, 0 warnings.
+1. `dotnet build && dotnet test` green, 0 warnings. Run it as `dotnet test Tessio.Verifier.sln` and
+   **count the result lines**: a bare `dotnet test` at the repo root has reported only two of the five
+   test projects, which reads as a clean pass and is a partial one.
+
+   **Then run CI on Windows, before you tag.** `release.yml` is Ubuntu-only, and `ci.yml` only adds
+   Windows on `schedule` or `workflow_dispatch`, so a tag can publish a defect no release run could
+   ever see. Fire it by hand and wait for both legs:
+
+   ```sh
+   gh workflow run ci.yml --ref <your-branch>
+   gh run view <run-id> --json jobs -q '.jobs[] | "\(.name): \(.conclusion)"'
+   ```
+
+   This is not precautionary. 0.8.0 shipped a Windows-only defect this way, and 0.10.0 would have: a
+   certificate whose subjectAltName URI matched `iss` exactly was accepted on Unix and refused on
+   Windows, because the check read the platform's RENDERING of the extension rather than its DER. The
+   Ubuntu leg passed both times. Anything touching `System.Security.Cryptography.X509Certificates`,
+   path handling or text formatting deserves it most, but it costs one run, so just do it.
 2. Run **both** OIDF conformance plans against the local suite and commit the record
    (`tools/conformance-harness/README.md` has the setup):
 
