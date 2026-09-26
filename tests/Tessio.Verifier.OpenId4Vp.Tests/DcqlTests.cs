@@ -35,6 +35,24 @@ public sealed class DcqlTests
     }
 
     [Fact]
+    public void RelaxedJson_SerializesAGenericallyBuiltJsonValue()
+    {
+        // The reason JsonDefaults.Relaxed carries a TypeInfoResolver. Without one, this throws on
+        // net8.0 only, at run time only, with "JsonSerializerOptions instance must specify a
+        // TypeInfoResolver setting before being marked as read-only". Every builder here writes its
+        // payload through these options, so the failure is not local to whoever wrote the Add<T>: it
+        // took out 42 tests in one run. net10.0 stays green throughout, which is why this is pinned
+        // rather than left to whoever next runs the full matrix.
+        var array = new System.Text.Json.Nodes.JsonArray();
+        array.Add("dc+sd-jwt");
+
+        var json = array.ToJsonString(JsonDefaults.Relaxed);
+
+        // Relaxed escaping too: '+' stays literal instead of becoming +.
+        Assert.Equal("""["dc+sd-jwt"]""", json);
+    }
+
+    [Fact]
     public void AgeOver_RequestsTheAgeOverClaim()
     {
         var credential = TheOnlyCredential(Dcql.AgeOver(21, "https://issuer.example/vct/pid"));

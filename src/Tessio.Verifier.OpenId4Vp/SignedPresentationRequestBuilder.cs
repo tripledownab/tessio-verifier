@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -12,11 +11,6 @@ namespace Tessio.Verifier.OpenId4Vp;
 /// </summary>
 public sealed class SignedPresentationRequestBuilder : IPresentationRequestBuilder
 {
-    private static readonly JsonSerializerOptions RelaxedJson = new()
-    {
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    };
-
     private readonly PresentationRequestBuilderOptions _options;
     private readonly TimeProvider _clock;
 
@@ -63,7 +57,7 @@ public sealed class SignedPresentationRequestBuilder : IPresentationRequestBuild
         }
 
         var handler = new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false };
-        return handler.CreateToken(payload.ToJsonString(RelaxedJson), _options.SigningCredentials, headers);
+        return handler.CreateToken(payload.ToJsonString(JsonDefaults.Relaxed), _options.SigningCredentials, headers);
     }
 
     private PresentationRequest.ByValue BuildByValue(

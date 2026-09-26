@@ -1,5 +1,3 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Tessio.Verifier.OpenId4Vp;
@@ -23,12 +21,6 @@ public static class ClientMetadata
     // identifier (RFC 9053 §2.1), which is how mdoc names algorithms.
     private const string Es256 = "ES256";
     private const int CoseEs256 = -7;
-
-    // Relaxed escaping keeps '+' literal in "dc+sd-jwt"; these are JWT payloads, not HTML.
-    private static readonly JsonSerializerOptions Relaxed = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    };
 
     /// <summary>
     /// Builds <c>client_metadata</c> for a request in the given credential format.
@@ -69,7 +61,7 @@ public static class ClientMetadata
             metadata["encrypted_response_enc_values_supported"] = new JsonArray("A128GCM", "A256GCM");
         }
 
-        return metadata.ToJsonString(Relaxed);
+        return metadata.ToJsonString(JsonDefaults.Relaxed);
     }
 
     /// <summary>The signature algorithms we accept, keyed by credential format.</summary>

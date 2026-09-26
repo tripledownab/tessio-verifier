@@ -1,5 +1,3 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Tessio.Verifier.OpenId4Vp;
@@ -25,13 +23,6 @@ public static class Dcql
     /// wording said the pipeline "expects" it, which reads as a constraint that is not there.
     /// </remarks>
     public const string DefaultCredentialId = "credential";
-
-    // Relaxed escaping keeps characters such as '+' literal (e.g. "dc+sd-jwt"); these are JWT/JSON
-    // payloads, not HTML, so HTML-escaping only hurts readability and interop.
-    private static readonly JsonSerializerOptions Relaxed = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    };
 
     /// <summary>
     /// A query for a single SD-JWT VC credential of type <paramref name="vct"/>, requesting each of
@@ -98,6 +89,6 @@ public static class Dcql
                 }),
         };
 
-        return query.ToJsonString(Relaxed);
+        return query.ToJsonString(JsonDefaults.Relaxed);
     }
 }
