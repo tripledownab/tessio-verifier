@@ -31,7 +31,35 @@ public static class Dcql
     public static string SdJwtVc(string vct, params string[] claims)
     {
         ArgumentException.ThrowIfNullOrEmpty(vct);
+        return SdJwtVc([vct], claims);
+    }
+
+    /// <summary>
+    /// A query for a single SD-JWT VC credential of ANY of <paramref name="vctValues"/>, requesting each
+    /// of <paramref name="claims"/> by selective disclosure. Use this where one credential entry should
+    /// accept several types, for example a base PID type and a member state's own.
+    /// </summary>
+    /// <remarks>
+    /// SPEC: OpenID4VP 1.0 §B.3.5 defines <c>vct_values</c> as "A non-empty array of strings that
+    /// specifies allowed values for the type of the requested Verifiable Credential", so an empty list
+    /// is refused here rather than emitted. The verifier accepts a credential whose <c>vct</c> is any
+    /// member of the array it sent.
+    /// </remarks>
+    public static string SdJwtVc(IReadOnlyList<string> vctValues, params string[] claims)
+    {
+        ArgumentNullException.ThrowIfNull(vctValues);
         ArgumentNullException.ThrowIfNull(claims);
+        if (vctValues.Count == 0)
+        {
+            throw new ArgumentException("A DCQL query needs at least one vct value.", nameof(vctValues));
+        }
+
+        var values = new JsonArray();
+        foreach (var vct in vctValues)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(vct);
+            values.Add(vct);
+        }
 
         var claimsArray = new JsonArray();
         foreach (var claim in claims)
@@ -40,7 +68,7 @@ public static class Dcql
             claimsArray.Add(new JsonObject { ["path"] = new JsonArray(claim) });
         }
 
-        return SingleCredential(SdJwtVcFormat, new JsonObject { ["vct_values"] = new JsonArray(vct) }, claimsArray);
+        return SingleCredential(SdJwtVcFormat, new JsonObject { ["vct_values"] = values }, claimsArray);
     }
 
     /// <summary>

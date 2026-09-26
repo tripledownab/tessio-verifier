@@ -21,6 +21,24 @@ builder.Services.AddTessioVerifier(options =>
 
 A single-instance deployment only needs steps 1 to 3. Steps 4 and 5 matter once you scale past one process.
 
+### Accepting more than one credential type
+
+`options.ExpectedVct` asks for exactly one type. To accept several, pass a list to `Dcql.SdJwtVc` and drive the session yourself (see [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md)):
+
+```csharp
+var options = new PresentationRequestOptions
+{
+    ClientId = "x509_san_dns:verifier.example.com",
+    Nonce = /* per request, cryptographically random */,
+    DcqlQueryJson = Dcql.SdJwtVc(["urn:eudi:pid:1", "urn:eudi:pid:de:1"], "age_over_18"),
+    ResponseUri = new Uri("https://verifier.example.com/verify/callback"),
+};
+```
+
+OpenID4VP 1.0 §B.3.5 defines `vct_values` as "a non-empty array of strings that specifies allowed values for the type of the requested Verifiable Credential". The verifier reads that whole array back out of the session's own request and accepts a credential whose `vct` is any member, per §8.6: "validate that the returned Credential(s) meet all criteria defined in the query".
+
+Matching is exact, so list every type you accept. A credential that only *inherits* from a listed type is refused, because following SD-JWT VC type inheritance needs Type Metadata that this verifier does not retrieve.
+
 ## 1. Live mode
 
 ```csharp
@@ -43,7 +61,7 @@ The endpoints `MapTessioVerifier` exposes (default prefix `/verify`):
 
 The callback endpoint enforces `state` correlation and completes each session exactly once, so replayed responses get a 409 (`session_not_pending`) and stray posts a 400.
 
-It also refuses a session whose stored request can no longer be read, with a 409 (`session_not_verifiable`). The request says which credential type was asked for, and verifying without it accepts any type. The built-in store and request builders never produce such a session. Reaching it takes either a custom store that persisted less than the whole request, or a custom `IPresentationRequestBuilder` that emits neither a request object nor the query parameters. See [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md#3-persist-the-whole-request) for what has to survive.
+It also refuses a session whose stored request can no longer be read, with a 409 (`session_not_verifiable`). The request says which credential types were asked for, and verifying without it accepts any type. The built-in store and request builders never produce such a session. Reaching it takes either a custom store that persisted less than the whole request, or a custom `IPresentationRequestBuilder` that emits neither a request object nor the query parameters. See [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md#3-persist-the-whole-request) for what has to survive.
 
 ## 2. Sign your requests
 

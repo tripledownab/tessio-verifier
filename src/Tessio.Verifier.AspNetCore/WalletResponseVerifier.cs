@@ -48,7 +48,7 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
     /// <para>
     /// Verifying one instead does not fail cleanly, it fails in two different wrong ways. The audience
     /// and nonce still hold, because those come from the session rather than from the request, but the
-    /// credential type goes unchecked: a null <c>ExpectedVct</c> skips the type comparison
+    /// credential type goes unchecked: no expected type skips the type comparison
     /// (<c>SdJwtVcVerifier</c>) and a null <c>ExpectedDocType</c> skips the document-type comparison
     /// (<c>MdocVerifier</c>), so a credential of the wrong type passes. Meanwhile an mdoc response fails
     /// device authentication, because the transcript it signs covers a response_uri this session can no
@@ -136,13 +136,21 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
         TransactionDataExpectation? transactionData,
         CancellationToken ct)
     {
+        // The whole vct_values array, because one DCQL entry may offer several types and the wallet may
+        // answer with any of them.
+        var expectedVctValues = RequestParameters.TryGetExpectedVctValues(session.Request);
+
         var context = new VerificationContext
         {
             // Audience and nonce come from the session's own request, not app-wide options: in a
             // multi-tenant process each session was issued under its tenant's client_id.
             Nonce = session.Request.Nonce,
             Audience = session.Request.ClientId,
-            ExpectedVct = RequestParameters.TryGetExpectedVct(session.Request),
+            // Both properties, from the one array. ExpectedVctValues is what SdJwtVcVerifier reads.
+            // ExpectedVct is set too, so a host-registered ICredentialVerifier that knows only the
+            // older property still compares against a type instead of silently skipping its check.
+            ExpectedVct = expectedVctValues?[0],
+            ExpectedVctValues = expectedVctValues,
         };
 
         // Only the concrete SD-JWT verifier carries the transaction-data overload; fall back for any

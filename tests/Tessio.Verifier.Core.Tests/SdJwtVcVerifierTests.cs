@@ -8,11 +8,14 @@ namespace Tessio.Verifier.Core.Tests;
 /// </summary>
 public class SdJwtVcVerifierTests
 {
-    private static VerificationContext Context(string? expectedVct = null) => new()
+    private static VerificationContext Context(
+        string? expectedVct = null,
+        IReadOnlyList<string>? expectedVctValues = null) => new()
     {
         Nonce = TestCredentialBuilder.DefaultNonce,
         Audience = TestCredentialBuilder.DefaultAudience,
         ExpectedVct = expectedVct,
+        ExpectedVctValues = expectedVctValues,
     };
 
     private static PresentedCredential Credential(string raw, string format = "dc+sd-jwt") =>
@@ -115,6 +118,75 @@ public class SdJwtVcVerifierTests
             .VerifyAsync(Credential(builder.Build()), Context(expectedVct: TestCredentialBuilder.DefaultVct));
 
         Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public async Task ExpectedVctValues_Passes_WhenTheCredentialTypeIsNotTheFirstEntry()
+    {
+        // SPEC: OpenID4VP 1.0 §B.3.5 states vct_values as the "allowed values for the type of the
+        // requested Verifiable Credential", and the Wallet MAY answer with "any of the specified
+        // types". The credential's own type sits SECOND here on purpose: the check this replaces
+        // compared the first entry only, so a first-entry test would pass against the defect too.
+        using var builder = new TestCredentialBuilder();
+
+        var result = await MetadataVerifier(builder).VerifyAsync(
+            Credential(builder.Build()),
+            Context(expectedVctValues: new[] { "https://credentials.example/other", TestCredentialBuilder.DefaultVct }));
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+    }
+
+    [Fact]
+    public async Task ExpectedVctValues_Fails_WhenTheCredentialTypeIsInNoEntry()
+    {
+        using var builder = new TestCredentialBuilder();
+
+        var result = await MetadataVerifier(builder).VerifyAsync(
+            Credential(builder.Build()),
+            Context(expectedVctValues: new[] { "https://credentials.example/other", "https://credentials.example/third" }));
+
+        Assert.False(result.IsValid);
+
+        // The message names every type that would have been accepted. Naming one of several is what
+        // sends the holder looking for a fault in the credential they were actually asked for.
+        var error = Assert.Single(result.Errors, e => e.Code == "vct_mismatch");
+        Assert.Contains("https://credentials.example/other", error.Message, StringComparison.Ordinal);
+        Assert.Contains("https://credentials.example/third", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExpectedVct_And_ExpectedVctValues_AreReadTogether()
+    {
+        // VerificationContext is a frozen contract, so ExpectedVct could not be widened in place and
+        // ExpectedVctValues was added beside it. A caller that sets both accepts the union, and this
+        // pins that rule so the two properties cannot drift into a precedence order nobody documented.
+        using var builder = new TestCredentialBuilder();
+
+        var result = await MetadataVerifier(builder).VerifyAsync(
+            Credential(builder.Build()),
+            Context(
+                expectedVct: TestCredentialBuilder.DefaultVct,
+                expectedVctValues: new[] { "https://credentials.example/other" }));
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+    }
+
+    [Fact]
+    public async Task OneExpectedVct_KeepsTheMismatchMessageItAlwaysHad()
+    {
+        // A set renders as "one of 'a', 'b'". A single expected type must still read "expects 'a'".
+        // Error CODES are the contract and messages are not, so this does not promise stability to
+        // consumers. It pins the wording because our own interop records quote this sentence verbatim
+        // when explaining a refusal, and rewording the single-type case would strand those records.
+        using var builder = new TestCredentialBuilder();
+
+        var result = await MetadataVerifier(builder)
+            .VerifyAsync(Credential(builder.Build()), Context(expectedVct: "https://credentials.example/other"));
+
+        Assert.Equal(
+            $"The credential type is '{TestCredentialBuilder.DefaultVct}'; "
+                + "this verification expects 'https://credentials.example/other'.",
+            Assert.Single(result.Errors, e => e.Code == "vct_mismatch").Message);
     }
 
     // ---- Tampering & replay -------------------------------------------------------------------

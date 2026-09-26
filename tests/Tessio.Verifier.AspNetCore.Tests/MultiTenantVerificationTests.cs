@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Tessio.Verifier.Core;
 using Tessio.Verifier.OpenId4Vp;
 
 namespace Tessio.Verifier.AspNetCore.Tests;
@@ -16,16 +17,40 @@ public sealed class MultiTenantVerificationTests
     private const string TenantB = "x509_san_dns:tenant-b.example";
     private const string TenantBVct = "https://tenant-b.example/vct/identity";
 
-    private static ServiceProvider BuildProvider() =>
-        new ServiceCollection()
+    private static ServiceProvider BuildProvider(Action<IServiceCollection>? configure = null)
+    {
+        var services = new ServiceCollection()
             .AddTessioVerifier(options =>
             {
                 options.Mode = VerifierMode.Mock;
                 // Deliberately not any tenant's client_id: the seam must ignore this and use the session's.
                 options.ClientId = "process-wide-verifier";
                 options.RequestedClaims = ["age_over_18"];
-            })
-            .BuildServiceProvider();
+            });
+
+        // Registered after AddTessioVerifier so a test can substitute one of its services.
+        configure?.Invoke(services);
+        return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// A session whose DCQL entry offers SEVERAL credential types, the shape a self-driving host builds
+    /// for itself. <c>DemoRequestOptionsFactory</c> asks for one type only, so the options are assembled
+    /// here, but the query still comes from <see cref="Dcql"/>: it is the one builder for that object,
+    /// and a query written out by hand in a test is free to drift from the one production sends.
+    /// </summary>
+    private static async Task<VerificationSession> CreateMultiVctSessionAsync(
+        ServiceProvider provider, string clientId, params string[] vctValues) =>
+        await provider.GetRequiredService<InMemorySessionStore>().CreateAsync(new PresentationRequestOptions
+        {
+            ClientId = clientId,
+            Nonce = Tokens.NewNonce(),
+            State = Tokens.NewNonce(),
+            DcqlQueryJson = Dcql.SdJwtVc(vctValues, "age_over_18"),
+            ResponseUri = new Uri("https://verifier.example/verify/callback"),
+            ResponseMode = ResponseMode.DirectPost,
+            RequestLifetime = TimeSpan.FromMinutes(5),
+        });
 
     private static async Task<VerificationSession> CreateTenantSessionAsync(
         ServiceProvider provider, string clientId, string vct)
@@ -193,6 +218,66 @@ public sealed class MultiTenantVerificationTests
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.Code == "vct_mismatch");
+    }
+
+    [Fact]
+    public async Task Verify_AcceptsAnyVctTheRequestOffered_NotOnlyTheFirst()
+    {
+        // The whole chain in one pass: RequestParameters reads vct_values back out of the session's own
+        // request, WalletResponseVerifier puts the set on the context, and SdJwtVcVerifier checks
+        // membership. SPEC: OpenID4VP 1.0 §8.6 requires the Verifier to "validate that the returned
+        // Credential(s) meet all criteria defined in the query", and §B.3.5 states that criterion as a
+        // non-empty array of ALLOWED values. The credential is of the SECOND value, so reverting any
+        // link in that chain to vct_values[0] turns this red.
+        await using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IWalletResponseVerifier>();
+        var issuer = provider.GetRequiredService<MockCredentialIssuer>();
+
+        var session = await CreateMultiVctSessionAsync(provider, TenantA, TenantAVct, TenantBVct);
+        var presentation = issuer.IssuePresentation(
+            ["age_over_18"], TenantBVct, session.Request.Nonce, TenantA);
+
+        var result = await verifier.VerifyAsync(session, ResponseFor(session, presentation));
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    }
+
+    [Fact]
+    public async Task Verify_StillGivesACustomCredentialVerifierTheExpectedVct()
+    {
+        // WalletResponseVerifier hands the context to whatever ICredentialVerifier the host registered,
+        // and the built-in one now reads ExpectedVctValues. A host implementing the interface against
+        // ExpectedVct alone must keep receiving a type to compare: reading null there would skip its
+        // check silently, which is a downgrade rather than a failure. Both properties are set, so the
+        // older one narrows rather than disappears.
+        var capturing = new CapturingCredentialVerifier();
+        await using var provider = BuildProvider(services => services.AddSingleton<ICredentialVerifier>(capturing));
+        var verifier = provider.GetRequiredService<IWalletResponseVerifier>();
+        var issuer = provider.GetRequiredService<MockCredentialIssuer>();
+
+        var session = await CreateMultiVctSessionAsync(provider, TenantA, TenantAVct, TenantBVct);
+        var presentation = issuer.IssuePresentation(
+            ["age_over_18"], TenantBVct, session.Request.Nonce, TenantA);
+
+        await verifier.VerifyAsync(session, ResponseFor(session, presentation));
+
+        var seen = Assert.IsType<VerificationContext>(capturing.Seen);
+        Assert.Equal(TenantAVct, seen.ExpectedVct);
+        Assert.Equal(new[] { TenantAVct, TenantBVct }, seen.ExpectedVctValues);
+    }
+
+    /// <summary>Records the context it is given and verifies nothing.</summary>
+    private sealed class CapturingCredentialVerifier : ICredentialVerifier
+    {
+        public VerificationContext? Seen { get; private set; }
+
+        public Task<VerificationResult> VerifyAsync(
+            PresentedCredential credential, VerificationContext context, CancellationToken ct = default)
+        {
+            Seen = context;
+            return Task.FromResult(VerificationResult.Invalid(
+                new VerificationError { Code = "captured", Message = "This verifier only records." }));
+        }
     }
 
     [Fact]

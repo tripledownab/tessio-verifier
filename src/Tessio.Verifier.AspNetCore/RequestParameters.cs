@@ -74,20 +74,35 @@ internal static class RequestParameters
             TryGetFirstCredential(root, out var credential) ? TryGetString(credential, "format") : null);
 
     /// <summary>
-    /// The requested SD-JWT VC type from the request's DCQL query
-    /// (<c>dcql_query.credentials[0].meta.vct_values[0]</c>), or null for a non-SD-JWT request. This is the
-    /// type the session asked for, so the verifier enforces it per session rather than from options.
+    /// Every SD-JWT VC type the request's DCQL query accepts
+    /// (<c>dcql_query.credentials[0].meta.vct_values</c>), or null for a non-SD-JWT request. These are the
+    /// types the session asked for, so the verifier enforces them per session rather than from options.
     /// </summary>
-    public static string? TryGetExpectedVct(PresentationRequest request) =>
-        Read(request, root =>
-            TryGetFirstCredential(root, out var credential)
-            && credential.TryGetProperty("meta", out var meta)
-            && meta.TryGetProperty("vct_values", out var vctValues)
-            && vctValues.ValueKind == JsonValueKind.Array
-            && vctValues.GetArrayLength() > 0
-            && vctValues[0].ValueKind == JsonValueKind.String
-                ? vctValues[0].GetString()
-                : null);
+    /// <remarks>
+    /// The whole array, not its first entry. SPEC: OpenID4VP 1.0 §B.3.5 defines <c>vct_values</c> as "A
+    /// non-empty array of strings that specifies allowed values for the type of the requested Verifiable
+    /// Credential", and §8.6 requires a Verifier to "validate that the returned Credential(s) meet all
+    /// criteria defined in the query". Reading <c>[0]</c> compares against one member of the allowed set
+    /// rather than against the criterion the query states, so it refuses a credential the request
+    /// permitted.
+    /// </remarks>
+    public static IReadOnlyList<string>? TryGetExpectedVctValues(PresentationRequest request) =>
+        Read<IReadOnlyList<string>>(request, root =>
+        {
+            if (!TryGetFirstCredential(root, out var credential)
+                || !credential.TryGetProperty("meta", out var meta)
+                || !meta.TryGetProperty("vct_values", out var vctValues)
+                || vctValues.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var values = vctValues.EnumerateArray()
+                .Where(static v => v.ValueKind == JsonValueKind.String)
+                .Select(static v => v.GetString()!)
+                .ToList();
+            return values.Count > 0 ? values : null;
+        });
 
     /// <summary>
     /// The requested mdoc document type from the request's DCQL query

@@ -35,6 +35,32 @@ public sealed class DcqlTests
     }
 
     [Fact]
+    public void SdJwtVc_ListsEveryVctValue_InTheOrderGiven()
+    {
+        // SPEC: OpenID4VP 1.0 §B.3.5 states vct_values as "a non-empty array of strings that specifies
+        // allowed values", so one credential entry may offer several types and the wallet answers with
+        // whichever it holds.
+        var credential = TheOnlyCredential(
+            Dcql.SdJwtVc(["urn:eudi:pid:1", "urn:eudi:pid:de:1"], "age_over_18"));
+
+        var values = credential.GetProperty("meta").GetProperty("vct_values");
+        Assert.Equal(2, values.GetArrayLength());
+        Assert.Equal("urn:eudi:pid:1", values[0].GetString());
+        Assert.Equal("urn:eudi:pid:de:1", values[1].GetString());
+    }
+
+    [Fact]
+    public void SdJwtVc_OneValue_BuildsTheSameQueryEitherWay()
+    {
+        // The single-value overload now delegates to the list one. Pinned byte for byte, because every
+        // request this library has ever sent comes through that overload: a change in the JSON it emits
+        // would reach every wallet at once.
+        Assert.Equal(
+            Dcql.SdJwtVc("https://issuer.example/vct/pid", "age_over_18"),
+            Dcql.SdJwtVc(["https://issuer.example/vct/pid"], "age_over_18"));
+    }
+
+    [Fact]
     public void RelaxedJson_SerializesAGenericallyBuiltJsonValue()
     {
         // The reason JsonDefaults.Relaxed carries a TypeInfoResolver. Without one, this throws on
@@ -50,6 +76,14 @@ public sealed class DcqlTests
 
         // Relaxed escaping too: '+' stays literal instead of becoming +.
         Assert.Equal("""["dc+sd-jwt"]""", json);
+    }
+
+    [Fact]
+    public void SdJwtVc_RefusesAnEmptyVctList()
+    {
+        // SPEC: §B.3.5 requires a NON-EMPTY array. Emitting "vct_values":[] would ask the wallet for a
+        // credential of no type at all, and the verifier reading it back would then check nothing.
+        Assert.Throws<ArgumentException>(() => Dcql.SdJwtVc([], "age_over_18"));
     }
 
     [Fact]
