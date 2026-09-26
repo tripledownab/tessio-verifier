@@ -136,7 +136,52 @@ public sealed class RequestParametersTests
         Assert.Equal("https://signed.example/callback", RequestParameters.TryGetResponseUri(request));
         Assert.Equal("direct_post.jwt", RequestParameters.TryGetResponseMode(request));
         Assert.Equal("dc+sd-jwt", RequestParameters.TryGetRequestedFormat(request));
-        Assert.Equal("https://signed.example/vct", RequestParameters.TryGetExpectedVct(request));
+        Assert.Equal(new[] { "https://signed.example/vct" }, RequestParameters.TryGetExpectedVctValues(request));
+    }
+
+    [Fact]
+    public async Task Every_vct_value_the_query_offers_is_read_back()
+    {
+        // SPEC: OpenID4VP 1.0 §B.3.5 states vct_values as "a non-empty array of strings that specifies
+        // allowed values for the type of the requested Verifiable Credential", and §8.6 requires the
+        // Verifier to "validate that the returned Credential(s) meet all criteria defined in the
+        // query". Reading only vct_values[0] narrows that criterion to one member of the allowed set.
+        var av = await BuildAvRequestAsync();
+        var jar = UnsignedRequestObject("""
+            {"dcql_query":{"credentials":[{"id":"pid","format":"dc+sd-jwt",
+             "meta":{"vct_values":["urn:eudi:pid:1","urn:eudi:pid:de:1"]}}]}}
+            """);
+
+        var values = RequestParameters.TryGetExpectedVctValues(AsSessionRequest(av.AuthorizationRequestUri, jar));
+
+        Assert.Equal(new[] { "urn:eudi:pid:1", "urn:eudi:pid:de:1" }, values);
+    }
+
+    [Fact]
+    public async Task Every_vct_value_is_read_back_from_the_query_string_encoding_too()
+    {
+        // The test above proves the SIGNED encoding. This one proves the other, and they reach the
+        // reader by different routes: FromRequestObject decodes a JWT payload, FromQuery parses the
+        // dcql_query parameter out of the URI. The AV profile has no request object at all, so the
+        // query string is the encoding that carries a real age verification request. Proving one
+        // encoding and assuming the other is how AV expectations read null in the first place, which
+        // is what the remarks on this class describe.
+        var built = await new AvPresentationRequestBuilder(new AvPresentationRequestBuilderOptions())
+            .BuildAsync(new PresentationRequestOptions
+            {
+                ClientId = $"redirect_uri:{ResponseUri}",
+                Nonce = "nonce-1",
+                State = "state-1",
+                DcqlQueryJson = Dcql.SdJwtVc(["urn:eudi:pid:1", "urn:eudi:pid:de:1"], "age_over_18"),
+                ResponseUri = ResponseUri,
+                ResponseMode = ResponseMode.DirectPost,
+                ClientMetadataJson = null,
+            });
+
+        var values = RequestParameters.TryGetExpectedVctValues(
+            AsSessionRequest(built.AuthorizationRequestUri, requestObject: "", built));
+
+        Assert.Equal(new[] { "urn:eudi:pid:1", "urn:eudi:pid:de:1" }, values);
     }
 
     [Fact]

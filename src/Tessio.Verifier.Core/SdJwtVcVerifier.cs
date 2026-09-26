@@ -224,15 +224,48 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
             return;
         }
 
-        if (context.ExpectedVct is not null && !string.Equals(vct, context.ExpectedVct, StringComparison.Ordinal))
+        // SPEC: OpenID4VP 1.0 §8.6 requires the Verifier to "validate that the returned Credential(s)
+        // meet all criteria defined in the query", and §B.3.5 states that criterion as vct_values, "a
+        // non-empty array of strings that specifies allowed values for the type of the requested
+        // Verifiable Credential". So this is membership of the requested set, not equality with one
+        // member of it. Ordinal either way: a vct is an exact identifier, not a display string.
+        var accepted = AcceptedVctValues(context);
+        if (accepted.Count == 0 || accepted.Contains(vct, StringComparer.Ordinal))
         {
-            errors.Add(new VerificationError
-            {
-                Code = ErrorCodes.VctMismatch,
-                Message = $"The credential type is '{vct}'; this verification expects '{context.ExpectedVct}'.",
-            });
+            return;
         }
+
+        errors.Add(new VerificationError
+        {
+            Code = ErrorCodes.VctMismatch,
+            Message = $"The credential type is '{vct}'; this verification expects {Expectation(accepted)}.",
+        });
     }
+
+    /// <summary>
+    /// Every credential type the context accepts, reading both of its properties. One reader, so the
+    /// rule joining them cannot be applied one way here and another way in the next caller.
+    /// </summary>
+    private static IReadOnlyList<string> AcceptedVctValues(VerificationContext context)
+    {
+        if (context.ExpectedVctValues is not { Count: > 0 } values)
+        {
+            return context.ExpectedVct is null ? [] : [context.ExpectedVct];
+        }
+
+        return context.ExpectedVct is null || values.Contains(context.ExpectedVct, StringComparer.Ordinal)
+            ? values
+            : [context.ExpectedVct, .. values];
+    }
+
+    /// <summary>
+    /// The accepted types, for the mismatch message. A single type keeps the wording this message has
+    /// always had, because operators read it out of logs.
+    /// </summary>
+    private static string Expectation(IReadOnlyList<string> accepted) =>
+        accepted.Count == 1
+            ? $"'{accepted[0]}'"
+            : $"one of {string.Join(", ", accepted.Select(static value => $"'{value}'"))}";
 
     private void CheckTimeClaims(JsonObject processed, List<VerificationError> errors)
     {

@@ -21,6 +21,7 @@ The build treats warnings as errors with analyzers on. If it builds clean locall
 - **Spec fidelity.** Where the code implements a specification detail, cite it with a `// SPEC:` comment naming the document and section. When a spec is ambiguous, the EUDI ARF and HAIP interpretations win.
 - **Tests are required.** New behavior needs tests, including negatives (tampering, replay, malformed input). Verification logic changes should be checked against published spec test vectors where they exist. The fuzz suites must stay green.
 - **Stable error codes.** `VerificationError.Code` values are append-only observable behavior. Never rename or remove one.
+- **Write for a stranger.** This repository is public and so is every commit message and every earlier version of every file. Test fixtures count: use reserved example names (`example.com`, `.test`, `verifier.example`) and never a real host, customer, partner or deployment. Explain a fixed defect by its mechanism, not by who hit it or where, and keep an unfixed weakness out of the source entirely, because a description of one is a map to it.
 
 ## Commit and PR conventions
 

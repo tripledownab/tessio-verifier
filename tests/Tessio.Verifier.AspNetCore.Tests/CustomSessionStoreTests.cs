@@ -170,7 +170,7 @@ public sealed class CustomSessionStoreTests
     {
         // The credential here is a real, well-signed SD-JWT VC of a type this session never asked for.
         // Verifying it would not fail cleanly, it would accept it: the forgotten request yields no
-        // ExpectedVct, and SdJwtVcVerifier compares the type only when one is set. Remove the guard in
+        // expected type, and SdJwtVcVerifier compares the type only when one is set. Remove the guard in
         // WalletCallbackProcessor and this session completes VALID on the wrong credential.
         // Local, not a fixture field: minting an issuer costs a key pair and a certificate, and the other
         // tests in this class have no credential to sign.

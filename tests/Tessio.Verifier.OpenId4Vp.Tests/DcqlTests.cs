@@ -35,6 +35,58 @@ public sealed class DcqlTests
     }
 
     [Fact]
+    public void SdJwtVc_ListsEveryVctValue_InTheOrderGiven()
+    {
+        // SPEC: OpenID4VP 1.0 §B.3.5 states vct_values as "a non-empty array of strings that specifies
+        // allowed values", so one credential entry may offer several types and the wallet answers with
+        // whichever it holds.
+        var credential = TheOnlyCredential(
+            Dcql.SdJwtVc(["urn:eudi:pid:1", "urn:eudi:pid:de:1"], "age_over_18"));
+
+        var values = credential.GetProperty("meta").GetProperty("vct_values");
+        Assert.Equal(2, values.GetArrayLength());
+        Assert.Equal("urn:eudi:pid:1", values[0].GetString());
+        Assert.Equal("urn:eudi:pid:de:1", values[1].GetString());
+    }
+
+    [Fact]
+    public void SdJwtVc_OneValue_BuildsTheSameQueryEitherWay()
+    {
+        // The single-value overload now delegates to the list one. Pinned byte for byte, because every
+        // request this library has ever sent comes through that overload: a change in the JSON it emits
+        // would reach every wallet at once.
+        Assert.Equal(
+            Dcql.SdJwtVc("https://issuer.example/vct/pid", "age_over_18"),
+            Dcql.SdJwtVc(["https://issuer.example/vct/pid"], "age_over_18"));
+    }
+
+    [Fact]
+    public void RelaxedJson_SerializesAGenericallyBuiltJsonValue()
+    {
+        // The reason JsonDefaults.Relaxed carries a TypeInfoResolver. Without one, this throws on
+        // net8.0 only, at run time only, with "JsonSerializerOptions instance must specify a
+        // TypeInfoResolver setting before being marked as read-only". Every builder writes its payload
+        // through these options, so the failure belongs to the options rather than to whoever wrote the
+        // Add<T>, and it reaches every payload at once. net10.0 stays green throughout, which is why
+        // this is pinned rather than left to whoever next runs the whole framework matrix.
+        var array = new System.Text.Json.Nodes.JsonArray();
+        array.Add("dc+sd-jwt");
+
+        var json = array.ToJsonString(JsonDefaults.Relaxed);
+
+        // Relaxed escaping too: the plus sign stays literal rather than being escaped.
+        Assert.Equal("""["dc+sd-jwt"]""", json);
+    }
+
+    [Fact]
+    public void SdJwtVc_RefusesAnEmptyVctList()
+    {
+        // SPEC: §B.3.5 requires a NON-EMPTY array. Emitting "vct_values":[] would ask the wallet for a
+        // credential of no type at all, and the verifier reading it back would then check nothing.
+        Assert.Throws<ArgumentException>(() => Dcql.SdJwtVc([], "age_over_18"));
+    }
+
+    [Fact]
     public void AgeOver_RequestsTheAgeOverClaim()
     {
         var credential = TheOnlyCredential(Dcql.AgeOver(21, "https://issuer.example/vct/pid"));
@@ -61,7 +113,9 @@ public sealed class DcqlTests
     [Fact]
     public void SdJwtVc_KeepsThePlusInTheFormatLiteral()
     {
-        // Relaxed escaping must keep "dc+sd-jwt" literal rather than emitting +.
+        // Relaxed escaping must keep "dc+sd-jwt" literal rather than escaping the plus sign. Do not
+        // name the escape sequence here: C# resolves a \u escape in source before lexing, even inside
+        // a comment, so writing it turns the sentence into "rather than emitting +".
         Assert.Contains("\"dc+sd-jwt\"", Dcql.SdJwtVc("https://issuer.example/vct", "sub"), StringComparison.Ordinal);
     }
 

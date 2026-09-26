@@ -87,7 +87,7 @@ internal sealed class WalletCallbackProcessor
         }
 
         // A host store can hand back a session whose request no longer says what was asked for, in either
-        // encoding. Verifying that one accepts a credential of any type, because a null ExpectedVct skips
+        // encoding. Verifying that one accepts a credential of any type, because no expected type skips
         // the type comparison in SdJwtVcVerifier and a null ExpectedDocType skips it in MdocVerifier. The
         // built-in store never loses the request; a host store that persisted less than the whole request
         // can, and AddTessioVerifier invites hosts to register one.
