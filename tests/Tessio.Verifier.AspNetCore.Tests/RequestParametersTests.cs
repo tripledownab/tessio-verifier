@@ -213,6 +213,93 @@ public sealed class RequestParametersTests
         Assert.Equal("https://signed.example/callback", RequestParameters.TryGetResponseUri(request));
     }
 
+    [Theory]
+    // SPEC: OpenID4VP 1.0 §B.3.5 makes vct_values REQUIRED and non-empty for dc+sd-jwt, §B.2.3 makes
+    // doctype_value REQUIRED for mso_mdoc, and §6.1 makes format itself REQUIRED. Each of these asks a
+    // wallet for a credential while naming no type, and the verifier SKIPS the type comparison when it
+    // has nothing to compare, so every one of them would accept a well-signed credential of any type.
+    [InlineData("""{"id":"c","format":"dc+sd-jwt","meta":{"vct_values":[]}}""")]
+    [InlineData("""{"id":"c","format":"dc+sd-jwt","meta":{"vct_values":[""]}}""")]
+    // A non-string element, which must be judged rather than crash: JsonElement.GetString() throws on
+    // a number, and a hand-written query can carry one.
+    [InlineData("""{"id":"c","format":"dc+sd-jwt","meta":{"vct_values":[5]}}""")]
+    [InlineData("""{"id":"c","format":"dc+sd-jwt","meta":{}}""")]
+    [InlineData("""{"id":"c","format":"dc+sd-jwt"}""")]
+    [InlineData("""{"id":"c","format":"mso_mdoc","meta":{}}""")]
+    [InlineData("""{"id":"c","format":"mso_mdoc","meta":{"doctype_value":""}}""")]
+    // The mdoc twin of the non-string case above, so neither branch is the lenient one.
+    [InlineData("""{"id":"c","format":"mso_mdoc","meta":{"doctype_value":5}}""")]
+    // No format and no vct. WalletResponseVerifier routes everything that is not mso_mdoc to the SD-JWT
+    // verifier, so this one arrives there with nothing to compare.
+    [InlineData("""{"id":"c","meta":{}}""")]
+    public void A_query_that_names_no_credential_type_is_not_verifiable(string credentialJson)
+    {
+        var jar = UnsignedRequestObject(
+            $$$"""{"response_uri":"https://signed.example/callback","dcql_query":{"credentials":[{{{credentialJson}}}]}}""");
+
+        Assert.False(WalletResponseVerifier.CanVerify(AsSessionRequest(new Uri("https://verifier.example/start"), jar)));
+    }
+
+    [Theory]
+    // The control for the theory above: naming a type is all that is being asked for, so a query that
+    // does name one stays verifiable. Without this pair, refusing every request would pass.
+    [InlineData("""{"id":"c","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:1"]}}""")]
+    [InlineData("""{"id":"c","format":"mso_mdoc","meta":{"doctype_value":"eu.europa.ec.av.1"}}""")]
+    // Deliberate boundary, not an oversight. §6.1 makes format REQUIRED, so this query is malformed,
+    // but the predicate answers "can a response be checked against this", not "is this conformant".
+    // Routing sends a formatless entry to the SD-JWT verifier, which compares the vct it does carry, so
+    // the check is real and refusing here would reject a session that verifies correctly.
+    [InlineData("""{"id":"c","meta":{"vct_values":["urn:eudi:pid:1"]}}""")]
+    public void A_query_that_names_a_credential_type_is_verifiable(string credentialJson)
+    {
+        var jar = UnsignedRequestObject(
+            $$$"""{"response_uri":"https://signed.example/callback","dcql_query":{"credentials":[{{{credentialJson}}}]}}""");
+
+        Assert.True(WalletResponseVerifier.CanVerify(AsSessionRequest(new Uri("https://verifier.example/start"), jar)));
+    }
+
+    [Fact]
+    public void An_empty_vct_value_is_dropped_rather_than_offered_as_an_accepted_type()
+    {
+        // The two readers of vct_values must agree on what one is. CanVerify asks "does this request
+        // state a type", TryGetExpectedVctValues asks "which types are accepted", and if the second
+        // were the looser of the two then a list carrying the empty string would pass the first and
+        // put the empty string into the accepted set, so a credential asserting an empty vct would
+        // verify against a request that never meant to allow one.
+        var jar = UnsignedRequestObject("""
+            {"dcql_query":{"credentials":[{"id":"c","format":"dc+sd-jwt",
+             "meta":{"vct_values":["","urn:eudi:pid:1"]}}]}}
+            """);
+        var request = AsSessionRequest(new Uri("https://verifier.example/start"), jar);
+
+        Assert.True(WalletResponseVerifier.CanVerify(request));
+        Assert.Equal(new[] { "urn:eudi:pid:1" }, RequestParameters.TryGetExpectedVctValues(request));
+    }
+
+    [Fact]
+    public async Task A_query_string_request_naming_no_type_is_refused_too()
+    {
+        // The refusal theory above uses the signed encoding. The Age Verification profile has no
+        // request object, so its parameters reach the reader through FromQuery instead, and proving
+        // one encoding while assuming the other is the mistake this class was written about.
+        var built = await new AvPresentationRequestBuilder(new AvPresentationRequestBuilderOptions())
+            .BuildAsync(new PresentationRequestOptions
+            {
+                ClientId = $"redirect_uri:{ResponseUri}",
+                Nonce = "nonce-1",
+                State = "state-1",
+                // Hand-written rather than from Dcql, because Dcql cannot build a typeless query: it
+                // refuses an empty vct list and requires a docType. That is the point of this case.
+                DcqlQueryJson = """{"credentials":[{"id":"c","format":"mso_mdoc","meta":{}}]}""",
+                ResponseUri = ResponseUri,
+                ResponseMode = ResponseMode.DirectPost,
+                ClientMetadataJson = null,
+            });
+
+        Assert.False(WalletResponseVerifier.CanVerify(
+            AsSessionRequest(built.AuthorizationRequestUri, requestObject: "", built)));
+    }
+
     [Fact]
     public async Task A_request_object_that_does_not_parse_falls_through_to_the_query()
     {

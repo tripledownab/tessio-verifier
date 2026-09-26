@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.IdentityModel.Tokens;
+using Tessio.Verifier.Core.Mdoc;
 using Tessio.Verifier.OpenId4Vp;
 
 namespace Tessio.Verifier.AspNetCore;
@@ -98,11 +99,30 @@ internal static class RequestParameters
             }
 
             var values = vctValues.EnumerateArray()
-                .Where(static v => v.ValueKind == JsonValueKind.String)
+                .Where(IsTypeIdentifier)
                 .Select(static v => v.GetString()!)
                 .ToList();
             return values.Count > 0 ? values : null;
         });
+
+    /// <summary>
+    /// Whether a <c>vct_values</c> element is a credential type this verifier can compare against.
+    /// </summary>
+    /// <remarks>
+    /// One owner for the question, because two callers ask it: <see cref="AreRecoverable"/> decides
+    /// whether the request states a type at all, and <see cref="TryGetExpectedVctValues"/> decides
+    /// which types the verifier will accept. If those two disagreed, a list containing the empty string
+    /// would pass the first and put the empty string into the second, so a credential asserting an
+    /// empty <c>vct</c> would be accepted by a request that never meant to allow one.
+    /// <para>
+    /// SPEC: OpenID4VP 1.0 §B.3.5 requires every element to be "a valid type identifier as defined in
+    /// [I-D.ietf-oauth-sd-jwt-vc]", and the empty string is not one. The kind test is load-bearing
+    /// rather than defensive: <c>GetString()</c> THROWS on a number or an object, and a hand-written
+    /// query can carry either.
+    /// </para>
+    /// </remarks>
+    private static bool IsTypeIdentifier(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 };
 
     /// <summary>
     /// The requested mdoc document type from the request's DCQL query
@@ -152,20 +172,68 @@ internal static class RequestParameters
     }
 
     /// <summary>
-    /// Whether this request's parameters can be recovered, in either encoding. False means neither
-    /// encoding yields a DCQL query, so nothing a wallet returns can be checked against what was asked
-    /// for: not the credential format, not the <c>vct</c>, not the docType.
+    /// Whether this request's parameters can be recovered, in either encoding. False means nothing a
+    /// wallet returns can be checked against what was asked for: not the credential format, not the
+    /// <c>vct</c>, not the docType.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The DCQL is the test rather than "did anything parse", because a request object that parses but
     /// carries no query leaves every expectation null just as surely as no request object at all.
+    /// </para>
+    /// <para>
+    /// A query that parses but does not say which credential TYPE it asked for is the same failure one
+    /// level deeper, so it is refused here too. Both format profiles require the entry to state one:
+    /// OpenID4VP 1.0 §B.3.5 makes <c>vct_values</c> REQUIRED and non-empty, and §B.2.3 makes
+    /// <c>doctype_value</c> REQUIRED. Without it the verifier SKIPS the type comparison rather than
+    /// failing it, so a well-signed credential of any type verifies, which is the one outcome this
+    /// predicate exists to prevent.
+    /// </para>
+    /// <para>
+    /// It judges only that, not conformance generally. §6.1 also makes <c>format</c> REQUIRED, and a
+    /// query omitting it is accepted here anyway: the response still routes to the SD-JWT verifier,
+    /// which compares the <c>vct</c> the query does carry, so the check is real and refusing would
+    /// reject a session that verifies correctly. Widening this predicate into a conformance check is a
+    /// different job with a different blast radius.
+    /// </para>
     /// </remarks>
     public static bool AreRecoverable(PresentationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         using var root = TryReadRoot(request);
-        return root is not null && TryGetFirstCredential(root.RootElement, out _);
+        return root is not null
+            && TryGetFirstCredential(root.RootElement, out var credential)
+            && StatesTheCredentialType(credential);
+    }
+
+    /// <summary>
+    /// Whether the DCQL entry states the credential type the matching verifier will compare against.
+    /// </summary>
+    /// <remarks>
+    /// The split mirrors how <see cref="WalletResponseVerifier"/> routes a response: the mdoc verifier
+    /// for <c>mso_mdoc</c> and the SD-JWT verifier for EVERYTHING else, including a query whose
+    /// <c>format</c> is missing or unrecognised. So the question is not "which formats do we know" but
+    /// "which expectation will be read", and each branch here asks for the one its verifier uses. A
+    /// third routing branch needs a third branch here, or its requests arrive with nothing to compare.
+    /// </remarks>
+    private static bool StatesTheCredentialType(JsonElement credential)
+    {
+        if (!credential.TryGetProperty("meta", out var meta))
+        {
+            return false;
+        }
+
+        // Non-empty on both branches, not merely present. SPEC: §B.2.3 requires doctype_value to be "a
+        // valid doctype identifier" and §B.3.5 requires the same of every vct value, and the empty
+        // string is neither. An empty one also compares against nothing useful: the verifier would
+        // refuse every credential with a mismatch naming '' rather than refusing the request, which
+        // reads to the holder as their wallet's fault.
+        return string.Equals(TryGetString(credential, "format"), MdocVerifier.Format, StringComparison.Ordinal)
+            ? TryGetString(meta, "doctype_value") is { Length: > 0 }
+            : meta.TryGetProperty("vct_values", out var vctValues)
+                && vctValues.ValueKind == JsonValueKind.Array
+                && vctValues.EnumerateArray().Any(IsTypeIdentifier);
     }
 
     private static bool TryGetFirstCredential(JsonElement root, out JsonElement credential)
