@@ -176,8 +176,8 @@ public class SdJwtVcVerifierTests
     {
         // A set renders as "one of 'a', 'b'". A single expected type must still read "expects 'a'".
         // Error CODES are the contract and messages are not, so this does not promise stability to
-        // consumers. It pins the wording because our own interop records quote this sentence verbatim
-        // when explaining a refusal, and rewording the single-type case would strand those records.
+        // consumers. It pins the wording because this sentence is what an operator reads when a
+        // refusal has to be explained, and adding the set must not reword the single-type case.
         using var builder = new TestCredentialBuilder();
 
         var result = await MetadataVerifier(builder)
