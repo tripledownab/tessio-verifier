@@ -22,8 +22,18 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 ## Steps
 
 1. `dotnet build && dotnet test` green, 0 warnings. Run it as `dotnet test Tessio.Verifier.sln` and
-   **count the result lines**: a bare `dotnet test` at the repo root has reported only two of the five
-   test projects, which reads as a clean pass and is a partial one.
+   **count the results**: a bare `dotnet test` at the repo root has reported only two of the five test
+   projects, which reads as a clean pass and is a partial one.
+
+   Count occurrences, not lines. The runs finish in parallel and two results land on one physical line
+   often enough to matter, so `grep -c` undercounts a fully green run and sends you looking for a
+   project that did in fact report. Expect one result per test project per target framework:
+
+   ```sh
+   out=$(dotnet test Tessio.Verifier.sln 2>&1)
+   printf '%s' "$out" | grep -o 'Passed!' | wc -l   # expect 2 x the number of test projects
+   printf '%s' "$out" | grep -o 'Failed!' | wc -l   # expect 0
+   ```
 
    **Then run CI on Windows, before you tag.** `release.yml` is Ubuntu-only, and `ci.yml` only adds
    Windows on `schedule` or `workflow_dispatch`, so a tag can publish a defect no release run could

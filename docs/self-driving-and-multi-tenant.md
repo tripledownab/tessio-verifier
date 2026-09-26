@@ -127,8 +127,13 @@ Either way the `ClientId`, `Nonce` and `State` on `PresentationRequest` must rou
 reads the audience and nonce from there.
 
 Rows written before you persisted either encoding have neither, and a response cannot be checked against
-them. Call `WalletResponseVerifier.CanVerify(session.Request)` and refuse those, rather than verifying
-against a request that says nothing:
+them. The same holds for a request whose DCQL entry names no credential type, which `CanVerify` also
+refuses: `vct_values` is REQUIRED and non-empty for `dc+sd-jwt` (OpenID4VP 1.0 §B.3.5) and `doctype_value`
+is REQUIRED for `mso_mdoc` (§B.2.3), and without one the verifier skips the type comparison instead of
+failing it. Build the query with `Dcql` and it always carries the name.
+
+Call `WalletResponseVerifier.CanVerify(session.Request)` and refuse those, rather than verifying against a
+request that says nothing:
 
 ```csharp
 if (!WalletResponseVerifier.CanVerify(session.Request))

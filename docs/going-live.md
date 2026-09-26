@@ -61,7 +61,9 @@ The endpoints `MapTessioVerifier` exposes (default prefix `/verify`):
 
 The callback endpoint enforces `state` correlation and completes each session exactly once, so replayed responses get a 409 (`session_not_pending`) and stray posts a 400.
 
-It also refuses a session whose stored request can no longer be read, with a 409 (`session_not_verifiable`). The request says which credential types were asked for, and verifying without it accepts any type. The built-in store and request builders never produce such a session. Reaching it takes either a custom store that persisted less than the whole request, or a custom `IPresentationRequestBuilder` that emits neither a request object nor the query parameters. See [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md#3-persist-the-whole-request) for what has to survive.
+It also refuses a session whose stored request cannot be read, or whose query never said which credential type it asked for, with a 409 (`session_not_verifiable`). Verifying either one accepts a credential of any type, because the verifier skips the type comparison when it has nothing to compare rather than failing it.
+
+The built-in store and request builders never produce such a session. Reaching it takes one of three things: a custom store that persisted less than the whole request, a custom `IPresentationRequestBuilder` that emits neither a request object nor the query parameters, or a hand-written DCQL entry that names no type. OpenID4VP 1.0 requires that name in both profiles, `vct_values` by §B.3.5 and `doctype_value` by §B.2.3, so `Dcql` always writes one and a query built through it always passes. See [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md#3-persist-the-whole-request) for what has to survive.
 
 ## 2. Sign your requests
 
