@@ -19,12 +19,18 @@ namespace Tessio.Verifier.Core;
 /// than as a throw.
 /// </para>
 /// <para>
-/// Measured against Microsoft.IdentityModel.JsonWebTokens 8.19.2, which is the version this library
-/// pins. <c>"eyJhbGciOiJFQ0RILUVTIn0.not.a.real.jwe"</c> raises <see cref="FormatException"/>.
+/// <c>"eyJhbGciOiJFQ0RILUVTIn0.not.a.real.jwe"</c> raises <see cref="FormatException"/>.
 /// <c>"!!!.???.***"</c> raises <see cref="ArgumentException"/>. <c>"one-segment-only"</c> raises
 /// <c>SecurityTokenMalformedException</c>, which derives from <see cref="ArgumentException"/> and so is
 /// already covered. Catching both named types is therefore the whole set, and catching them is not a
 /// fallback: it converts a throw into an explicit failure that every caller has to answer for.
+/// </para>
+/// <para>
+/// This names no package version on purpose. It used to record the version it was measured against,
+/// and a dependency bump falsified that line without failing anything, because no build step reads a
+/// comment. <c>MalformedJwtTests</c> holds the claim instead, with one input per shape above: a
+/// release that raises a type outside the two caught here fails a test rather than quietly
+/// contradicting this paragraph.
 /// </para>
 /// </remarks>
 internal static class CompactJwt
