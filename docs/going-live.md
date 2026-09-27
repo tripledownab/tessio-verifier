@@ -39,6 +39,65 @@ OpenID4VP 1.0 §B.3.5 defines `vct_values` as "a non-empty array of strings that
 
 Matching is exact, so list every type you accept. A credential that only *inherits* from a listed type is refused, because following SD-JWT VC type inheritance needs Type Metadata that this verifier does not retrieve.
 
+### When those types put the same fact in different places
+
+Listing several types is only half the problem. Two credential types can carry the same fact under
+different claim names, or at different depths, and a query that names one claim finds nothing in the
+other.
+
+The base PID type carries a date of birth as `birthdate` and no age boolean at all: its rulebook removed
+the age verification attributes in version 1.1, following CIR 2024/2977. A domestic type may still carry
+one, and may express it as thresholds nested inside a single object rather than as separate top-level
+booleans. Note the direction before assuming a national type invented its own shape: the age
+attributes were in the base rulebook and were taken OUT of it, so a domestic type carrying one may
+simply have kept it. Germany is the case this was written against; whether other member states did the
+same is not something this page has checked.
+
+So a query that accepts both types has to ask for both shapes and say which answer it prefers.
+`Dcql.SdJwtVcByPath` addresses each claim by path, and `claim_sets` orders the alternatives:
+
+```csharp
+DcqlQueryJson = Dcql.SdJwtVcByPath(
+    ["urn:eudi:pid:1", "urn:eudi:pid:de:1"],
+    [
+        new DcqlClaim { Id = "age18", Path = ["age_over_18"] },
+        new DcqlClaim { Id = "age18nested", Path = ["age_equal_or_over", "18"] },
+        new DcqlClaim { Id = "dob", Path = ["birthdate"] },
+    ],
+    ["age18"],        // a top-level boolean, if the credential has one
+    ["age18nested"],  // the same answer nested, if it has that instead
+    ["dob"]),         // and only failing both, the date of birth
+```
+
+**The order is the privacy decision, and the specification asks for it by name.** §6.4.1: "Verifiers
+SHOULD use the principle of least information disclosure to influence how they order these options. For
+example, a proof of age request should prioritize requesting an attribute like `age_over_18` over an
+attribute like `birth_date`." The same section says the wallet SHOULD return the first option it can
+satisfy and MUST NOT return any claims if it can satisfy none. Put `dob` first and every holder hands
+over a full date of birth when a boolean would have done.
+
+**Omitting the claim sets is not the milder choice, it is the harsher one.** §6.4.1: "If `claims` is
+present, but `claim_sets` is absent, the Verifier requests all claims listed in `claims`", and "if the
+Wallet cannot deliver all claims requested by the Verifier according to these rules, it MUST NOT return
+the respective Credential". For the query above that means a holder lacking any one of the three
+returns nothing at all, rather than disclosing more than you wanted.
+
+**One set holding several ids is a combination, not a list of alternatives.** `["age18"], ["dob"]` is
+two options in preference order. `["age18", "dob"]` is a single option demanding both, and a holder who
+cannot produce both satisfies nothing. The two read alike and mean opposite things.
+
+`Dcql.MdocByPath` is the same builder for mdoc. Every path there is the full `[namespace, element]` of
+§7.2, and exactly two segments: §7.2.1 has the wallet "abort processing and return an error" for
+anything else, so the builder refuses it rather than emitting a query no wallet may answer. A claim may
+also carry `IntentToRetain`, which §B.2.4 scopes to mdoc, so setting it on an SD-JWT VC claim is
+refused.
+
+The builder refuses these at build time, because each fails the same silent way when it reaches a
+wallet: the JSON serialises perfectly and the answer comes back with no claims, which reads as the
+holder having nothing to offer. An id outside §6.3's alphanumeric, underscore and hyphen set; two
+claims sharing an id; a set naming a claim that is absent; and a claim
+that no set names, which §6.4.1 means would never be requested at all.
+
 ## 1. Live mode
 
 ```csharp
