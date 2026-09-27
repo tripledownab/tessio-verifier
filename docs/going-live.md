@@ -41,8 +41,12 @@ Matching is exact, so list every type you accept. A credential that only *inheri
 
 **The single-claim form above names a claim the PID rulebook does not define, and that is deliberate
 as an illustration but wrong as a starting point.** The EU PID Rulebook removed its age verification
-attributes in version 1.1 of 4 September 2025, "following CIR 2024/2977", so a conformant
-`urn:eudi:pid:1` carries no top-level `age_over_18`. Its §4.2 does let a domestic type add claims, so
+attributes at version 1.1, 4 September 2025, "following CIR 2024/2977", and **read at version 1.7 of
+17 July 2026 it still defines none**, so a conformant `urn:eudi:pid:1` carries no top-level
+`age_over_18`. Both the version read and the version that changed are given because a rulebook this
+young moves: v1.6 of 1 July 2026 is itself "Aligning with updated CIR 2024/2977", so confirm the
+attribute list against the current document rather than against this sentence. Its §4.2 does let a
+domestic type add claims, so
 `urn:eudi:pid:de:1` may carry one, and whether it does is a question about that type rather than
 about this API.
 
