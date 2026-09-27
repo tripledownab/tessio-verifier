@@ -221,4 +221,22 @@ public sealed class MdocVerifierTests : IDisposable
         outer.WriteByteString(inner.Encode());
         return outer.Encode();
     }
+
+    [Fact]
+    public async Task CredentialType_ReportsTheDocType_OnSuccessAndOnFailure()
+    {
+        // For mdoc the type is the docType, which parsing establishes before any check runs, so unlike
+        // the SD-JWT VC path there is no case where an issuer is known and the type is not.
+        var ok = await VerifierFor(_builder).VerifyAsync(Credential(_builder), Context());
+
+        Assert.True(ok.IsValid, string.Join("; ", ok.Errors.Select(e => e.Code)));
+        Assert.Equal(MdocTestBuilder.DefaultDocType, ok.CredentialType);
+
+        var mismatched = await VerifierFor(_builder).VerifyAsync(
+            Credential(_builder), Context("org.example.other"));
+
+        Assert.False(mismatched.IsValid);
+        Assert.Contains(mismatched.Errors, e => e.Code == MdocErrorCodes.DocTypeMismatch);
+        Assert.Equal(MdocTestBuilder.DefaultDocType, mismatched.CredentialType);
+    }
 }

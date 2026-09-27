@@ -172,7 +172,8 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
 
         // 8. Policy checks — accumulated so the caller sees every failure at once.
         var errors = new List<VerificationError>();
-        CheckVct(processed, vctIsPlain, context, errors);
+        var credentialType = ReadVct(processed);
+        CheckVct(credentialType, vctIsPlain, context, errors);
         CheckTimeClaims(processed, errors);
         await CheckKeyBindingAsync(presentation, processed, context, transactionData, errors, ct).ConfigureAwait(false);
 
@@ -200,24 +201,40 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
             KeyResolutionMethod = resolution.Method,
         };
 
+        // CredentialType on BOTH branches. The failing one is the more useful of the two: a caller
+        // looking at a vct mismatch wants to know what actually arrived, and every earlier return in
+        // this method leaves it null because the payload had not been read yet.
         return errors.Count > 0
-            ? Invalid(errors, issuerInfo)
+            ? Invalid(errors, issuerInfo) with { CredentialType = credentialType }
             : new VerificationResult
             {
                 IsValid = true,
                 DisclosedClaims = ExtractClaims(processed),
                 Issuer = issuerInfo,
                 Errors = [],
+                CredentialType = credentialType,
             };
     }
 
-    private static void CheckVct(JsonObject processed, bool vctIsPlain, VerificationContext context, List<VerificationError> errors)
-    {
-        // SPEC: draft-ietf-oauth-sd-jwt-vc §2.2.2.1 — vct is REQUIRED and must not be selectively disclosed.
-        var vct = processed.TryGetPropertyValue("vct", out var vctNode) && vctNode?.GetValueKind() == JsonValueKind.String
+    /// <summary>
+    /// The credential's own declared type, or null when it declares none usable.
+    /// </summary>
+    /// <remarks>
+    /// SPEC: draft-ietf-oauth-sd-jwt-vc-10 §3.2.2.2 lists vct among the registered JWT claims that
+    /// "MUST NOT be included in the Disclosures, i.e., cannot be selectively disclosed", and marks it
+    /// REQUIRED. The section number moved between drafts, so the draft is named with it.
+    /// One reader, because two callers now want this value: the check below, and the result, which
+    /// reports what was presented. Read twice, the value the caller is told about could differ from the
+    /// value that was actually judged.
+    /// </remarks>
+    private static string? ReadVct(JsonObject processed) =>
+        processed.TryGetPropertyValue("vct", out var vctNode) && vctNode?.GetValueKind() == JsonValueKind.String
             ? vctNode.GetValue<string>()
             : null;
 
+    private static void CheckVct(
+        string? vct, bool vctIsPlain, VerificationContext context, List<VerificationError> errors)
+    {
         if (vct is null || !vctIsPlain)
         {
             errors.Add(new VerificationError { Code = ErrorCodes.VctMissing, Message = "The credential carries no plain vct claim." });

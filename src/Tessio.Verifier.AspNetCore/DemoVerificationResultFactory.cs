@@ -22,11 +22,13 @@ internal static class DemoVerificationResultFactory
             disclosed[claim] = SampleClaimValues.For(claim);
         }
 
+        // The type this deployment ASKED for, from the one place that decides it, so a demo result
+        // reports the same field a live verification does rather than leaving it null.
         return VerificationResult.Valid(disclosed, new IssuerInfo
         {
             Identifier = "https://demo-issuer.tessio.dev",
             Trusted = true,
             KeyResolutionMethod = "jwt-vc-issuer-metadata",
-        });
+        }) with { CredentialType = DemoRequestOptionsFactory.CredentialTypeFor(options) };
     }
 }
