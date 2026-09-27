@@ -197,12 +197,7 @@ public class SdJwtVcVerifierTests
         using var builder = new TestCredentialBuilder();
         var raw = builder.Build();
 
-        // Flip a character in the middle of the issuer JWT's signature segment. (Not the last char:
-        // base64url's final character carries partial bits, so some flips decode to identical bytes.)
-        var tildeAt = raw.IndexOf('~');
-        var sigStart = raw.LastIndexOf('.', tildeAt) + 1;
-        var mid = (sigStart + tildeAt) / 2;
-        var tampered = raw[..mid] + (raw[mid] == 'A' ? 'B' : 'A') + raw[(mid + 1)..];
+        var tampered = TamperIssuerSignature(raw);
 
         var result = await MetadataVerifier(builder).VerifyAsync(Credential(tampered), Context());
 
@@ -543,4 +538,70 @@ public class SdJwtVcVerifierTests
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
     }
 
+    [Fact]
+    public async Task CredentialType_ReportsTheVct_OnASuccessfulVerification()
+    {
+        using var builder = new TestCredentialBuilder();
+
+        var result = await MetadataVerifier(builder).VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+        Assert.Equal(TestCredentialBuilder.DefaultVct, result.CredentialType);
+    }
+
+    [Fact]
+    public async Task CredentialType_ReportsWhatArrived_OnAVctMismatch()
+    {
+        // The case this exists for. A request naming several types learns which one the holder
+        // actually presented ONLY from here: the mismatch message happens to interpolate it, but a
+        // caller cannot parse a message, and on the passing path there is no message at all.
+        using var builder = new TestCredentialBuilder();
+
+        var result = await MetadataVerifier(builder)
+            .VerifyAsync(Credential(builder.Build()), Context(expectedVct: "https://credentials.example/other"));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == "vct_mismatch");
+        Assert.Equal(TestCredentialBuilder.DefaultVct, result.CredentialType);
+    }
+
+    [Fact]
+    public async Task CredentialType_IsNull_WhenVerificationFailsBeforeTheTypeIsRead()
+    {
+        // Null means "not established", not "the credential declared none". A signature that fails is
+        // rejected before the payload is parsed, so there is nothing to report and reporting an empty
+        // string would be the stronger, false claim.
+        using var builder = new TestCredentialBuilder();
+        var presentation = builder.Build();
+        var tampered = TamperIssuerSignature(presentation);
+
+        var result = await MetadataVerifier(builder).VerifyAsync(Credential(tampered), Context());
+
+        // Asserting the CODE as well, because the point is that it failed at the SIGNATURE. A tamper
+        // that made the token malformed would also leave CredentialType null and the test would pass
+        // while exercising a different path entirely.
+        Assert.False(result.IsValid);
+        // The literal, not the constant, matching this project's dominant convention: CONTRIBUTING
+        // declares these codes append-only observable behaviour, so pinning the string is the point.
+        // A rename would pass against the constant and break every consumer.
+        Assert.Contains(result.Errors, e => e.Code == "signature_invalid");
+        Assert.Null(result.CredentialType);
+    }
+
+    /// <summary>
+    /// Flips one character in the MIDDLE of the issuer JWT's signature segment, leaving the
+    /// presentation's structure intact so it still parses and fails at the signature.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not the last character: base64url's final character carries partial bits, so some
+    /// flips there decode to identical bytes and the signature still verifies. A test built on that
+    /// would pass or fail depending on the key it happened to generate.
+    /// </remarks>
+    private static string TamperIssuerSignature(string presentation)
+    {
+        var tildeAt = presentation.IndexOf('~');
+        var sigStart = presentation.LastIndexOf('.', tildeAt) + 1;
+        var mid = (sigStart + tildeAt) / 2;
+        return presentation[..mid] + (presentation[mid] == 'A' ? 'B' : 'A') + presentation[(mid + 1)..];
+    }
 }

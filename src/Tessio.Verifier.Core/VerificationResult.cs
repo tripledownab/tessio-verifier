@@ -3,7 +3,10 @@ namespace Tessio.Verifier.Core;
 /// <summary>
 /// Outcome of credential verification. Carries the disclosed claims, issuer info, and any failure reasons.
 /// </summary>
-/// <remarks>FROZEN contract (contracts-v0).</remarks>
+/// <remarks>
+/// FROZEN contract (contracts-v0). Forward-compatible: new optional inputs may be added as init-only
+/// properties, which is how <see cref="CredentialType"/> arrived. No existing member changes.
+/// </remarks>
 public sealed record VerificationResult
 {
     /// <summary>True when signature, disclosures, key binding, and trust checks all pass.</summary>
@@ -20,6 +23,30 @@ public sealed record VerificationResult
 
     /// <summary>Verification failures; empty when <see cref="IsValid"/> is true.</summary>
     public required IReadOnlyList<VerificationError> Errors { get; init; }
+
+    /// <summary>
+    /// The credential type that was actually presented: the <c>vct</c> for SD-JWT VC, the
+    /// <c>docType</c> for mdoc. Null when verification failed before the type could be read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What was PRESENTED, not what was requested. The caller already knows what it asked for. Once a
+    /// request names several types, which one arrived is a fact only the verifier holds, and without
+    /// this the only way to learn it is to read a mismatch message, which exists only when the type was
+    /// wrong. A caller recording what a holder presented, or choosing which claim path to read an answer
+    /// from, needs it on the passing path too.
+    /// </para>
+    /// <para>
+    /// Null means "not established", never "the credential declared none". A signature that fails before
+    /// the payload is parsed leaves nothing to report, and an empty string there would be the stronger
+    /// and false claim.
+    /// </para>
+    /// <para>
+    /// Init-only and optional, so every existing construction of this record still compiles and behaves
+    /// as it did. Additive in the sense the frozen contract permits: no existing member changes.
+    /// </para>
+    /// </remarks>
+    public string? CredentialType { get; init; }
 
     /// <summary>
     /// A passing result carrying the disclosed claims and resolved issuer. Convenience for tests and

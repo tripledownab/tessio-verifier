@@ -348,6 +348,13 @@ builder.Services.AddSingleton<ICredentialVerifier>(sp => new SdJwtVcVerifier(
 
 Verification results carry stable error codes (`nonce_mismatch`, `untrusted_issuer`, `credential_revoked` and so on) in `VerificationResult.Errors`, so your application logic and your logs can branch on codes rather than messages.
 
+`VerificationResult.CredentialType` reports what was **presented**: the `vct` for SD-JWT VC, the `docType`
+for mdoc. You already know what you asked for, so this only earns its place once a request names several
+types, as [above](#when-those-types-put-the-same-fact-in-different-places): then it is the only way to
+learn which one the holder actually produced, and it is populated on the failing path too, where it
+answers "a mismatch against what?". It is null when verification failed before the type could be read,
+which means "not established" rather than "the credential declared none".
+
 ## Binding transactions into presentations
 
 For flows where the credential authorizes a specific act (a payment, a contract signature), OpenID4VP transaction data binds the holder's signature to that act. Supply the transaction objects and the rest is automatic: they ride base64url-encoded in the signed request, the wallet hashes each one into its Key Binding JWT and the verifier rejects presentations whose hashes are missing or wrong.

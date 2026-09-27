@@ -143,6 +143,9 @@ public sealed class MdocVerifier
             KeyResolutionMethod = "x5c",
         };
 
+        // CredentialType on both branches. For mdoc it is the docType, which the document declares and
+        // parsing has already established here, so unlike the SD-JWT VC path there is no case where an
+        // issuer is known and the type is not.
         if (errors.Count > 0)
         {
             return new VerificationResult
@@ -151,6 +154,7 @@ public sealed class MdocVerifier
                 DisclosedClaims = new Dictionary<string, object>(StringComparer.Ordinal),
                 Issuer = issuer,
                 Errors = errors,
+                CredentialType = document.DocType,
             };
         }
 
@@ -160,6 +164,7 @@ public sealed class MdocVerifier
             DisclosedClaims = BuildClaims(document),
             Issuer = issuer,
             Errors = [],
+            CredentialType = document.DocType,
         };
     }
 
