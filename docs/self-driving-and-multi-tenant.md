@@ -50,6 +50,13 @@ var options = new PresentationRequestOptions
 var request = await requestBuilder.BuildAsync(options, ct);
 ```
 
+`Dcql.AgeOver` and `Dcql.SdJwtVc` name claims, which assumes every claim sits at the top level. When a
+tenant accepts several credential types that carry the same fact under different names or at different
+depths, use `Dcql.SdJwtVcByPath` or `Dcql.MdocByPath` instead: they address each claim by path and take
+claim sets, which is how a query says "this answer, or failing that this one". See
+[going-live.md](going-live.md#when-those-types-put-the-same-fact-in-different-places). The name-based
+builders are thin wrappers over the same code, so neither can drift from the other.
+
 Persist the resulting session (see the next section) and render `request.AuthorizationRequestUri` as a QR
 code or deep link. For by-reference delivery serve `request.SignedRequestObject` at the `request_uri`.
 

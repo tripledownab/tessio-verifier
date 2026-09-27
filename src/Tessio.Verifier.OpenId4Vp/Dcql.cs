@@ -3,11 +3,25 @@ using System.Text.Json.Nodes;
 namespace Tessio.Verifier.OpenId4Vp;
 
 /// <summary>
-/// Builders for the common OpenID4VP DCQL (Digital Credentials Query Language) queries, producing the
-/// JSON string expected by <see cref="PresentationRequestOptions.DcqlQueryJson"/>. These cover the shapes
-/// the verifier itself requests (single credential, top-level claims); hand-write the JSON for anything
-/// more exotic (nested claim paths, multiple credentials, claim value constraints).
+/// Builders for OpenID4VP DCQL (Digital Credentials Query Language) queries, producing the JSON string
+/// expected by <see cref="PresentationRequestOptions.DcqlQueryJson"/>.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Two levels of builder, and the difference is how a claim is ADDRESSED, not how many credential types
+/// a query accepts. The <c>params string[]</c> overloads name claims, which assumes every claim sits at
+/// the top level of its credential. The <see cref="DcqlClaim"/> overloads address claims by PATH and
+/// accept claim sets, which is what a nested claim or a preference order over alternatives needs. Both
+/// levels can name several credential types in one query.
+/// </para>
+/// <para>
+/// This used to tell callers to hand-write the JSON for a nested path or a claim set. A builder that
+/// covers only the easy shape does not prevent the hard one, it only decides where the hard one gets
+/// written: in a caller, where the path the query asks for sits apart from the code that reads the
+/// answer back, and nothing compares the two. Still hand-written, because nothing asks for them yet:
+/// claim value constraints, and more than one credential in a single query.
+/// </para>
+/// </remarks>
 // SPEC: OpenID4VP 1.0 uses DCQL, not Presentation Exchange.
 public static class Dcql
 {
@@ -47,8 +61,41 @@ public static class Dcql
     /// </remarks>
     public static string SdJwtVc(IReadOnlyList<string> vctValues, params string[] claims)
     {
-        ArgumentNullException.ThrowIfNull(vctValues);
         ArgumentNullException.ThrowIfNull(claims);
+
+        // allowEmptyClaims, and only here. §6.1 says `claims` is "a non-empty array", so the path-based
+        // builders refuse an empty one. This overload has emitted "claims": [] since it shipped and is
+        // consumed outside this repository, so it keeps doing so.
+        return SdJwtVcQuery(vctValues, DcqlClaimsQuery.TopLevel(claims), [], allowEmptyClaims: true);
+    }
+
+    /// <summary>
+    /// A query for a single SD-JWT VC credential of ANY of <paramref name="vctValues"/>, requesting
+    /// <paramref name="claims"/> by path, optionally preferring one combination of them over another.
+    /// </summary>
+    /// <param name="vctValues">Credential types to accept. At least one, any of which matches.</param>
+    /// <param name="claims">Every claim the query may ask for, each addressed by path.</param>
+    /// <param name="claimSets">
+    /// Each entry is a list of <see cref="DcqlClaim.Id"/> values, and ORDER IS THE PREFERENCE. Pass
+    /// none to request every claim.
+    /// </param>
+    /// <remarks>
+    /// SPEC: OpenID4VP 1.0 section 6.4.1. With both <c>claims</c> and <c>claim_sets</c> present the
+    /// verifier requests ONE combination, the wallet SHOULD return the first option it can satisfy,
+    /// and if it can satisfy none it MUST NOT return any claims. That is what expresses "this claim,
+    /// or failing that this one", which no list of claims alone can say.
+    /// </remarks>
+    public static string SdJwtVcByPath(
+        IReadOnlyList<string> vctValues, IReadOnlyList<DcqlClaim> claims, params string[][] claimSets)
+        => SdJwtVcQuery(vctValues, claims, claimSets, allowEmptyClaims: false);
+
+    private static string SdJwtVcQuery(
+        IReadOnlyList<string> vctValues,
+        IReadOnlyList<DcqlClaim> claims,
+        string[][] claimSets,
+        bool allowEmptyClaims)
+    {
+        ArgumentNullException.ThrowIfNull(vctValues);
         if (vctValues.Count == 0)
         {
             throw new ArgumentException("A DCQL query needs at least one vct value.", nameof(vctValues));
@@ -61,14 +108,42 @@ public static class Dcql
             values.Add(vct);
         }
 
-        var claimsArray = new JsonArray();
-        foreach (var claim in claims)
-        {
-            ArgumentException.ThrowIfNullOrEmpty(claim);
-            claimsArray.Add(new JsonObject { ["path"] = new JsonArray(claim) });
-        }
+        return SingleCredential(
+            SdJwtVcFormat,
+            new JsonObject { ["vct_values"] = values },
+            DcqlClaimsQuery.ClaimsArray(claims, claimSets, isMdoc: false, allowEmptyClaims),
+            DcqlClaimsQuery.ClaimSetsArray(claimSets));
+    }
 
-        return SingleCredential(SdJwtVcFormat, new JsonObject { ["vct_values"] = values }, claimsArray);
+    /// <summary>
+    /// A query for a single mdoc credential of document type <paramref name="docType"/>, requesting
+    /// <paramref name="claims"/> by path, optionally preferring one combination of them over another.
+    /// </summary>
+    /// <param name="docType">The mdoc document type, which becomes <c>meta.doctype_value</c>.</param>
+    /// <param name="claims">
+    /// Every claim the query may ask for. Each path is the full <c>[namespace, element]</c> of §7.2,
+    /// because a caller spanning two namespaces cannot say so through a single namespace parameter.
+    /// <see cref="Mdoc(string, string, string[])"/> keeps that parameter and builds these paths for
+    /// you, since a caller naming elements in one namespace cannot have that problem.
+    /// </param>
+    /// <param name="claimSets">
+    /// Each entry is a list of <see cref="DcqlClaim.Id"/> values, and ORDER IS THE PREFERENCE. Pass
+    /// none to request every claim.
+    /// </param>
+    public static string MdocByPath(
+        string docType, IReadOnlyList<DcqlClaim> claims, params string[][] claimSets)
+        => MdocQuery(docType, claims, claimSets, allowEmptyClaims: false);
+
+    private static string MdocQuery(
+        string docType, IReadOnlyList<DcqlClaim> claims, string[][] claimSets, bool allowEmptyClaims)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(docType);
+
+        return SingleCredential(
+            MdocFormat,
+            new JsonObject { ["doctype_value"] = docType },
+            DcqlClaimsQuery.ClaimsArray(claims, claimSets, isMdoc: true, allowEmptyClaims),
+            DcqlClaimsQuery.ClaimSetsArray(claimSets));
     }
 
     /// <summary>
@@ -86,37 +161,42 @@ public static class Dcql
     /// of <paramref name="elements"/> from <paramref name="nameSpace"/> (mdoc DCQL paths are
     /// <c>[namespace, element]</c>).
     /// </summary>
-    // SPEC: OpenID4VP 1.0 Annex B.2 — mdoc queries use meta.doctype_value and two-element claim paths.
+    // SPEC: OpenID4VP 1.0 §B.2.3 gives an mdoc query meta.doctype_value. The two-element claim path is
+    // §7.2, NOT Annex B.2: "A claims path pointer into an mdoc contains two elements of type string.
+    // The first element refers to a namespace and the second element refers to a data element
+    // identifier." Annex B.2 defines the mdoc format's own parameters and says nothing about path shape.
     public static string Mdoc(string docType, string nameSpace, params string[] elements)
     {
-        ArgumentException.ThrowIfNullOrEmpty(docType);
         ArgumentException.ThrowIfNullOrEmpty(nameSpace);
         ArgumentNullException.ThrowIfNull(elements);
 
-        var claimsArray = new JsonArray();
-        foreach (var element in elements)
-        {
-            ArgumentException.ThrowIfNullOrEmpty(element);
-            claimsArray.Add(new JsonObject { ["path"] = new JsonArray(nameSpace, element) });
-        }
-
-        return SingleCredential(MdocFormat, new JsonObject { ["doctype_value"] = docType }, claimsArray);
+        // allowEmptyClaims for the same compatibility reason as the SD-JWT VC overload above.
+        return MdocQuery(
+            docType,
+            [.. elements.Select(element => new DcqlClaim { Path = [nameSpace, element] })],
+            [],
+            allowEmptyClaims: true);
     }
 
-    private static string SingleCredential(string format, JsonObject meta, JsonArray claims)
+    private static string SingleCredential(
+        string format, JsonObject meta, JsonArray claims, JsonArray? claimSets = null)
     {
-        var query = new JsonObject
+        var credential = new JsonObject
         {
-            ["credentials"] = new JsonArray(
-                new JsonObject
-                {
-                    ["id"] = DefaultCredentialId,
-                    ["format"] = format,
-                    ["meta"] = meta,
-                    ["claims"] = claims,
-                }),
+            ["id"] = DefaultCredentialId,
+            ["format"] = format,
+            ["meta"] = meta,
+            ["claims"] = claims,
         };
 
+        // Omitted rather than emitted empty. Section 6.4.1 gives claim_sets a meaning, "request one of
+        // these combinations", and an empty array would say every combination is unacceptable.
+        if (claimSets is not null)
+        {
+            credential["claim_sets"] = claimSets;
+        }
+
+        var query = new JsonObject { ["credentials"] = new JsonArray(credential) };
         return query.ToJsonString(JsonDefaults.Relaxed);
     }
 }
