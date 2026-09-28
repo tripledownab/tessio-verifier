@@ -58,16 +58,16 @@ public sealed class CallbackResponseModeTests : IAsyncDisposable
     };
 
     [Fact]
-    public async Task ForgedPlaintextResponse_WithTheStolenState_IsRefused_AndTheRealWalletStillCompletes()
+    public async Task PlaintextResponse_ToAnEncryptedRequest_IsRefused_AndTheWalletStillCompletes()
     {
         var session = await PendingEncryptedSessionAsync();
         var store = _provider.GetRequiredService<InMemorySessionStore>();
         var processor = _provider.GetRequiredService<WalletCallbackProcessor>();
 
-        // The attack: junk, but carrying the right state, and not encrypted.
-        var forged = await processor.ProcessAsync(PlaintextForm("a.b.c~", session.Request.State!), CancellationToken.None);
+        // Junk carrying the session's state, in plaintext, where the request asked for encryption.
+        var plaintext = await processor.ProcessAsync(PlaintextForm("a.b.c~", session.Request.State!), CancellationToken.None);
 
-        Assert.Equal(CallbackOutcome.ResponseInvalid, forged.Outcome);
+        Assert.Equal(CallbackOutcome.ResponseInvalid, plaintext.Outcome);
         Assert.Equal(VerificationSessionStatus.Pending, (await store.GetAsync(session.SessionId))!.Status);
 
         // What it cost the real wallet: nothing. It answers encrypted, as asked, and completes.
@@ -97,7 +97,7 @@ public sealed class CallbackResponseModeTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task UnsecuredResponseToken_WithTheStolenState_IsRefused_AndTheSessionStaysOpen()
+    public async Task UnsecuredResponseToken_IsRefused_AndTheSessionStaysOpen()
     {
         var session = await PendingEncryptedSessionAsync();
         var kid = RequestParameters.TryGetEncryptionJwkJson(session.Request) is { } jwk
