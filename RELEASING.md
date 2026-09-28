@@ -1,17 +1,16 @@
 # Releasing Tessio.Verifier
 
 Downstream applications consume these packages via `PackageReference`. A library fix does not reach any
-of them until it is published and the consumer's version is bumped. Keep those two steps together: the
-gap between them is how two `client_metadata` builders once drifted for weeks, until an external
-conformance suite caught a deployed consumer advertising values HAIP rejects.
+of them until it is published and the consumer's version is bumped. Keep those two steps together: while
+they are apart, a consumer runs code the library has already fixed, and nothing fails to say so.
 
 ## Publishing is tag-driven, not manual
 
 `.github/workflows/release.yml` does the whole publish on a `v*` tag: restore, build, test, pack,
 push to nuget.org via **Trusted Publishing** (OIDC exchanges for a one-hour key, so there is no
 long-lived secret to leak), and create the GitHub Release. Do **not** `dotnet nuget push` by hand; that
-bypasses the tests, the OIDC path, and the Release note, and it is how the repo's Releases page fell
-four versions behind nuget.org once already.
+bypasses the tests, the OIDC path, and the Release note, and leaves the repo's Releases page behind
+nuget.org, which reads as an abandoned project to anyone evaluating the library.
 
 ## The version is the single source of truth
 
@@ -44,11 +43,11 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
    gh run view <run-id> --json jobs -q '.jobs[] | "\(.name): \(.conclusion)"'
    ```
 
-   This is not precautionary. 0.8.0 shipped a Windows-only defect this way, and 0.10.0 would have: a
-   certificate whose subjectAltName URI matched `iss` exactly was accepted on Unix and refused on
-   Windows, because the check read the platform's RENDERING of the extension rather than its DER. The
-   Ubuntu leg passed both times. Anything touching `System.Security.Cryptography.X509Certificates`,
-   path handling or text formatting deserves it most, but it costs one run, so just do it.
+   This is not precautionary. Platforms render the same certificate differently, so a check that reads
+   the platform's RENDERING of an extension rather than its DER can accept a certificate on Unix and
+   refuse it on Windows, and the Ubuntu leg passes either way. Anything touching
+   `System.Security.Cryptography.X509Certificates`, path handling or text formatting deserves it most,
+   but it costs one run, so just do it.
 2. Run **both** OIDF conformance plans against the local suite and commit the record
    (`tools/conformance-harness/README.md` has the setup):
 
