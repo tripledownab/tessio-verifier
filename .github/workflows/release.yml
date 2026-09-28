@@ -92,9 +92,9 @@ jobs:
         if: env.NUGET_USER == '' && env.NUGET_API_KEY == ''
         run: echo "::warning::Neither NUGET_USER (trusted publishing) nor NUGET_API_KEY is configured; packages were built but not published."
 
-      # Without this the tag ships to nuget.org and the repo's Releases page silently stays behind.
-      # That happened for v0.3.0 through v0.3.3: all four were on NuGet while the repo still showed
-      # v0.2.1 as latest, which reads as an abandoned project to anyone evaluating the library.
+      # Without this the tag ships to nuget.org and the repo's Releases page silently stays behind,
+      # showing an older version as latest, which reads as an abandoned project to anyone evaluating
+      # the library.
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

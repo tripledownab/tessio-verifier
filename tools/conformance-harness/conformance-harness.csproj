@@ -11,4 +11,22 @@
     <ProjectReference Include="..\..\src\Tessio.Verifier.AspNetCore\Tessio.Verifier.AspNetCore.csproj" />
   </ItemGroup>
 
+
+  <!-- Stamps the harness with the git tree of src/ exactly as it was on disk when it was built,
+       uncommitted changes included. run-plan.py compares that with the tree it is about to test and
+       record, computed by the same script, so the two sides cannot disagree about what "the tree" is.
+       Not on Windows, where there is no sh: the stamp is then absent and the preflight refuses.
+       stderr is dropped because ConsoleToMSBuild captures it into the value, and a git warning once
+       became part of a stamp. A failing script still fails the build: Exec checks the exit code. -->
+  <Target Name="StampSrcTree" BeforeTargets="GetAssemblyAttributes" Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+    <Exec Command="sh &quot;$(MSBuildThisFileDirectory)src-tree.sh&quot; 2&gt;/dev/null" ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="HarnessSrcTree" />
+    </Exec>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>SrcTree</_Parameter1>
+        <_Parameter2>$(HarnessSrcTree)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
 </Project>

@@ -49,11 +49,11 @@ you ──click start──▶ harness :5099
                         │  builds a JAR signed with its cert, stores it
                         ▼
              authorization URI ──▶ suite :8443  (the mock wallet)
-                                      │  fetches http://host.docker.internal:5099/verify/request/{id}
+                                      │  fetches https://host.docker.internal:5099/verify/request/{id}
                                       │  checks signature + that client_id's hash matches the x5c leaf
                                       │  mints a credential, signs it with its own key
                                       ▼
-                        POST ──▶ http://host.docker.internal:5099/verify/callback
+                        POST ──▶ https://host.docker.internal:5099/verify/callback
                                       │
                         harness verifies and records the outcome
                                       ▼
@@ -174,7 +174,7 @@ in a single pass:
 
 1. **Start the harness with placeholder suite values.** It only needs to boot far enough to print its
    certificate; the endpoint being wrong does not matter yet.
-2. **Copy the PEM** from the landing page at <http://localhost:5099>.
+2. **Copy the PEM** from the landing page at <https://localhost:5099>.
 3. **In the suite**, create the test plan: `oid4vp-1final-verifier-haip-test-plan`, choose
    `credential_format`, paste the PEM into `client.request_object_trust_anchor_pem`.
 4. **Copy the suite's authorization endpoint and issuer** out of the created plan into
@@ -185,7 +185,7 @@ in a single pass:
 ## Running a module
 
 1. Start the module in the suite.
-2. Open <http://localhost:5099> and check the printed configuration matches the variants under test.
+2. Open <https://localhost:5099> and check the printed configuration matches the variants under test.
 3. Click **Start a verification**. The browser follows the authorization URI to the suite.
 4. Complete the flow there. The suite posts the presentation back.
 5. Open `/evidence/{sessionId}` and screenshot it. Upload that to the module.
@@ -216,25 +216,55 @@ exists. `--harness` moves off the default `https://localhost:5099`.
 
 `--record` is what makes a release possible. It writes the run's `credential_format` variant, the git
 tree of `src/` and the plan id into `conformance-record.json`, and `release.yml` refuses to publish a
-tag whose `src` tree is not listed there. It writes only after the run passes, and refuses a dirty
-`src/`, because the harness builds from the working tree: uncommitted source would mean the suite
-tested something `HEAD:src` does not name. Both variants must be recorded, so run it twice, killing the
-harness and swapping `appsettings.Local.json` in between. See `RELEASING.md` step 2.
+tag whose `src` tree is not listed there. It writes only after the run passes, and only when the harness's
+build stamp says `src/` was `HEAD:src` when it was built. That stamp is git's view of the working tree,
+uncommitted edits included, so it is checked against the build rather than against whether `src/`
+happens to be clean when the run ends. It is not a hash of what the compiler read; see the limits below. Both variants must be recorded, so run it twice, stopping the harness and swapping
+`appsettings.Local.json` in between. See `RELEASING.md` step 2.
 
-**The script checks its preconditions before it creates anything.** It confirms the suite answers, the
-harness answers, and the harness's variant matches the plan's, and only then clones. That order is
-deliberate: it used to clone first, so a harness that was not running left an orphan plan in the suite
-and then died on a traceback naming neither end.
+### What the script checks before it creates anything
 
-The variant check reads `GET {harness}/config`, which reports the settings of the RUNNING process
-rather than whatever `appsettings.Local.json` holds now. That is what catches a harness left over from
-the other variant, which otherwise answers happily with the wrong credential format and produces a
-result that looks real. The two ends spell the variant differently, `sd_jwt_vc` against `dc+sd-jwt`, so
-`HARNESS_FORMAT` in the script maps them and a plan variant missing from it stops the run.
+It used to clone a plan first, so a harness that was not running left an orphan plan in the suite and
+then died on a traceback naming neither end. Now it clones only after all of these hold, and each one
+that fails says what to do.
 
-If a connection drops mid-run, the script names the module that was in flight and re-probes both ends,
-so the output says which one went. Nothing is recorded, because `--record` runs after every module
-passes, and the same command is safe to repeat.
+| Check | Catches |
+|---|---|
+| the suite serves the plan with 200 | the suite down, including its server stopped behind a still-running nginx (502) and its database stopped (a 500 or a read timeout, depending on timing); a mistyped plan id |
+| every module the plan lists is in `EXPECTED` | a module added by the suite, which would otherwise be assumed to pass |
+| Chrome exists, with `--evidence` | a run that would fail at its first screenshot |
+| `{harness}/config` answers with the harness's settings | nothing on the port, something else on it, or a harness built before `/config` existed |
+| the plan's `credential_format` and `response_mode` match the harness's | a harness configured for the other plan. The two ends spell both differently, so `HARNESS_FORMAT` and `HARNESS_RESPONSE_MODE` map them, and a value missing from a map stops the run |
+| the plan's alias is in the harness's authorization endpoint | a harness pointed at the other plan's alias |
+| the harness's stamped `src/` tree equals the one on disk here | a stale harness of the SAME variant: built before your last change, in another checkout, or from edits since reverted through git |
+| with `--record`, that tree is also `HEAD:src` | a record run from uncommitted `src/`, refused before a plan is created rather than after the whole run |
+
+The stamp row is the one that matters most, because that harness passes every other check and answers
+every endpoint correctly with other bytes underneath. The harness build runs `src-tree.sh` and stamps
+git's view of `src/` on disk, and the script computes the same view with the same script, so the two
+sides share one definition. A commit id would not do, because a harness built from uncommitted edits
+never ran the bytes a commit names. The stamp needs `sh`, so a harness built on Windows carries none and
+is refused.
+
+**What the stamp does not see.** It is git's view of the source, not a hash of what the compiler read,
+and the two differ when:
+
+- a file under `src/` matches `.gitignore`, so git skips it and MSBuild still compiles it;
+- a revert restores an old timestamp, so MSBuild skips the recompile and the old bytes stay;
+- a file is saved while the build is running, after its project compiled and before the stamp;
+- a build file is imported from a directory above the checkout;
+- line endings are converted on the way into the working tree.
+
+Each of those has been used to write a false record. Until the record run builds from a clean export of
+`HEAD`, a record is as trustworthy as the checkout it was run from: build it from a clean checkout, with
+nothing saved during the build.
+
+Before each module the harness's whole `/config` is read again, including an `instance` id that changes on
+every start, so a harness restarted or reconfigured between modules stops the run. If a module fails with
+an exception, the script asks both ends whether they are healthy and whether the harness is still the same
+process. If either end is down, or the harness restarted inside the module, it says so and exits; nothing
+is recorded, because `--record` runs after every module passes, so the same command is safe to repeat. If
+both are healthy and the harness is the same process, the failure is real and is raised as it is.
 
 Three things the script knows that are easy to get wrong by hand:
 
@@ -274,7 +304,7 @@ plan first and fix anything red before paying. See <https://openid.net/certifica
 
 | Key | Meaning |
 |---|---|
-| `PublicBaseUri` | Where the suite reaches us. `http://host.docker.internal:5099` on Docker Desktop. |
+| `PublicBaseUri` | Where the suite reaches us. `https://host.docker.internal:5099` on Docker Desktop. |
 | `Suite:AuthorizationEndpoint` | The suite's mock wallet endpoint, from the test plan. |
 | `Suite:Issuer` | The suite's credential issuer, which we must trust. |
 | `Request:CredentialFormat` | `dc+sd-jwt` or `mso_mdoc`. Match the plan variant. |

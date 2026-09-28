@@ -1,3 +1,4 @@
+using System.Reflection;
 using Tessio.Verifier.ConformanceHarness;
 using Microsoft.IdentityModel.Tokens;
 using Tessio.Verifier.AspNetCore;
@@ -94,6 +95,10 @@ builder.Services.AddTessioVerifier(options =>
 
 var app = builder.Build();
 
+// Changes on every start, so run-plan.py can tell a restarted harness from the one it checked, even when
+// both come from the same build and carry the same stamp. A restart mid-module loses the session.
+var instance = Guid.NewGuid().ToString("N");
+
 // Present the public authority on every request.
 //
 // The library derives response_uri from Request.Host, which is right: in production you sit behind a
@@ -123,16 +128,24 @@ app.MapTessioVerifier();
 
 app.MapGet("/", (HarnessSettings s) => Results.Content(Pages.Landing(s), "text/html"));
 
-// The same facts the landing page shows, for run-plan.py's preflight to read before it creates
-// anything in the suite. A variant mismatch between this harness and the plan fails a module for a
-// reason that has nothing to do with the code, and the landing page is the only other place that says
-// which variant is loaded, so checking it meant a person reading HTML and remembering to.
+// The settings of THIS running process, for run-plan.py to compare with the plan and the tree before it
+// creates anything in the suite, and again before each module. Each one names a way a run can fail, or
+// worse pass, for a reason that has nothing to do with the code under test.
+//
+// srcTree is git's view of src/ on disk when this harness was built, stamped by the StampSrcTree target.
+// It catches the stale harnesses that come up in practice: built before a change, in another checkout,
+// or from edits reverted through git. It is NOT a hash of what the compiler read. MSBuild compiles files
+// git ignores, skips a recompile when a revert keeps old timestamps, and imports build files from outside
+// the checkout, and none of those move this value. instance changes on every start.
 app.MapGet("/config", (HarnessSettings s) => Results.Json(new
 {
     credentialFormat = s.CredentialFormat,
     requestedClaim = s.RequestedClaim,
     responseMode = s.ResponseMode.ToString(),
     authorizationEndpoint = s.AuthorizationEndpoint,
+    srcTree = typeof(HarnessSettings).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+        .FirstOrDefault(a => a.Key == "SrcTree")?.Value,
+    instance,
 }));
 
 app.MapGet("/evidence/{sessionId}", async (
