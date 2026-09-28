@@ -32,5 +32,19 @@ public class ContractSmokeTests
         };
         Assert.False(untrusted.Trusted);
         Assert.Equal("not in any national trusted list", untrusted.Reason);
+
+        // The name of this test says ALL fields, so the two anchor fields belong in it. A round-trip
+        // test that silently stops covering a field promises something it no longer does.
+        var anchored = new IssuerTrustStatus
+        {
+            Trusted = true,
+            TrustListSource = "lotl://eu",
+            TrustAnchorSubject = "CN=Some Root, C=EU",
+            TrustAnchorThumbprint = "0123456789ABCDEF",
+        };
+        Assert.Equal("CN=Some Root, C=EU", anchored.TrustAnchorSubject);
+        Assert.Equal("0123456789ABCDEF", anchored.TrustAnchorThumbprint);
+        Assert.Null(trusted.TrustAnchorSubject);
+        Assert.Null(trusted.TrustAnchorThumbprint);
     }
 }

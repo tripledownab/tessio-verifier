@@ -269,6 +269,95 @@ public sealed class MyTrustResolver : ITrustListResolver
 }
 ```
 
+`IssuerTrustStatus` carries more than the verdict, and what you populate is what a caller can record
+afterwards. All of it is optional. The three below reach `VerificationResult.Issuer`; `Reason` does not,
+and becomes a `VerificationResult.Errors[].Message` instead:
+
+| Field | Set it to |
+|---|---|
+| `TrustListSource` | which list produced the verdict, **on a refusal as well as a pass**. A rejected presentation is the one a relying party has most reason to question, and "not trusted" without naming the list that was asked answers nothing. If your resolver consults several lists and none matched, null is the honest answer: no single list produced that refusal |
+| `TrustAnchorSubject` | the anchor that vouched for the key, for a human reading a record. Null wherever no certificate was involved, which is the identifier route, and null on a refusal unless you know which configured anchor was matched and rejected |
+| `TrustAnchorThumbprint` | that anchor's SHA-256 over its DER, uppercase hex, from `GetCertHashString(HashAlgorithmName.SHA256)`. This is the identity; a subject is not, because distinguished names are not unique |
+| `Reason` | why, when the verdict is false |
+
+**Two things to weigh before you populate them.** `source` is a label, not a location: the built-in
+`TrustListLoader` passes the path or URL you hand it straight through, so the string can be a server
+filesystem path, and a directory of anchor files can name the parties a deployment trusts. And these
+fields describe the verdict rather than today's configuration, which is the point: reading a deployment's
+current anchors back later answers a different question from the one an auditor asked.
+
+### Debugging a chain that will not build
+
+`StaticTrustListResolver` refuses on four paths, and they say different things:
+
+| Refusal | The reason states |
+|---|---|
+| The identifier is not on the list | the identifier |
+| An x5c chain arrived and the list holds no anchors | that this list does not accept a certificate-carried key |
+| A pinned certificate matched and its validity window had closed | that certificate's subject and window |
+| The chain would not build | the platform's chain status, the leaf's own issuer, and the leaf's authority key identifier |
+
+Only the last one describes why a chain failed, and when its names look right and it still fails, two
+environment variables widen it. Both are off by default, because a reason becomes a
+`VerificationResult.Errors[].Message`:
+
+| Variable | Set to `1` to add | Affects |
+|---|---|---|
+| `TESSIO_TRUST_DUMP_ANCHORS` | every configured anchor's subject and subject key identifier, or `none`. This is the usual answer: matching subjects with differing key identifiers is a certificate authority regenerated under its old name, which looks like it should have worked until both are on screen. It is also a list of the parties you anchor on, so turn it on, read it, turn it off | the no-anchors and chain-build refusals |
+| `TESSIO_TRUST_DUMP_LEAF` | the presented leaf as base64 DER, for when the identifiers match too | the chain-build refusal |
+
+Neither reaches the session endpoints, which replace every failure message (see below). They are for the
+reason as your own code and logs receive it.
+
+### What the session endpoints may say
+
+The session status resource and its SSE stream are **anonymous**. They ask for a session id and nothing
+else, and `GET {prefix}/start` hands one out, so treat whatever they return as public.
+
+Both therefore narrow two things.
+
+**Every failure message is replaced**, with `VerificationError.Code` left intact. The code is the stable
+part a caller acts on; the message is prose written by whoever produced the failure, and it has been
+observed to carry a locator. The built-in status list checks interpolate a URL and an inner exception
+message, and an `ITrustListResolver` is free to name its list in a reason. Dropping all of them needs no
+judgement about any one string. Your own surfaces read the stored result, where the messages are intact.
+
+**`TrustListSource` becomes the literal `undisclosed`** unless the deployment has named the value as safe
+to publish. The list is an allowlist, empty by default:
+
+```csharp
+services.AddTessioVerifier(options =>
+{
+    // A Commission-published trusted list URL is already public, so naming it helps an integrator.
+    options.PublicTrustListSources.Add("https://ec.europa.eu/.../age-verification-list.xml");
+});
+```
+
+An allowlist rather than a rule that hides paths, because a rule has to judge whether a string looks
+sensitive and fails open on the first shape nobody anticipated. This fails closed: unlisted means
+undisclosed. Nothing useful is lost, since "a list was consulted and your issuer was not on it" is the
+part a caller acts on, and the token still says that.
+
+`undisclosed` and `null` are different answers. `undisclosed` means a list produced this verdict and is
+not named here. `null` means no attribution is available, which covers both "no list was consulted" and
+"the resolver in use reports no source", and those two cannot be told apart.
+
+The anchor subject and thumbprint are **not** narrowed. The caller's own credential is what produced them,
+so they name the one anchor that caller has just proved it chains to, rather than the set you hold. Note
+what that does and does not cover: if you pin individual document signer certificates as anchors rather
+than a published root, an anonymous caller learns the digest of the one you pinned for that issuer.
+
+The rule generalises, and it is worth applying to any diagnostic field added after this one: **one field,
+two boundaries.** The anonymous surface gets a fixed token, and a surface you authorise and scope yourself
+gets the whole string. Your own endpoints read `VerificationResult` straight from the session store, which
+the narrowing never touches, so the full value is there when the caller is known.
+
+**One more channel to know about.** `IssuerInfo` is a record, so its generated `ToString()` prints every
+property, `TrustListSource` included, and `VerificationResult.ToString()` nests it. Nothing in this library
+stringifies a result, but a consumer that logs one, interpolates it into a message, or lets it reach an
+exception an error monitor captures sends the locator wherever those go. The narrowing is a boundary on
+the JSON these endpoints serve, not on the object.
+
 ## 5. Share sessions across instances
 
 The default `InMemorySessionStore` is process-local. Behind a load balancer the wallet's callback can land on a different instance than the one that started the session, so the store must be shared. Implement `IStateCorrelatingSessionStore` over Redis, SQL or any shared storage:
@@ -399,6 +488,7 @@ Verifying real EUDI wallets in production also requires registering as a relying
 - [ ] `ClientId` set to your registered identifier with its prefix
 - [ ] `RequestUriBase` set so QR codes stay small
 - [ ] Real `ITrustListResolver` registered, with trust anchors for issuers that use x5c
+- [ ] `PublicTrustListSources` names every trust list identifier you are content to publish, and nothing else
 - [ ] Multi-instance: `IStateCorrelatingSessionStore` over shared storage
 - [ ] Multi-instance: `ResponseEncryptionKeyProvider` built from one persisted key
 - [ ] Callback endpoint reachable over HTTPS from the public internet

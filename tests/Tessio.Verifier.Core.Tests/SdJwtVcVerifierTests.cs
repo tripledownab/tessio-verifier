@@ -54,6 +54,44 @@ public class SdJwtVcVerifierTests
         Assert.Equal(0, trust.SeenChainLength);
     }
 
+    /// <summary>
+    /// The trust provenance the resolver returns has to REACH the caller, on both verdicts.
+    /// </summary>
+    /// <remarks>
+    /// The resolver's own tests prove it computes these; they say nothing about whether this verifier
+    /// copies them into <c>IssuerInfo</c>. Deleting the three assignments in <c>SdJwtVcVerifier</c> leaves
+    /// every other test in this file green, which is the shape of defect this file exists to catch.
+    /// </remarks>
+    [Fact]
+    public async Task IssuerInfo_CarriesTheTrustProvenance_OnSuccessAndOnFailure()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.UseCertificate();
+        var trust = new FakeTrustListResolver { Anchor = ("CN=Test Root, C=EU", "ABCD1234") };
+
+        var ok = await new SdJwtVcVerifier(trust).VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.True(ok.IsValid, string.Join("; ", ok.Errors.Select(e => e.Code)));
+        Assert.Equal("fake://trust-list", ok.Issuer.TrustListSource);
+        Assert.Equal("CN=Test Root, C=EU", ok.Issuer.TrustAnchorSubject);
+        Assert.Equal("ABCD1234", ok.Issuer.TrustAnchorThumbprint);
+
+        // A refusal names the list and no anchor. This is the verdict a relying party comes back to
+        // question, and an implementation carrying provenance only on the passing branch would satisfy
+        // the assertions above and fail these.
+        using var refusedBuilder = new TestCredentialBuilder();
+        refusedBuilder.UseCertificate();
+        var refusing = new FakeTrustListResolver(trusted: false);
+
+        var refused = await new SdJwtVcVerifier(refusing)
+            .VerifyAsync(Credential(refusedBuilder.Build()), Context());
+
+        Assert.False(refused.IsValid);
+        Assert.Equal("fake://trust-list", refused.Issuer.TrustListSource);
+        Assert.Null(refused.Issuer.TrustAnchorSubject);
+        Assert.Null(refused.Issuer.TrustAnchorThumbprint);
+    }
+
     [Fact]
     public async Task ValidCredential_X5cResolution_Verifies_AndHandsChainToTrustSeam()
     {

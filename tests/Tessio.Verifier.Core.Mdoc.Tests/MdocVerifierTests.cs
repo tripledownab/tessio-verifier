@@ -222,6 +222,39 @@ public sealed class MdocVerifierTests : IDisposable
         return outer.Encode();
     }
 
+    /// <summary>
+    /// The trust provenance the resolver returns has to REACH the caller, on both verdicts.
+    /// </summary>
+    /// <remarks>
+    /// The resolver's own tests prove it computes these. They say nothing about whether this verifier
+    /// copies them into <c>IssuerInfo</c>, which is a different claim: a mechanism can be correct and
+    /// reach no caller. Deleting the three assignments in <c>MdocVerifier</c> leaves every other test in
+    /// this file green, so this is the one that holds the wiring.
+    /// </remarks>
+    [Fact]
+    public async Task IssuerInfo_CarriesTheTrustProvenance_OnSuccessAndOnFailure()
+    {
+        var expected = _builder.IacaCertificate.GetCertHashString(HashAlgorithmName.SHA256);
+
+        var ok = await VerifierFor(_builder).VerifyAsync(Credential(_builder), Context());
+
+        Assert.True(ok.IsValid, string.Join("; ", ok.Errors.Select(e => e.Code)));
+        Assert.Equal("mdoc-test", ok.Issuer.TrustListSource);
+        Assert.Equal(_builder.IacaCertificate.Subject, ok.Issuer.TrustAnchorSubject);
+        Assert.Equal(expected, ok.Issuer.TrustAnchorThumbprint);
+
+        // A refusal names the list that refused and no anchor. This is the verdict a relying party comes
+        // back to question, so it is the half worth pinning: an implementation that carried provenance
+        // only on the passing branch would satisfy the assertions above and fail these.
+        using var spoof = new MdocTestBuilder();
+        var refused = await VerifierFor(spoof).VerifyAsync(Credential(_builder), ContextFor(spoof));
+
+        Assert.False(refused.IsValid);
+        Assert.Equal("mdoc-test", refused.Issuer.TrustListSource);
+        Assert.Null(refused.Issuer.TrustAnchorSubject);
+        Assert.Null(refused.Issuer.TrustAnchorThumbprint);
+    }
+
     [Fact]
     public async Task CredentialType_ReportsTheDocType_OnSuccessAndOnFailure()
     {

@@ -141,6 +141,11 @@ public sealed class MdocVerifier
             Identifier = resolution.Issuer,
             Trusted = trust.Trusted,
             KeyResolutionMethod = "x5c",
+            // Carried through on BOTH verdicts, not only the passing one. A refused presentation is the
+            // one someone comes back to ask about, and the list that refused it is the answer.
+            TrustListSource = trust.TrustListSource,
+            TrustAnchorSubject = trust.TrustAnchorSubject,
+            TrustAnchorThumbprint = trust.TrustAnchorThumbprint,
         };
 
         // CredentialType on both branches. For mdoc it is the docType, which the document declares and
