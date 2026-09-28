@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
+using Tessio.Verifier.OpenId4Vp;
+
 namespace Tessio.Verifier.AspNetCore.Tests;
 
 /// <summary>
@@ -52,6 +54,9 @@ public sealed class AnonymousSurfaceDisclosureTests : IAsyncDisposable
                     services.AddTessioVerifier(options =>
                     {
                         options.Mode = VerifierMode.Mock;
+                        // Every test here posts a plaintext form, so the requests ask for a plaintext response. A
+                        // callback in a mode its request did not ask for is refused before it can end the session.
+                        options.ResponseMode = ResponseMode.DirectPost;
                         options.RequestedClaims = ["age_over_18"];
                         configure?.Invoke(options);
                     });

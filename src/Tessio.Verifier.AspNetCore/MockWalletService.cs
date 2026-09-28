@@ -76,7 +76,7 @@ internal sealed class MockWalletService : BackgroundService
                         _options.MdocNamespace,
                         session.Request.ClientId,
                         session.Request.Nonce,
-                        _options.ResponseMode == ResponseMode.DirectPostJwt
+                        RequestParameters.AsksForEncryptedResponse(session.Request)
                             ? RequestParameters.TryGetEncryptionKeyThumbprint(session.Request)
                             : null,
                         RequestParameters.TryGetResponseUri(session.Request) ?? string.Empty)
@@ -89,7 +89,10 @@ internal sealed class MockWalletService : BackgroundService
 
                 // Mirror what a wallet POSTs: cleartext form for direct_post (OpenID4VP 1.0 §8.2),
                 // or an ECDH-ES-encrypted response JWT for direct_post.jwt (§8.3, the HAIP default).
-                var form = _options.ResponseMode == ResponseMode.DirectPostJwt
+                // Decided by what THIS session's request asked for, as a wallet decides, not by the
+                // verifier's configured default: a session built with another mode would otherwise be
+                // answered in the wrong one and refused by the callback.
+                var form = RequestParameters.AsksForEncryptedResponse(session.Request)
                     ? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
                     {
                         ["response"] = new[]

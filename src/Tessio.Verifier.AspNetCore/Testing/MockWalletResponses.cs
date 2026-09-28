@@ -189,10 +189,7 @@ public sealed class MockWalletResponses : IDisposable
         // An encrypted response binds the encryption key thumbprint into the session transcript. Without
         // it the device signature simply fails to verify, which reads as a crypto bug rather than the
         // missing argument it is, so refuse up front and say which one is missing.
-        var encrypted = string.Equals(
-            RequestParameters.TryGetResponseMode(session.Request),
-            "direct_post.jwt",
-            StringComparison.Ordinal);
+        var encrypted = RequestParameters.AsksForEncryptedResponse(session.Request);
         if (encrypted && encryptionKeyThumbprint is null)
         {
             throw new ArgumentNullException(

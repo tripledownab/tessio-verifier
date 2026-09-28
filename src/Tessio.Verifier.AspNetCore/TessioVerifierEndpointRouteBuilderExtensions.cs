@@ -110,6 +110,9 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
 
         var html = RenderStartPage(session.SessionId, prefix, options.Mode, session.Request.AuthorizationRequestUri.ToString());
         http.Response.ContentType = "text/html; charset=utf-8";
+        // no-store: this page carries a new session's authorization request, and so its state. A cache
+        // handing the same page to the next visitor would give two people one session.
+        http.Response.Headers.CacheControl = "no-store";
         await http.Response.WriteAsync(html, http.RequestAborted).ConfigureAwait(false);
     }
 
@@ -145,6 +148,8 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
 
         // SPEC: RFC 9101 §4 — the request object is served as application/oauth-authz-req+jwt.
         http.Response.ContentType = "application/oauth-authz-req+jwt";
+        // no-store: the request object carries its session's state, which is what a callback is matched on.
+        http.Response.Headers.CacheControl = "no-store";
         await http.Response.WriteAsync(requestObject, http.RequestAborted).ConfigureAwait(false);
     }
 
@@ -159,6 +164,9 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         }
 
         var options = http.RequestServices.GetRequiredService<IOptions<VerifierOptions>>().Value;
+        // no-store: the body carries a verdict and disclosed claims to whoever holds the id, and a shared
+        // or browser cache holding it would outlive the session and answer a later reader.
+        http.Response.Headers.CacheControl = "no-store";
         await http.Response.WriteAsJsonAsync(
             SessionView.From(session, options.PublicTrustListSources),
             SerializerOptions,
@@ -176,7 +184,8 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         }
 
         http.Response.ContentType = "text/event-stream";
-        http.Response.Headers.CacheControl = "no-cache";
+        // no-store, as on the status resource: the same verdict and claims travel on this stream.
+        http.Response.Headers.CacheControl = "no-store";
         http.Response.Headers["X-Accel-Buffering"] = "no";
 
         await WriteEventAsync(http, "pending", session).ConfigureAwait(false);

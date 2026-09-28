@@ -16,6 +16,7 @@ plan: publishing makes a run publicly visible and belongs with the decision to c
 import argparse
 import base64
 import datetime
+import html
 import http.client as http_client
 import json
 import pathlib
@@ -346,14 +347,19 @@ def run_module(args, module):
         f"&variant={urllib.parse.quote(json.dumps(MODULE_VARIANT))}", method="POST")[1])["id"]
     time.sleep(1)
 
-    # The only value scraped from HTML. Everything after this reads the session's own JSON.
+    # The two values scraped from HTML, both from the start page. The authorization URI is not on the
+    # session's JSON any more: that resource is anonymous, and the URI leads to the request's state,
+    # which is what a callback is matched on. The start page shows it to the user about to hand it to a
+    # wallet, which is the role this script plays.
     page = http(f"{args.harness}/verify/start")[1]
     found = re.search(r"/verify/([A-Za-z0-9_-]{16,})", page)
     if not found:
         raise RuntimeError(f"{args.harness}/verify/start produced no session id")
     session_id = found.group(1)
-
-    authorization_uri = get_json(f"{args.harness}/verify/{session_id}")["authorizationRequestUri"]
+    shown = re.search(r'<p class="req"><code>([^<]+)</code></p>', page)
+    if not shown:
+        raise RuntimeError(f"{args.harness}/verify/start shows no authorization request URI")
+    authorization_uri = html.unescape(shown.group(1))
     status, _ = http(authorization_uri)
     if status not in (200, 302, 303, 307):
         raise RuntimeError(f"the suite answered the authorization request with {status}")

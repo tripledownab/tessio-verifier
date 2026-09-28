@@ -43,10 +43,12 @@ public sealed class WalletResponseParser : IPresentationResponseParser
 
         string vpTokenJson;
         string? state;
+        var encrypted = false;
         if (response.Form.TryGetValue("response", out var jwtValues))
         {
             // direct_post.jwt: the whole authorization response rides inside one (encrypted) JWT.
             (vpTokenJson, state) = await UnwrapResponseJwtAsync(SingleValue(jwtValues, "response")).ConfigureAwait(false);
+            encrypted = true;
         }
         else if (response.Form.TryGetValue("vp_token", out var vpValues))
         {
@@ -64,6 +66,7 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         {
             Credentials = ExtractCredentials(vpTokenJson),
             State = state,
+            Encrypted = encrypted,
         };
     }
 
@@ -81,6 +84,16 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         if (!CompactJwt.TryParse(responseJwt, out var jwe))
         {
             throw new WalletResponseException("The direct_post.jwt response is not a well-formed JWT/JWE.");
+        }
+
+        // SPEC: OpenID4VP 1.0 §8.3: "To encrypt the Authorization Response, implementations MUST use an
+        // unsigned, encrypted JWT". A response parameter that is not a JWE is therefore not a
+        // direct_post.jwt response. It is refused here, before the handler below, which does not require
+        // a signature.
+        if (!jwe.IsEncrypted)
+        {
+            throw new WalletResponseException(
+                "The direct_post.jwt response is not encrypted. OpenID4VP 1.0 §8.3 requires an unsigned, encrypted JWT (a JWE).");
         }
 
         // Keys are ephemeral per authorization request, so the resolver picks the session's key by the

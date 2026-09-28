@@ -40,6 +40,10 @@ internal static partial class Log
         Message = "Session {SessionId} carries no readable request parameters, so a wallet response cannot be checked against what was asked for")]
     public static partial void CallbackSessionNotVerifiable(ILogger logger, string sessionId);
 
+    [LoggerMessage(EventId = 9, Level = LogLevel.Warning,
+        Message = "Wallet response for session {SessionId} arrived {Arrived} but the request asked for {Asked}, so it was rejected without ending the session")]
+    public static partial void CallbackWrongResponseMode(ILogger logger, string sessionId, string arrived, string asked);
+
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Mock wallet failed for session {SessionId}.")]
     public static partial void MockWalletFailed(ILogger logger, Exception exception, string sessionId);

@@ -136,8 +136,10 @@ public sealed class MockModeEndToEndTests : IAsyncDisposable
             ? _provider.GetRequiredService<ResponseEncryptionKeyStore>()
                 .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
             : null;
+        // This test posts a plaintext form, so its request asks for a plaintext response: a callback in
+        // the wrong mode is refused before it can end the session.
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk) with { ResponseMode = ResponseMode.DirectPost });
 
         // A presentation bound to the WRONG nonce simulates a replayed response.
         var replayed = issuer.IssuePresentation(

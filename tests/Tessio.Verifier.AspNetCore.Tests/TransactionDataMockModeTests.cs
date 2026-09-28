@@ -73,8 +73,10 @@ public sealed class TransactionDataMockModeTests : IAsyncDisposable
             ? _provider.GetRequiredService<ResponseEncryptionKeyStore>()
                 .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
             : null;
+        // This test posts a plaintext form, so its request asks for a plaintext response: a callback in
+        // the wrong mode is refused before it can end the session.
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk) with { ResponseMode = ResponseMode.DirectPost });
 
         // A wallet that presents correctly but never acknowledges the transaction data.
         var presentation = issuer.IssuePresentation(

@@ -133,11 +133,11 @@ The endpoints `MapTessioVerifier` exposes (default prefix `/verify`):
 | --- | --- |
 | `GET /verify/start` | Creates a session and renders the request page with the `openid4vp://` authorization URI |
 | `GET /verify/request/{id}` | Serves the signed request object (by-reference delivery, see below) |
-| `GET /verify/{sessionId}` | Session status as JSON, for your own frontend |
+| `GET /verify/{sessionId}` | Session status and result as JSON, for your own frontend. Carries no authorization request (see "What the session endpoints may say") |
 | `GET /verify/{sessionId}/stream` | Server-Sent Events: `pending`, then `completed` or `expired` |
 | `POST /verify/callback` | The wallet's `response_uri`. Returns 200 on completion, 400 for invalid or unknown responses, 409 when the session cannot take this response |
 
-The callback endpoint enforces `state` correlation and completes each session exactly once, so replayed responses get a 409 (`session_not_pending`) and stray posts a 400.
+The callback endpoint enforces `state` correlation and completes each session exactly once, so replayed responses get a 409 (`session_not_pending`) and stray posts a 400. A response in a mode the request did not ask for also gets a 400 and does not end the session. That covers a plaintext form answering a `direct_post.jwt` request, and a `response` token that is not encrypted: OpenID4VP 1.0 §8.3 requires an unsigned, encrypted JWT.
 
 It also refuses a session whose stored request cannot be read, or whose query never said which credential type it asked for, with a 409 (`session_not_verifiable`). Verifying either one accepts a credential of any type, because the verifier skips the type comparison when it has nothing to compare rather than failing it.
 
@@ -314,7 +314,20 @@ reason as your own code and logs receive it.
 The session status resource and its SSE stream are **anonymous**. They ask for a session id and nothing
 else, and `GET {prefix}/start` hands one out, so treat whatever they return as public.
 
-Both therefore narrow two things.
+**Neither carries the authorization request.** A wallet's callback is matched to its session by
+`state`, so `state` stays off anything keyed only by a session id. The authorization request URI leads to
+`state` in both delivery modes, inside the request object by value or one anonymous fetch of
+`request_uri` away by reference. The start page still shows it, as a QR code and a link, to the user
+about to hand it to a wallet. If you build your own start page, drive the session yourself as
+`self-driving-and-multi-tenant.md` describes, render the authorization URI server-side for that user,
+and do not expose it on an endpoint keyed only by the session id.
+
+Both send `Cache-Control: no-store`, because they carry a verdict and disclosed claims to whoever holds
+the id, and a cache holding either would outlive the session. So do the start page and the request
+object, the two responses that do carry `state`: a cache serving either to a second visitor would give
+two people one session.
+
+Both also narrow two things.
 
 **Every failure message is replaced**, with `VerificationError.Code` left intact. The code is the stable
 part a caller acts on; the message is prose written by whoever produced the failure, and it has been
