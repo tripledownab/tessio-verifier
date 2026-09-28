@@ -82,7 +82,26 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 
    The `release` workflow publishes and cuts the GitHub Release. Confirm it went green before relying
    on the package (a tag whose run has not finished has published nothing).
-5. **Bump the consumers in the same session.** This is the step that prevents drift.
+5. **Write any observable behaviour change into the Release by hand.** `gh release create` runs with
+   `--generate-notes` and nothing else, so the note it produces is the list of merged pull request
+   titles since the last tag. A title says what a change was for; it does not say what a consumer has
+   to do differently, and a consumer reading only the Release will not open the pull requests.
+
+   So read the merged titles, open any that changed behaviour, and append an **Upgrading** section:
+
+   ```sh
+   gh release view v0.13.0 --json body -q .body > /tmp/notes.md
+   # add the Upgrading section at the top of /tmp/notes.md, then:
+   gh release edit v0.13.0 --notes-file /tmp/notes.md
+   ```
+
+   What counts: a changed default, a value a consumer parses that now reads differently, a new
+   required configuration step, a removed or renamed public member. 0.13.0 is the example that made
+   this a step. The session status endpoint and its SSE stream now replace every
+   `VerificationError.Message` with a fixed sentence, so a consumer that logged or displayed those
+   messages finds them all identical from 0.13.0 on. `Code` is unchanged and is what to read instead.
+   Nothing about that is guessable from the pull request title.
+6. **Bump the consumers in the same session.** This is the step that prevents drift.
 
 ## Bumping the consumers
 
