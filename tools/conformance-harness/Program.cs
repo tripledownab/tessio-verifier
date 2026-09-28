@@ -99,6 +99,36 @@ var app = builder.Build();
 // both come from the same build and carry the same stamp. A restart mid-module loses the session.
 var instance = Guid.NewGuid().ToString("N");
 
+// A harness stamped as an export must actually be one. MSBuild reads environment variables as
+// properties, so a working-tree build run with HarnessExportOf set in the shell carries the export
+// stamp without being an export, and run-plan.py would accept it for a recording. An archive has no
+// .git above it and a checkout always has one, a directory or, in a worktree, a file, so refuse to
+// start rather than report a stamp this process cannot stand behind.
+//
+// And it must sit in a directory serve-export.sh verified: that script writes .export-verified, holding
+// the commit, only after checking every exported file against HEAD. A working-tree build whose output
+// was copied out of the checkout has the stamp and no .git above it, and still has no such file.
+var exportOf = BuildStamp("ExportOf");
+if (exportOf is not null)
+{
+    if (InsideGitCheckout(AppContext.BaseDirectory))
+    {
+        throw new InvalidOperationException(
+            "This harness carries an export stamp but is running inside or below a git checkout. Either it "
+            + "was built from the working tree with HarnessExportOf set in the shell, so unset it and use "
+            + "dotnet run, or serve-export.sh exported below a checkout such as a home directory under "
+            + "version control, so set TMPDIR to a directory outside any checkout.");
+    }
+
+    if (VerifiedExportCommit(AppContext.BaseDirectory) != exportOf)
+    {
+        throw new InvalidOperationException(
+            "This harness carries an export stamp for " + exportOf + " but is not running from an export "
+            + "serve-export.sh verified. Start it with serve-export.sh for a recording, or unset "
+            + "HarnessExportOf and use dotnet run.");
+    }
+}
+
 // Present the public authority on every request.
 //
 // The library derives response_uri from Request.Host, which is right: in production you sit behind a
@@ -136,15 +166,17 @@ app.MapGet("/", (HarnessSettings s) => Results.Content(Pages.Landing(s), "text/h
 // It catches the stale harnesses that come up in practice: built before a change, in another checkout,
 // or from edits reverted through git. It is NOT a hash of what the compiler read. MSBuild compiles files
 // git ignores, skips a recompile when a revert keeps old timestamps, and imports build files from outside
-// the checkout, and none of those move this value. instance changes on every start.
+// the checkout, and none of those move this value. exportOf is set instead of srcTree when
+// serve-export.sh built the harness from `git archive` of that commit, which a recording requires.
+// instance changes on every start.
 app.MapGet("/config", (HarnessSettings s) => Results.Json(new
 {
     credentialFormat = s.CredentialFormat,
     requestedClaim = s.RequestedClaim,
     responseMode = s.ResponseMode.ToString(),
     authorizationEndpoint = s.AuthorizationEndpoint,
-    srcTree = typeof(HarnessSettings).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-        .FirstOrDefault(a => a.Key == "SrcTree")?.Value,
+    srcTree = BuildStamp("SrcTree"),
+    exportOf,
     instance,
 }));
 
@@ -168,3 +200,37 @@ app.Lifetime.ApplicationStopped.Register(() =>
 });
 
 app.Run();
+
+// Whether any directory at or above this one holds .git, as a directory or as a worktree's file.
+static bool InsideGitCheckout(string directory)
+{
+    for (var d = new DirectoryInfo(directory); d is not null; d = d.Parent)
+    {
+        var git = Path.Combine(d.FullName, ".git");
+        if (Directory.Exists(git) || File.Exists(git))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// The commit in the nearest .export-verified at or above this directory, or null when there is none.
+static string? VerifiedExportCommit(string directory)
+{
+    for (var d = new DirectoryInfo(directory); d is not null; d = d.Parent)
+    {
+        var marker = Path.Combine(d.FullName, ".export-verified");
+        if (File.Exists(marker))
+        {
+            return File.ReadAllText(marker).Trim();
+        }
+    }
+
+    return null;
+}
+
+// A value the harness build stamped into this assembly, or null when that build did not stamp it.
+static string? BuildStamp(string key) => typeof(HarnessSettings).Assembly
+    .GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value;

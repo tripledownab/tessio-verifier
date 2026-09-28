@@ -18,7 +18,7 @@
        Not on Windows, where there is no sh: the stamp is then absent and the preflight refuses.
        stderr is dropped because ConsoleToMSBuild captures it into the value, and a git warning once
        became part of a stamp. A failing script still fails the build: Exec checks the exit code. -->
-  <Target Name="StampSrcTree" BeforeTargets="GetAssemblyAttributes" Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+  <Target Name="StampSrcTree" BeforeTargets="GetAssemblyAttributes" Condition="!$([MSBuild]::IsOSPlatform('Windows')) And '$(HarnessExportOf)' == ''">
     <Exec Command="sh &quot;$(MSBuildThisFileDirectory)src-tree.sh&quot; 2&gt;/dev/null" ConsoleToMSBuild="true" StandardOutputImportance="low">
       <Output TaskParameter="ConsoleOutput" PropertyName="HarnessSrcTree" />
     </Exec>
@@ -29,4 +29,14 @@
       </AssemblyAttribute>
     </ItemGroup>
   </Target>
+
+  <!-- A harness built by serve-export.sh from `git archive HEAD` stamps the commit it exported instead:
+       the export has no .git to ask, and needs none, because an archive of a commit IS that commit's
+       tree. run-plan.py accepts only this kind of harness for a recording. -->
+  <ItemGroup Condition="'$(HarnessExportOf)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ExportOf</_Parameter1>
+      <_Parameter2>$(HarnessExportOf)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>
