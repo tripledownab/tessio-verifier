@@ -59,10 +59,12 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
    python3 run-plan.py --clone-plan <sd_jwt_vc plan> --harness https://localhost:5100 \
      --record ../../conformance-record.json
 
-   # Between variants, and the loop matters: pkill has been known not to release the port, and a
-   # harness still holding 5100 answers the next run with the PREVIOUS variant's configuration.
-   pkill -f conformance-harness
-   while pids=$(lsof -nP -iTCP:5100 -sTCP:LISTEN -t); do kill -9 $pids; sleep 1; done
+   # Between variants. Stop only what holds THIS port: other harnesses may be running on others.
+   # The loop escalates because a process can ignore the first signal, and it feeds the pids through
+   # xargs because zsh does not split an unquoted $pids, so two processes on one port would spin a
+   # `kill -9 $pids` loop forever. Two processes on one port is exactly the stale-harness case.
+   lsof -nP -iTCP:5100 -sTCP:LISTEN -t | xargs kill 2>/dev/null
+   while pids=$(lsof -nP -iTCP:5100 -sTCP:LISTEN -t); do echo "$pids" | xargs kill -9; sleep 1; done
 
    cp <your keys>/appsettings.Local.oidf-mdoc.json appsettings.Local.json
    dotnet run &
@@ -70,17 +72,19 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
      --record ../../conformance-record.json
    ```
 
-   `--record` writes only after the run passes, and refuses a dirty `src/`, so the record cannot
-   describe bytes the suite did not see. `release.yml` compares the recorded src tree against the
+   `--record` writes only after the run passes, and only when the harness's build stamp says `src/`
+   was `HEAD:src` when it was built. The stamp is git's view of the source, not of what the compiler
+   read, so run a recording from a clean checkout with nothing saved during the build: the harness
+   README lists the cases it cannot see. `release.yml` compares the recorded src tree against the
    tag's and refuses to publish when they differ, which makes a skipped run a build failure rather
    than an oversight.
 
-   **If you get the sequence wrong, the script stops before it creates anything.** Its preflight
-   checks that the suite answers, that the harness answers, and that the harness's RUNNING
-   configuration matches the plan's variant, reading `/config` off the process rather than the file
-   on disk. So a stale harness left over from the other variant is caught by name rather than by
-   producing a plausible wrong result, and a suite that is down names the Docker daemon if that is
-   why. Nothing is recorded on a crash either, because `--record` runs last.
+   **If you get the sequence wrong, the script stops before it creates anything.** It reads the
+   RUNNING harness's settings from `/config` and compares them with the plan, and the `src/` tree the
+   harness was built from with the one on disk in this checkout. A stale harness is caught by name,
+   whether it is the other variant or the same variant built before your last change, in another
+   checkout, or from edits since reverted through git. `tools/conformance-harness/README.md` lists every check.
+   Nothing is recorded on a crash, because `--record` runs last.
 
    **There is deliberately no "only if the change touched OpenID4VP behaviour" here.** This step used
    to carry that conditional, and it asks the releaser to judge a blast radius that is not visible
