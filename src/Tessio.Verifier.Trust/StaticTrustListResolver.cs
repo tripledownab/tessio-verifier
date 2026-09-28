@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
 namespace Tessio.Verifier.Trust;
@@ -41,6 +42,38 @@ namespace Tessio.Verifier.Trust;
 /// </remarks>
 public sealed class StaticTrustListResolver : ITrustListResolver
 {
+    /// <summary>
+    /// Set to <c>1</c> to add this resolver's own configuration to a refusal reason: every configured
+    /// anchor's subject and subject key identifier.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// OFF BY DEFAULT BECAUSE A REASON REACHES THE CALLER. The reason becomes a
+    /// <c>VerificationResult.Errors[].Message</c>. Where the ASP.NET Core package's endpoints are
+    /// mapped, the session status resource and its SSE stream serialise that to whoever holds a session
+    /// id, and the start endpoint hands one to anybody. So a refusal used to give an anonymous caller
+    /// the full list of parties a deployment anchors on, which is its own fact about a deployment
+    /// regardless of each certificate being public. Nothing about the caller's own credential needed it.
+    /// </para>
+    /// <para>
+    /// The inventory is still what an operator wants when the names look right and the chain will not
+    /// build, so it is one environment variable away rather than deleted. Turn it on, read the reason,
+    /// turn it off.
+    /// </para>
+    /// </remarks>
+    private const string DumpConfiguredAnchorsVariable = "TESSIO_TRUST_DUMP_ANCHORS";
+
+    /// <summary>
+    /// Set to <c>1</c> to add the offending leaf certificate, base64 DER, to a refusal reason.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="DumpConfiguredAnchorsVariable"/> because the two disclose different
+    /// things. This one echoes the certificate that arrived in the presentation, which is the issuer's
+    /// document signer rather than anything this deployment chose. Still off by default, because it is
+    /// long and because a reason travels.
+    /// </remarks>
+    private const string DumpLeafVariable = "TESSIO_TRUST_DUMP_LEAF";
+
     private readonly HashSet<string> _trustedIssuers;
     private readonly List<X509Certificate2> _trustAnchors;
     private readonly string _source;
@@ -86,7 +119,7 @@ public sealed class StaticTrustListResolver : ITrustListResolver
         {
             return _trustedIssuers.Contains(issuer)
                 ? Trusted()
-                : NotTrusted($"Issuer '{issuer}' is not on the configured trust list.");
+                : NotTrusted($"Issuer '{issuer}' is not on the configured trust list.", null);
         }
 
         // A key resolved from an x5c chain is trusted by anchoring, not by identifier membership: the
@@ -96,17 +129,70 @@ public sealed class StaticTrustListResolver : ITrustListResolver
         // issuer where that applies (SD-JWT VC ties iss to a certificate SAN before this point).
         if (_trustAnchors.Count == 0)
         {
+            // STATE THE CAPABILITY, NOT THE CONFIGURATION. This used to report that the list held no
+            // anchors and tell the reader to configure some: an instruction meant for an operator,
+            // delivered to whoever presented the credential, describing what the deployment does and
+            // does not hold. What the presenter needs is that this route is closed here. The operator's
+            // half of the answer is behind the dump, where the empty list says it plainly.
             return NotTrusted(
-                $"Issuer '{issuer}' presented an X.509 chain, but this trust list has no trust anchors. " +
-                "An identifier-only list cannot vouch for x5c credentials; configure trustAnchors.");
+                $"Issuer '{issuer}' presented an X.509 chain. This trust list does not accept an issuer "
+                + "key carried in a certificate, which is trusted by anchoring rather than by identifier."
+                + ConfiguredAnchorsDump(),
+                null);
         }
 
-        var (anchored, because) = ChainAnchorsOnConfiguredRoot(x5c);
-        return anchored
-            ? Trusted()
-            : NotTrusted(
+        var (anchored, because, anchor) = ChainAnchorsOnConfiguredRoot(x5c);
+        if (anchored)
+        {
+            return Trusted(anchor);
+        }
+
+        // DO NOT SAY "does not anchor" WHEN IT DID. A pinned certificate that matched by bytes and then
+        // failed its own validity window comes back with an anchor named, and reporting that as a
+        // non-anchoring failure sends the reader hunting for a missing or wrong certificate instead of an
+        // expired one. Two different causes deserve two different sentences, and the anchor is the tell.
+        return anchor is null
+            ? NotTrusted(
                 $"The certificate chain presented by '{issuer}' does not anchor on a configured trust anchor. "
-                + $"Chain status: {because}");
+                + $"Chain status: {because}",
+                null)
+            : NotTrusted(
+                $"The certificate chain presented by '{issuer}' anchors on a configured trust anchor that "
+                + $"cannot be relied on. {because}",
+                anchor);
+    }
+
+    /// <summary>
+    /// The anchor a verdict rested on, as two strings rather than a certificate.
+    /// </summary>
+    /// <remarks>
+    /// Strings, deliberately. The certificates this is derived from are disposed when
+    /// <see cref="ChainAnchorsOnConfiguredRoot"/> returns, so handing back an
+    /// <see cref="X509Certificate2"/> would hand back a disposed object, and the failure would appear
+    /// only at the caller. Reading both values while the certificate is alive makes that impossible.
+    /// </remarks>
+    private readonly record struct MatchedAnchor(string Subject, string Thumbprint)
+    {
+        /// <summary>SHA-256 over the DER, uppercase hex.</summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Not <see cref="X509Certificate2.Thumbprint"/>, which is SHA-1.</b> This value exists so a
+        /// record read years later can say which anchor, exactly. SHA-1 has practical chosen-prefix
+        /// collisions, and certificates are the historical target for exactly that, so a recorded SHA-1
+        /// digest is a weaker statement than the record implies. Nothing here depends on the digest for
+        /// a trust decision, and that is the reason to get it right rather than a reason not to.
+        /// </para>
+        /// <para>
+        /// <b>Why a digest and not a Subject Key Identifier.</b> A digest identifies the certificate, an
+        /// SKI follows the key, and they answer different questions. The question here is which artefact
+        /// was relied on, so a CA that rotates its certificate while keeping its key SHOULD produce a
+        /// different value: we relied on a different certificate. An SKI would be the right field for
+        /// "which authority, across rotations", and it is deliberately not added, because no caller asks
+        /// that yet.
+        /// </para>
+        /// </remarks>
+        internal static MatchedAnchor From(X509Certificate2 anchor) =>
+            new(anchor.Subject, anchor.GetCertHashString(HashAlgorithmName.SHA256));
     }
 
     /// <summary>
@@ -114,7 +200,8 @@ public sealed class StaticTrustListResolver : ITrustListResolver
     /// its own sends the reader hunting for a wrong certificate when the real cause is often a
     /// validity window, a missing basic-constraints flag or an unsupported critical extension.
     /// </summary>
-    private (bool Anchored, string? Because) ChainAnchorsOnConfiguredRoot(ReadOnlyMemory<byte>[] x5c)
+    private (bool Anchored, string? Because, MatchedAnchor? Anchor) ChainAnchorsOnConfiguredRoot(
+        ReadOnlyMemory<byte>[] x5c)
     {
         var certificates = x5c.Select(der => LoadCertificate(der.ToArray())).ToList();
         try
@@ -134,13 +221,29 @@ public sealed class StaticTrustListResolver : ITrustListResolver
             // leaf is frequently not self-signed, and platforms do not agree on how to treat a
             // non-self-signed certificate placed in a trust store. The answer must not depend on the
             // operating system underneath.
-            if (_trustAnchors.Any(anchor => anchor.RawData.AsSpan().SequenceEqual(leaf.RawData)))
+            // The CONFIGURED anchor rather than the leaf. Byte equality is the branch predicate, so both
+            // report the same two strings, and naming the anchor is what the field means: the leaf only
+            // happens to equal it. The configured list also outlives this method, where the leaf does
+            // not, so the choice stays correct if this ever returns the certificate itself.
+            var pinned = _trustAnchors.Find(anchor => anchor.RawData.AsSpan().SequenceEqual(leaf.RawData));
+            if (pinned is not null)
             {
-                return IsWithinItsValidityWindow(leaf)
-                    ? (true, null)
-                    : (false,
-                        $"The pinned certificate '{leaf.Subject}' is outside its own validity window "
-                        + $"({leaf.NotBefore.ToUniversalTime():u} to {leaf.NotAfter.ToUniversalTime():u}).");
+                // NAMED ON THE REFUSAL TOO. This is the one rejection where the configured anchor IS
+                // known: it matched by bytes and then failed its own validity window. "We trusted this
+                // exact certificate and its window had closed" is a different fact from "nothing
+                // matched", and a record that cannot tell them apart loses the more useful one.
+                // READ THE CLOCK ONCE. This test reads _clock, so calling it twice, once for the verdict
+                // and once to pick the reason, lets the two disagree across a validity boundary: trusted
+                // with an expiry reason, or refused with no reason at all. The odds are tiny and the
+                // record is the whole point of the field, so a self-contradicting one is not acceptable.
+                var withinWindow = IsWithinItsValidityWindow(leaf);
+                return (
+                    withinWindow,
+                    withinWindow
+                        ? null
+                        : $"The pinned certificate '{leaf.Subject}' is outside its own validity window "
+                          + $"({leaf.NotBefore.ToUniversalTime():u} to {leaf.NotAfter.ToUniversalTime():u}).",
+                    MatchedAnchor.From(pinned));
             }
 
             using var chain = new X509Chain();
@@ -166,17 +269,35 @@ public sealed class StaticTrustListResolver : ITrustListResolver
 
             if (chain.Build(leaf))
             {
-                return (true, null);
+                // The LAST element is the anchor the platform settled on. Taking it from the built chain
+                // rather than guessing from _trustAnchors matters when two configured anchors could each
+                // have validated this leaf: this names the one that did. Ordering is documented: the
+                // collection runs leaf-first to trust anchor last, consistently across platforms.
+                var root = chain.ChainElements[^1].Certificate;
+
+                // AND IT MUST BE ONE OF OURS, BY BYTES. The presented chain is caller-supplied, and a
+                // record naming a certificate the deployment never configured would be worse than one
+                // naming none, because it would be believed.
+                //
+                // THIS IS AN ASSERTION ON A PLATFORM CONTRACT, NOT A RECOVERABLE CASE, and it has no
+                // test for that reason: under CustomRootTrust a build succeeds only by terminating in
+                // CustomTrustStore, so reaching the throw means the platform did something its contract
+                // rules out, and every anchor this process attributes is then suspect. Returning the
+                // verdict with the attribution quietly dropped was the first shape, and it is the
+                // error-masking fallback this repository forbids: null would have read as "no certificate
+                // was involved", which is the identifier route, so the record would have been wrong in a
+                // way nothing could detect. Loud beats a believable wrong record in an audit trail.
+                var configured = _trustAnchors.Find(a => a.RawData.AsSpan().SequenceEqual(root.RawData))
+                    ?? throw new InvalidOperationException(
+                        "A certificate chain was built against a custom trust store and terminated on a "
+                        + "certificate that is not in it. Trust anchor attribution cannot be relied on in "
+                        + "this process.");
+                return (true, null, MatchedAnchor.From(configured));
             }
 
             var status = string.Join("; ", chain.ChainStatus
                 .Select(s => $"{s.Status}: {s.StatusInformation.Trim()}")
                 .DefaultIfEmpty("no status reported by the platform"));
-
-            // Name the issuer the chain is looking for and the anchors we hold. A PartialChain with
-            // neither of those printed sends the reader guessing; with both, a mismatch is obvious on
-            // sight and a genuine "right names, still fails" points at the certificates instead.
-            var anchorSubjects = string.Join(" | ", _trustAnchors.Select(a => a.Subject));
 
             // Key identifiers, not just names. When the names match and the chain still fails, the
             // cause is almost always a certificate authority that was regenerated under the same
@@ -185,22 +306,15 @@ public sealed class StaticTrustListResolver : ITrustListResolver
             var wantedKey = leaf.Extensions
                 .OfType<X509AuthorityKeyIdentifierExtension>()
                 .FirstOrDefault()?.KeyIdentifier;
-            var haveKeys = string.Join(" | ", _trustAnchors
-                .Select(a => a.Extensions.OfType<X509SubjectKeyIdentifierExtension>()
-                    .FirstOrDefault()?.SubjectKeyIdentifier ?? "none"));
 
-            // Opt-in dump of the offending leaf, for when the names and key ids all match and the
-            // chain still will not build. Certificates are public, but this is noisy, so it is behind
-            // an environment variable rather than on by default.
-            var dump = Environment.GetEnvironmentVariable("TESSIO_TRUST_DUMP_LEAF") == "1"
-                ? $" Leaf (base64 DER): {Convert.ToBase64String(leaf.RawData)}"
-                : string.Empty;
-
+            // EVERYTHING BELOW IS ABOUT THE CALLER'S OWN CERTIFICATE. What this deployment holds is
+            // added only on request, because the reason travels to the caller.
             return (false,
                 $"{status} The chain's leaf names its issuer as '{leaf.Issuer}'. "
-                + $"Configured anchor subjects: {anchorSubjects}. "
-                + $"Leaf's authority key id: {(wantedKey is null ? "none" : Convert.ToHexString(wantedKey.Value.Span))}. "
-                + $"Anchor subject key ids: {haveKeys}.{dump}");
+                + $"Leaf's authority key id: {(wantedKey is null ? "none" : Convert.ToHexString(wantedKey.Value.Span))}."
+                + ConfiguredAnchorsDump()
+                + LeafDump(leaf),
+                null);
         }
         finally
         {
@@ -210,6 +324,45 @@ public sealed class StaticTrustListResolver : ITrustListResolver
             }
         }
     }
+
+    /// <summary>
+    /// The anchors this resolver holds, subject and subject key identifier each, when
+    /// <see cref="DumpConfiguredAnchorsVariable"/> asks for them. Empty otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Both together, because the pair is what resolves the case this exists for: matching subjects with
+    /// differing key identifiers is a certificate authority regenerated under its old name, and either
+    /// value alone leaves that looking like it should have worked.
+    /// </remarks>
+    private string ConfiguredAnchorsDump()
+    {
+        if (Environment.GetEnvironmentVariable(DumpConfiguredAnchorsVariable) != "1")
+        {
+            return string.Empty;
+        }
+
+        // "none" rather than an empty tail, because an empty list is the whole answer on the branch that
+        // refuses every x5c chain, and a reader who asked for the inventory deserves to be told there is
+        // not one instead of reading a sentence that trails off.
+        var anchors = _trustAnchors.Count == 0
+            ? "none"
+            : string.Join(" | ", _trustAnchors.Select(a =>
+            {
+                var ski = a.Extensions.OfType<X509SubjectKeyIdentifierExtension>()
+                    .FirstOrDefault()?.SubjectKeyIdentifier ?? "none";
+                return $"{a.Subject} (subject key id {ski})";
+            }));
+        return $" Configured anchors: {anchors}.";
+    }
+
+    /// <summary>
+    /// The presented leaf as base64 DER, when <see cref="DumpLeafVariable"/> asks for it. Empty
+    /// otherwise.
+    /// </summary>
+    private static string LeafDump(X509Certificate2 leaf) =>
+        Environment.GetEnvironmentVariable(DumpLeafVariable) == "1"
+            ? $" Leaf (base64 DER): {Convert.ToBase64String(leaf.RawData)}"
+            : string.Empty;
 
     /// <summary>
     /// Whether the certificate may be relied on at the verification time, by the window it states.
@@ -237,9 +390,41 @@ public sealed class StaticTrustListResolver : ITrustListResolver
         new(der);
 #endif
 
-    private Task<IssuerTrustStatus> Trusted() =>
-        Task.FromResult(new IssuerTrustStatus { Trusted = true, TrustListSource = _source });
+    /// <param name="anchor">
+    /// The anchor that vouched for the key, or null on the identifier route, where the list carried the
+    /// identifier and no certificate was involved. Null here is a fact about the mechanism, not a
+    /// missing value.
+    /// </param>
+    private Task<IssuerTrustStatus> Trusted(MatchedAnchor? anchor = null) =>
+        Task.FromResult(new IssuerTrustStatus
+        {
+            Trusted = true,
+            TrustListSource = _source,
+            TrustAnchorSubject = anchor?.Subject,
+            TrustAnchorThumbprint = anchor?.Thumbprint,
+        });
 
-    private static Task<IssuerTrustStatus> NotTrusted(string reason) =>
-        Task.FromResult(new IssuerTrustStatus { Trusted = false, Reason = reason });
+    /// <remarks>
+    /// <b>A refusal names the list that refused.</b> A rejected presentation is the verdict a relying
+    /// party has most reason to question, so "not trusted" without naming the list that was asked
+    /// answers nothing. <see cref="IssuerTrustStatus.TrustListSource"/> is documented as the list "that
+    /// produced the verdict" rather than the list that accepted, and <c>ContractSmokeTests</c> constructs
+    /// an untrusted status carrying one. Instance rather than static for that single reason.
+    /// </remarks>
+    /// <param name="reason">Why the verdict is false, in a sentence a reader can act on.</param>
+    /// <param name="anchor">
+    /// The configured anchor this refusal DID match, where one was matched and then rejected for its own
+    /// validity window. Null where nothing matched, which is every other refusal. Required rather than
+    /// defaulted, so a future refusal path has to state which case it is instead of silently reporting
+    /// the weaker one.
+    /// </param>
+    private Task<IssuerTrustStatus> NotTrusted(string reason, MatchedAnchor? anchor) =>
+        Task.FromResult(new IssuerTrustStatus
+        {
+            Trusted = false,
+            TrustListSource = _source,
+            TrustAnchorSubject = anchor?.Subject,
+            TrustAnchorThumbprint = anchor?.Thumbprint,
+            Reason = reason,
+        });
 }

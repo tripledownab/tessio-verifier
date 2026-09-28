@@ -158,7 +158,11 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             return;
         }
 
-        await http.Response.WriteAsJsonAsync(SessionView.From(session), SerializerOptions, http.RequestAborted).ConfigureAwait(false);
+        var options = http.RequestServices.GetRequiredService<IOptions<VerifierOptions>>().Value;
+        await http.Response.WriteAsJsonAsync(
+            SessionView.From(session, options.PublicTrustListSources),
+            SerializerOptions,
+            http.RequestAborted).ConfigureAwait(false);
     }
 
     private static async Task StreamAsync(string sessionId, HttpContext http)
@@ -288,7 +292,12 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
 
     private static async Task WriteEventAsync(HttpContext http, string eventName, VerificationSession session)
     {
-        var json = JsonSerializer.Serialize(SessionView.From(session), SerializerOptions);
+        // The SSE stream carries the same projection as the status resource, through the same narrowing.
+        // Two write paths for one view is how an anonymous surface ends up disclosing on one and not the
+        // other, so both go through SessionView.From and neither serialises the result directly.
+        var options = http.RequestServices.GetRequiredService<IOptions<VerifierOptions>>().Value;
+        var json = JsonSerializer.Serialize(
+            SessionView.From(session, options.PublicTrustListSources), SerializerOptions);
         await http.Response.WriteAsync($"event: {eventName}\ndata: {json}\n\n", http.RequestAborted).ConfigureAwait(false);
         await http.Response.Body.FlushAsync(http.RequestAborted).ConfigureAwait(false);
     }

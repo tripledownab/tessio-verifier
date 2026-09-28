@@ -54,9 +54,18 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 
    ```sh
    cd tools/conformance-harness
+   cp <your keys>/appsettings.Local.oidf-sdjwt.json appsettings.Local.json
+   dotnet run &                       # wait until https://localhost:5100/config answers
    python3 run-plan.py --clone-plan <sd_jwt_vc plan> --harness https://localhost:5100 \
      --record ../../conformance-record.json
-   # kill the harness, swap appsettings.Local.json to the other variant, start it again
+
+   # Between variants, and the loop matters: pkill has been known not to release the port, and a
+   # harness still holding 5100 answers the next run with the PREVIOUS variant's configuration.
+   pkill -f conformance-harness
+   while pids=$(lsof -nP -iTCP:5100 -sTCP:LISTEN -t); do kill -9 $pids; sleep 1; done
+
+   cp <your keys>/appsettings.Local.oidf-mdoc.json appsettings.Local.json
+   dotnet run &
    python3 run-plan.py --clone-plan <iso_mdl plan> --harness https://localhost:5100 \
      --record ../../conformance-record.json
    ```
@@ -65,6 +74,13 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
    describe bytes the suite did not see. `release.yml` compares the recorded src tree against the
    tag's and refuses to publish when they differ, which makes a skipped run a build failure rather
    than an oversight.
+
+   **If you get the sequence wrong, the script stops before it creates anything.** Its preflight
+   checks that the suite answers, that the harness answers, and that the harness's RUNNING
+   configuration matches the plan's variant, reading `/config` off the process rather than the file
+   on disk. So a stale harness left over from the other variant is caught by name rather than by
+   producing a plausible wrong result, and a suite that is down names the Docker daemon if that is
+   why. Nothing is recorded on a crash either, because `--record` runs last.
 
    **There is deliberately no "only if the change touched OpenID4VP behaviour" here.** This step used
    to carry that conditional, and it asks the releaser to judge a blast radius that is not visible
@@ -82,7 +98,26 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 
    The `release` workflow publishes and cuts the GitHub Release. Confirm it went green before relying
    on the package (a tag whose run has not finished has published nothing).
-5. **Bump the consumers in the same session.** This is the step that prevents drift.
+5. **Write any observable behaviour change into the Release by hand.** `gh release create` runs with
+   `--generate-notes` and nothing else, so the note it produces is the list of merged pull request
+   titles since the last tag. A title says what a change was for; it does not say what a consumer has
+   to do differently, and a consumer reading only the Release will not open the pull requests.
+
+   So read the merged titles, open any that changed behaviour, and append an **Upgrading** section:
+
+   ```sh
+   gh release view v0.13.0 --json body -q .body > /tmp/notes.md
+   # add the Upgrading section at the top of /tmp/notes.md, then:
+   gh release edit v0.13.0 --notes-file /tmp/notes.md
+   ```
+
+   What counts: a changed default, a value a consumer parses that now reads differently, a new
+   required configuration step, a removed or renamed public member. 0.13.0 is the example that made
+   this a step. The session status endpoint and its SSE stream now replace every
+   `VerificationError.Message` with a fixed sentence, so a consumer that logged or displayed those
+   messages finds them all identical from 0.13.0 on. `Code` is unchanged and is what to read instead.
+   Nothing about that is guessable from the pull request title.
+6. **Bump the consumers in the same session.** This is the step that prevents drift.
 
 ## Bumping the consumers
 

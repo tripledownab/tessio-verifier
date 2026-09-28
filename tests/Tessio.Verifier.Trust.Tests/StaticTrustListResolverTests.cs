@@ -25,8 +25,14 @@ public class StaticTrustListResolverTests
         var status = await resolver.ResolveAsync("https://evil.example", []);
 
         Assert.False(status.Trusted);
-        Assert.Null(status.TrustListSource);
         Assert.NotNull(status.Reason);
+
+        // This asserted null, incidentally to what the test is named for. The property is documented as
+        // the list "that produced the verdict", and a refusal is a verdict, so the resolver names the
+        // list on both. What the old assertion pinned was a resolver recording nothing about which list
+        // refused a presentation, which is the verdict a relying party has most reason to question.
+        // "static" is the constructor's default label.
+        Assert.Equal("static", status.TrustListSource);
     }
 
     [Fact]

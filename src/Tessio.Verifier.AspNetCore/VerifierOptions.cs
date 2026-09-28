@@ -78,4 +78,55 @@ public sealed class VerifierOptions
     /// mounts its endpoints. Default: <c>/verify</c>.
     /// </summary>
     public string RoutePrefix { get; set; } = "/verify";
+
+    /// <summary>
+    /// Trust list identifiers that may be disclosed to an ANONYMOUS caller. Empty by default, which
+    /// discloses none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why an allowlist and not a redaction rule.</b> The session status endpoint and its SSE stream
+    /// are reachable by whoever holds a session id, and a session id is self-served by
+    /// <c>GET {prefix}/start</c>, so treat that surface as anonymous. It carries
+    /// <see cref="Core.IssuerInfo.TrustListSource"/>, which a resolver may set to anything: the built-in
+    /// <see cref="Trust.TrustListLoader"/> passes the path or URL it was handed straight through, so the
+    /// value can be a server filesystem path, and a directory of anchor files can name the parties a
+    /// deployment tests against.
+    /// </para>
+    /// <para>
+    /// A redaction rule would ask "does this look sensitive", which is a judgement that fails open on the
+    /// first string nobody anticipated. This inverts it: a source is emitted only if it appears here, and
+    /// anything else becomes <see cref="UndisclosedTrustListSource"/>. That fails closed by construction.
+    /// </para>
+    /// <para>
+    /// Nothing a caller needs is lost. "A trust list was consulted and your issuer was not on it" is the
+    /// useful part, and the token still says it. Put a genuinely public list here, such as a
+    /// Commission-published trusted list URL, where naming it helps an integrator and discloses nothing.
+    /// The full value is untouched on any surface you authorise and scope yourself.
+    /// </para>
+    /// </remarks>
+    public ISet<string> PublicTrustListSources { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// What an anonymous caller sees in place of a trust list identifier that is not on
+    /// <see cref="PublicTrustListSources"/>.
+    /// </summary>
+    /// <remarks>
+    /// A fixed token rather than null, because the two say different things: null means no list was
+    /// consulted, and this means one was and is not named on this surface.
+    /// </remarks>
+    public const string UndisclosedTrustListSource = "undisclosed";
+
+    /// <summary>
+    /// What an anonymous caller reads in place of a failure message.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Core.VerificationError.Code"/> is append-only observable behaviour and is what a caller
+    /// acts on, so the code still travels. The message is prose written by whoever produced the failure,
+    /// and the reader of this surface is whoever holds a session id. A sentence rather than a token,
+    /// because an integrator meeting it needs to know the message exists elsewhere rather than that the
+    /// failure had no explanation.
+    /// </remarks>
+    public const string UndisclosedErrorMessage =
+        "The failure message is not disclosed on this surface. Read the code, or the stored result.";
 }

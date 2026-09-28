@@ -221,6 +221,21 @@ tag whose `src` tree is not listed there. It writes only after the run passes, a
 tested something `HEAD:src` does not name. Both variants must be recorded, so run it twice, killing the
 harness and swapping `appsettings.Local.json` in between. See `RELEASING.md` step 2.
 
+**The script checks its preconditions before it creates anything.** It confirms the suite answers, the
+harness answers, and the harness's variant matches the plan's, and only then clones. That order is
+deliberate: it used to clone first, so a harness that was not running left an orphan plan in the suite
+and then died on a traceback naming neither end.
+
+The variant check reads `GET {harness}/config`, which reports the settings of the RUNNING process
+rather than whatever `appsettings.Local.json` holds now. That is what catches a harness left over from
+the other variant, which otherwise answers happily with the wrong credential format and produces a
+result that looks real. The two ends spell the variant differently, `sd_jwt_vc` against `dc+sd-jwt`, so
+`HARNESS_FORMAT` in the script maps them and a plan variant missing from it stops the run.
+
+If a connection drops mid-run, the script names the module that was in flight and re-probes both ends,
+so the output says which one went. Nothing is recorded, because `--record` runs after every module
+passes, and the same command is safe to repeat.
+
 Three things the script knows that are easy to get wrong by hand:
 
 - **A module only leaves `WAITING` once its evidence is in.** Starting the next module first claims the

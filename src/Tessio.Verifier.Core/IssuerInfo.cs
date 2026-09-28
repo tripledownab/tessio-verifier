@@ -3,7 +3,11 @@ namespace Tessio.Verifier.Core;
 /// <summary>
 /// Information about the credential's issuer as observed during verification.
 /// </summary>
-/// <remarks>FROZEN contract (contracts-v0).</remarks>
+/// <remarks>
+/// FROZEN contract (contracts-v0). Forward-compatible: new optional inputs may be added as init-only
+/// properties, which is how <see cref="TrustListSource"/>, <see cref="TrustAnchorSubject"/> and
+/// <see cref="TrustAnchorThumbprint"/> arrived. No existing member changes.
+/// </remarks>
 public sealed record IssuerInfo
 {
     /// <summary>The issuer identifier from the credential (e.g., HTTPS URI or X.509 subject).</summary>
@@ -21,6 +25,58 @@ public sealed record IssuerInfo
     /// </summary>
     // SPEC: SD-JWT VC issuer key resolution — two mechanisms (JWT VC Issuer Metadata + X.509).
     public required string KeyResolutionMethod { get; init; }
+
+    /// <summary>
+    /// Which trust list produced the verdict, on both a trusted and an untrusted one.
+    /// </summary>
+    /// <remarks>
+    /// <b>Null carries two different meanings and cannot distinguish them.</b> Either the resolver in use
+    /// reports no source, or no trust list was ever consulted: a malformed credential, a bad signature or
+    /// a synthesised result all reach a verdict without asking the seam. So null is "no attribution
+    /// available", never "no list accepted this". A caller storing an audit record should treat a null
+    /// source as unevaluated rather than as a negative finding.
+    /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>Why these are here.</b> <see cref="Trusted"/> is a boolean, and a boolean is not evidence. A
+    /// relying party asked months later which list and which anchor stood behind a presentation could
+    /// not answer from this record, and the resolver held the answer and dropped it. Every field below
+    /// is copied from the <c>IssuerTrustStatus</c> the resolver already returned.
+    /// </para>
+    /// <para>
+    /// <b>They describe the verdict, not the configuration.</b> A deployment's anchors and lists change,
+    /// so reading them back off today's configuration answers a different question from the one asked.
+    /// These say what was true at the moment of verification.
+    /// </para>
+    /// <para>Init-only and optional, so every existing construction still compiles unchanged.</para>
+    /// </remarks>
+    public string? TrustListSource { get; init; }
+
+    /// <summary>
+    /// Subject of the trust anchor that vouched for this issuer's key, when a certificate did.
+    /// </summary>
+    /// <remarks>
+    /// Null on the identifier route, where the list carried the identifier and no certificate was
+    /// involved, and null on a refusal where nothing matched. Both are facts about the mechanism rather
+    /// than missing values. A refusal that DOES know its anchor sets this, which is how "we trusted this
+    /// exact certificate and its window had closed" stays distinguishable from "nothing matched".
+    /// <b>A subject is not an identity</b>: compare
+    /// <see cref="TrustAnchorThumbprint"/>, because distinguished names are not unique and a same-name
+    /// impostor is what a subject comparison accepts. This is also the platform's rendering of the name
+    /// rather than its DER, so it may not be string-equal across operating systems.
+    /// </remarks>
+    public string? TrustAnchorSubject { get; init; }
+
+    /// <summary>
+    /// SHA-256 over that anchor's DER bytes, uppercase hex. Null in the same cases as
+    /// <see cref="TrustAnchorSubject"/>.
+    /// </summary>
+    /// <remarks>
+    /// Not the platform's <c>Thumbprint</c> property, which is SHA-1. It identifies the certificate
+    /// rather than the key, so a certificate authority that rotates its certificate produces a different
+    /// value here, which is correct: a different artefact was relied on.
+    /// </remarks>
+    public string? TrustAnchorThumbprint { get; init; }
 
     /// <summary>
     /// Placeholder issuer for results produced before any issuer could be resolved (for example a

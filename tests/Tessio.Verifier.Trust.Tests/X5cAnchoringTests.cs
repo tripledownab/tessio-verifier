@@ -73,6 +73,18 @@ public sealed class X5cAnchoringTests : IDisposable
     private static ReadOnlyMemory<byte>[] Chain(params X509Certificate2[] certificates) =>
         certificates.Select(c => new ReadOnlyMemory<byte>(c.RawData)).ToArray();
 
+    /// <summary>
+    /// SHA-256 over the DER as uppercase hex, computed independently of the implementation.
+    /// </summary>
+    /// <remarks>
+    /// The resolver calls <c>GetCertHashString(HashAlgorithmName.SHA256)</c>, which reduces to the same
+    /// two framework calls this does, so treat it as a near-copy rather than an independent oracle. What
+    /// it genuinely pins is the three things the contract promises and the platform does not document:
+    /// the input is the DER, the algorithm is SHA-256, and the case is upper.
+    /// </remarks>
+    private static string Sha256Hex(X509Certificate2 certificate) =>
+        Convert.ToHexString(SHA256.HashData(certificate.RawData));
+
     [Fact]
     public async Task X5c_WithoutAnchors_IsRejected_EvenForListedIssuer()
     {
@@ -81,7 +93,10 @@ public sealed class X5cAnchoringTests : IDisposable
         var status = await resolver.ResolveAsync(Issuer, Chain(_legitCert));
 
         Assert.False(status.Trusted);
-        Assert.Contains("trust anchors", status.Reason, StringComparison.Ordinal);
+        // Asserts the CAPABILITY the reason now states. It read "trust anchors" while the message said
+        // the list held none and told the reader to configure some, which is a fact about the deployment
+        // on a reason that travels to the caller. See RefusalDisclosureTests for that rule.
+        Assert.Contains("does not accept an issuer key carried in a certificate", status.Reason, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -92,6 +107,130 @@ public sealed class X5cAnchoringTests : IDisposable
         var status = await resolver.ResolveAsync(Issuer, Chain(_legitCert));
 
         Assert.True(status.Trusted);
+    }
+
+    /// <summary>
+    /// A trusted verdict has to say WHICH anchor produced it, by bytes, not only that one did.
+    /// </summary>
+    /// <remarks>
+    /// The subject is asserted too, because it is what a human reads in a record, but the thumbprint is
+    /// the identity: this ecosystem already carries two anchors differing only by country, and a
+    /// same-name impostor is exactly what a subject comparison accepts.
+    /// </remarks>
+    [Fact]
+    public async Task X5c_PinnedLeaf_NamesTheAnchorItMatched()
+    {
+        var resolver = new StaticTrustListResolver([Issuer], trustAnchors: [_legitCert]);
+
+        var status = await resolver.ResolveAsync(Issuer, Chain(_legitCert));
+
+        Assert.True(status.Trusted);
+        Assert.Equal(_legitCert.Subject, status.TrustAnchorSubject);
+        Assert.Equal(Sha256Hex(_legitCert), status.TrustAnchorThumbprint);
+    }
+
+    /// <summary>
+    /// With two anchors configured that could each have been asked, the verdict names the one that
+    /// actually validated the chain rather than the first one held.
+    /// </summary>
+    /// <remarks>
+    /// THIS IS THE TEST THAT CAN FAIL. Asserting a non-null thumbprint would pass against an
+    /// implementation that reported any configured anchor, or the first, which is the plausible wrong
+    /// implementation and the one that would make an audit record say the wrong thing. The decoy is
+    /// listed FIRST so "report _trustAnchors[0]" is red.
+    /// </remarks>
+    [Fact]
+    public async Task X5c_TwoAnchorsConfigured_NamesTheOneThatValidated()
+    {
+        using var decoyKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var decoyRoot = SelfSigned("CN=Decoy Root", decoyKey, isCa: true);
+        using var realKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var realRoot = SelfSigned("CN=Real Root", realKey, isCa: true);
+        using var leafKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var leaf = SignedBy(realRoot, "CN=Document Signer", leafKey);
+
+        var resolver = new StaticTrustListResolver([Issuer], trustAnchors: [decoyRoot, realRoot]);
+
+        var status = await resolver.ResolveAsync(Issuer, Chain(leaf));
+
+        Assert.True(status.Trusted);
+        Assert.Equal(Sha256Hex(realRoot), status.TrustAnchorThumbprint);
+        Assert.NotEqual(Sha256Hex(decoyRoot), status.TrustAnchorThumbprint);
+    }
+
+    /// <summary>
+    /// The identifier route names no anchor even when anchors ARE configured, because no certificate
+    /// vouched for the key.
+    /// </summary>
+    /// <remarks>
+    /// <b>The configured anchors are what give this test teeth.</b> Without them, the plausible wrong
+    /// implementation, reporting an anchor the deployment happens to hold, has nothing to report and the
+    /// null assertions pass against it. A mixed resolver is also the ordinary mdoc shape: anchors for the
+    /// chain route and identifiers for the metadata route, in one instance. So a record that named an
+    /// anchor here would assert that a certificate validated a key no certificate ever touched, which is
+    /// worse than saying nothing.
+    /// </remarks>
+    [Fact]
+    public async Task IdentifierRoute_NamesNoAnchor_EvenWithAnchorsConfigured()
+    {
+        var resolver = new StaticTrustListResolver([Issuer], source: "unit-test", trustAnchors: [_legitCert]);
+
+        var status = await resolver.ResolveAsync(Issuer, []);
+
+        Assert.True(status.Trusted);
+        Assert.Equal("unit-test", status.TrustListSource);
+        Assert.Null(status.TrustAnchorSubject);
+        Assert.Null(status.TrustAnchorThumbprint);
+    }
+
+    /// <summary>
+    /// A pinned anchor rejected for its own expiry still NAMES itself, because it matched.
+    /// </summary>
+    /// <remarks>
+    /// The one refusal where the configured anchor is known: it matched by bytes and then failed its own
+    /// validity window. "We trusted this exact certificate and its window had closed" is a different fact
+    /// from "nothing matched", and a record collapsing the two loses the more useful one. Reverting that
+    /// branch to report null reddens this.
+    /// </remarks>
+    [Fact]
+    public async Task X5c_PinnedLeaf_RejectedForExpiry_StillNamesTheAnchorItMatched()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var expired = SelfSigned(
+            "CN=Expired Pinned",
+            key,
+            notBefore: DateTimeOffset.UtcNow.AddYears(-2),
+            notAfter: DateTimeOffset.UtcNow.AddYears(-1));
+        var resolver = new StaticTrustListResolver([Issuer], source: "unit-test", trustAnchors: [expired]);
+
+        var status = await resolver.ResolveAsync(Issuer, Chain(expired));
+
+        Assert.False(status.Trusted);
+        Assert.Contains("validity window", status.Reason, StringComparison.Ordinal);
+        Assert.Equal("unit-test", status.TrustListSource);
+        Assert.Equal(expired.Subject, status.TrustAnchorSubject);
+        Assert.Equal(Sha256Hex(expired), status.TrustAnchorThumbprint);
+    }
+
+    /// <summary>
+    /// A refusal where nothing matched names the list and no anchor.
+    /// </summary>
+    /// <remarks>
+    /// The source assertion is the half with content, and it is the verdict a relying party has most
+    /// reason to question. Asserting only that the anchor fields are null proves nothing here, because
+    /// <c>NotTrusted</c> takes no anchor argument and so cannot set them either way.
+    /// </remarks>
+    [Fact]
+    public async Task X5c_ThatDoesNotAnchor_NamesTheListButNoAnchor()
+    {
+        var resolver = new StaticTrustListResolver([Issuer], source: "unit-test", trustAnchors: [_legitCert]);
+
+        var status = await resolver.ResolveAsync(Issuer, Chain(_spoofCert));
+
+        Assert.False(status.Trusted);
+        Assert.Equal("unit-test", status.TrustListSource);
+        Assert.Null(status.TrustAnchorSubject);
+        Assert.Null(status.TrustAnchorThumbprint);
     }
 
     [Fact]

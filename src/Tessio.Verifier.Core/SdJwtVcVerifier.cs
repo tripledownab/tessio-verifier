@@ -199,6 +199,12 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
             Identifier = resolution.Issuer,
             Trusted = trust.Trusted,
             KeyResolutionMethod = resolution.Method,
+            // Carried on both verdicts, as on the mdoc path. On this path the anchor fields are null
+            // whenever the key came from issuer metadata, which is the common case here and is the
+            // mechanism rather than a gap.
+            TrustListSource = trust.TrustListSource,
+            TrustAnchorSubject = trust.TrustAnchorSubject,
+            TrustAnchorThumbprint = trust.TrustAnchorThumbprint,
         };
 
         // CredentialType on BOTH branches. The failing one is the more useful of the two: a caller
