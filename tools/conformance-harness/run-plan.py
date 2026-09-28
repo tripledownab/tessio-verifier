@@ -23,8 +23,15 @@ import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
+
+# The two ends name the same variant differently. A suite plan's credential_format is sd_jwt_vc or
+# iso_mdl, and the harness's Request:CredentialFormat is the OpenID4VP format identifier, so comparing
+# the strings directly reports a mismatch on a CORRECT pairing. One mapping, here, because a second copy
+# is free to drift from this one and the preflight is the only caller.
+HARNESS_FORMAT = {"sd_jwt_vc": "dc+sd-jwt", "iso_mdl": "mso_mdoc"}
 
 # What each module is supposed to do. Unknown modules are a hard error rather than a guess: the suite
 # adds modules over time, and quietly assuming a new one is positive would report a pass we never made.
@@ -87,13 +94,72 @@ def get_json(url):
     return json.loads(text)
 
 
-def resolve_plan(suite, plan, clone_from):
+def reachable(url):
+    """Whether something answers at all. Any status counts: a login redirect is still an answer."""
+    try:
+        http(url, timeout=10)
+        return True
+    except Exception:
+        return False
+
+
+def docker_hint():
+    """Why the suite might be silent, when the docker CLI is here to say. Best effort: an absent CLI is
+    not itself a problem, so this only ever adds a sentence."""
+    try:
+        done = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"],
+                              capture_output=True, timeout=15)
+        if done.returncode != 0:
+            return (" The Docker daemon is not answering either, so start Docker Desktop first and wait "
+                    "for it, then bring the suite up with docker compose -f docker-compose-prebuilt.yml up -d.")
+        return " The Docker daemon is up, so bring the suite up: docker compose -f docker-compose-prebuilt.yml up -d."
+    except Exception:
+        return ""
+
+
+def preflight(args):
+    """Every precondition, BEFORE anything is created. Returns the source plan, so the caller does not
+    fetch it twice.
+
+    The order is the whole point. The first thing this script used to do was clone a plan, so a harness
+    that was not running left a plan behind in the suite, then died on a Python traceback at the first
+    module, and nothing in either output said "start the harness". Three requests are worth more than
+    any message printed after the damage."""
+    if not reachable(args.suite):
+        sys.exit(f"the conformance suite is not answering at {args.suite}.{docker_hint()}")
+
+    if not reachable(f"{args.harness}/config"):
+        sys.exit(
+            f"the harness is not answering at {args.harness}. Start it in tools/conformance-harness with "
+            "dotnet run, wait for it to listen, and check appsettings.Local.json names the right port.")
+
+    source_plan = get_json(f"{args.suite}/api/plan/{args.plan or args.clone_plan}")
+
+    # The variant is the trap the README warns about: a mismatch "fails the module for the wrong reason,
+    # and you will not see it until the screenshot". Both ends state it, so compare them rather than
+    # trusting whichever appsettings.Local.json was copied in last.
+    harness = get_json(f"{args.harness}/config")
+    wanted = (source_plan.get("variant") or {}).get("credential_format")
+    if wanted:
+        expected = HARNESS_FORMAT.get(wanted)
+        if expected is None:
+            sys.exit(f"the plan's credential_format is '{wanted}', which HARNESS_FORMAT does not map. "
+                     "Add it there rather than running a comparison this script cannot make.")
+        if harness["credentialFormat"] != expected:
+            sys.exit(
+                f"variant mismatch: the plan runs '{wanted}', which needs a harness on '{expected}', and "
+                f"this harness is on '{harness['credentialFormat']}'. Copy the other "
+                f"appsettings.Local.json in, restart the harness, and read {args.harness}/config.")
+
+    return source_plan
+
+
+def resolve_plan(suite, plan, clone_from, source):
     """The plan to run. Cloning copies an existing plan's config, which is where the harness CA and the
     credential signing key live, so a fresh plan needs no key material handling here."""
     if plan:
-        return plan, get_json(f"{suite}/api/plan/{plan}")
+        return plan, source
 
-    source = get_json(f"{suite}/api/plan/{clone_from}")
     variant = urllib.parse.quote(json.dumps(source["variant"]))
     status, text = http(f"{suite}/api/plan?planName={source['planName']}&variant={variant}",
                         method="POST", body=json.dumps(source["config"]), content_type="application/json")
@@ -270,7 +336,8 @@ def main():
     parser.add_argument("--record", help="on a clean run, stamp this variant into the release gate's record")
     args = parser.parse_args()
 
-    args.plan_id, plan = resolve_plan(args.suite, args.plan, args.clone_plan)
+    source_plan = preflight(args)
+    args.plan_id, plan = resolve_plan(args.suite, args.plan, args.clone_plan, source_plan)
     modules = [m["testModule"] for m in plan["modules"]]
 
     unknown = [m for m in modules if m not in EXPECTED]
@@ -284,7 +351,19 @@ def main():
 
     outcomes, failures = [], []
     for module in modules:
-        outcome = run_module(args, module)
+        try:
+            outcome = run_module(args, module)
+        except urllib.error.URLError as error:
+            # Something that was answering during preflight stopped. Docker Desktop dying mid-run is the
+            # case this was written for, and it used to surface as a forty line traceback ending in
+            # "Connection refused" with no clue which of the two ends had gone. Nothing is recorded,
+            # because --record only writes after every module passes, so the run is repeatable as is.
+            suite_up = "up" if reachable(args.suite) else f"DOWN{docker_hint()}"
+            harness_up = "up" if reachable(f"{args.harness}/config") else "DOWN, restart it with dotnet run"
+            sys.exit(f"lost a connection during {module[22:]}: {error.reason}\n"
+                     f"  suite   {args.suite}: {suite_up}\n"
+                     f"  harness {args.harness}: {harness_up}\n"
+                     f"Nothing was recorded. Fix whichever is down and run the same command again.")
         reason = check(outcome)
         outcomes.append(outcome | {"problem": reason})
         if reason:

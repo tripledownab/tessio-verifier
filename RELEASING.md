@@ -54,9 +54,18 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 
    ```sh
    cd tools/conformance-harness
+   cp <your keys>/appsettings.Local.oidf-sdjwt.json appsettings.Local.json
+   dotnet run &                       # wait until https://localhost:5100/config answers
    python3 run-plan.py --clone-plan <sd_jwt_vc plan> --harness https://localhost:5100 \
      --record ../../conformance-record.json
-   # kill the harness, swap appsettings.Local.json to the other variant, start it again
+
+   # Between variants, and the loop matters: pkill has been known not to release the port, and a
+   # harness still holding 5100 answers the next run with the PREVIOUS variant's configuration.
+   pkill -f conformance-harness
+   while pids=$(lsof -nP -iTCP:5100 -sTCP:LISTEN -t); do kill -9 $pids; sleep 1; done
+
+   cp <your keys>/appsettings.Local.oidf-mdoc.json appsettings.Local.json
+   dotnet run &
    python3 run-plan.py --clone-plan <iso_mdl plan> --harness https://localhost:5100 \
      --record ../../conformance-record.json
    ```
@@ -65,6 +74,13 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
    describe bytes the suite did not see. `release.yml` compares the recorded src tree against the
    tag's and refuses to publish when they differ, which makes a skipped run a build failure rather
    than an oversight.
+
+   **If you get the sequence wrong, the script stops before it creates anything.** Its preflight
+   checks that the suite answers, that the harness answers, and that the harness's RUNNING
+   configuration matches the plan's variant, reading `/config` off the process rather than the file
+   on disk. So a stale harness left over from the other variant is caught by name rather than by
+   producing a plausible wrong result, and a suite that is down names the Docker daemon if that is
+   why. Nothing is recorded on a crash either, because `--record` runs last.
 
    **There is deliberately no "only if the change touched OpenID4VP behaviour" here.** This step used
    to carry that conditional, and it asks the releaser to judge a blast radius that is not visible

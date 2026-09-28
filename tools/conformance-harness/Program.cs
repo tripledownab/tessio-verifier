@@ -123,6 +123,18 @@ app.MapTessioVerifier();
 
 app.MapGet("/", (HarnessSettings s) => Results.Content(Pages.Landing(s), "text/html"));
 
+// The same facts the landing page shows, for run-plan.py's preflight to read before it creates
+// anything in the suite. A variant mismatch between this harness and the plan fails a module for a
+// reason that has nothing to do with the code, and the landing page is the only other place that says
+// which variant is loaded, so checking it meant a person reading HTML and remembering to.
+app.MapGet("/config", (HarnessSettings s) => Results.Json(new
+{
+    credentialFormat = s.CredentialFormat,
+    requestedClaim = s.RequestedClaim,
+    responseMode = s.ResponseMode.ToString(),
+    authorizationEndpoint = s.AuthorizationEndpoint,
+}));
+
 app.MapGet("/evidence/{sessionId}", async (
     string sessionId, ISessionStore store, HarnessSettings s, CancellationToken ct) =>
 {
