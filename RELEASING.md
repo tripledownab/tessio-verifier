@@ -53,8 +53,8 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
 
    ```sh
    cd tools/conformance-harness
-   cp <your keys>/appsettings.Local.oidf-sdjwt.json appsettings.Local.json
-   dotnet run &                       # wait until https://localhost:5100/config answers
+   # A recording needs a harness built from a clean export of HEAD, not from the working tree:
+   sh serve-export.sh <your keys>/appsettings.Local.oidf-sdjwt.json &   # wait until /config answers
    python3 run-plan.py --clone-plan <sd_jwt_vc plan> --harness https://localhost:5100 \
      --record ../../conformance-record.json
 
@@ -65,22 +65,21 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
    lsof -nP -iTCP:5100 -sTCP:LISTEN -t | xargs kill 2>/dev/null
    while pids=$(lsof -nP -iTCP:5100 -sTCP:LISTEN -t); do echo "$pids" | xargs kill -9; sleep 1; done
 
-   cp <your keys>/appsettings.Local.oidf-mdoc.json appsettings.Local.json
-   dotnet run &
+   sh serve-export.sh <your keys>/appsettings.Local.oidf-mdoc.json &
    python3 run-plan.py --clone-plan <iso_mdl plan> --harness https://localhost:5100 \
      --record ../../conformance-record.json
    ```
 
-   `--record` writes only after the run passes, and only when the harness's build stamp says `src/`
-   was `HEAD:src` when it was built. The stamp is git's view of the source, not of what the compiler
-   read, so run a recording from a clean checkout with nothing saved during the build: the harness
-   README lists the cases it cannot see. `release.yml` compares the recorded src tree against the
+   `--record` writes only after the run passes, and only against a harness `serve-export.sh` built
+   from an export of `HEAD` it verified file by file and compiled isolated from the machine, so the
+   source that ran is `HEAD:src`. A harness built from the working tree is refused for a recording,
+   because the compiler can read bytes git does not describe there: the harness README lists them. `release.yml` compares the recorded src tree against the
    tag's and refuses to publish when they differ, which makes a skipped run a build failure rather
    than an oversight.
 
    **If you get the sequence wrong, the script stops before it creates anything.** It reads the
    RUNNING harness's settings from `/config` and compares them with the plan, and the `src/` tree the
-   harness was built from with the one on disk in this checkout. A stale harness is caught by name,
+   harness ran with `HEAD:src` for a recording, or with the tree on disk for a regression run. A stale harness is caught by name,
    whether it is the other variant or the same variant built before your last change, in another
    checkout, or from edits since reverted through git. `tools/conformance-harness/README.md` lists every check.
    Nothing is recorded on a crash, because `--record` runs last.

@@ -216,10 +216,10 @@ exists. `--harness` moves off the default `https://localhost:5099`.
 
 `--record` is what makes a release possible. It writes the run's `credential_format` variant, the git
 tree of `src/` and the plan id into `conformance-record.json`, and `release.yml` refuses to publish a
-tag whose `src` tree is not listed there. It writes only after the run passes, and only when the harness's
-build stamp says `src/` was `HEAD:src` when it was built. That stamp is git's view of the working tree,
-uncommitted edits included, so it is checked against the build rather than against whether `src/`
-happens to be clean when the run ends. It is not a hash of what the compiler read; see the limits below. Both variants must be recorded, so run it twice, stopping the harness and swapping
+tag whose `src` tree is not listed there. It writes only after the run passes, and only against a harness
+started with `serve-export.sh`, which exports `HEAD` into a fresh directory, verifies the export file by
+file against `HEAD`, builds it isolated from the machine, and stamps the exported commit. So the source
+that ran is `HEAD:src`, whatever state the working tree is in. Both variants must be recorded, so run it twice, stopping the harness and swapping
 `appsettings.Local.json` in between. See `RELEASING.md` step 2.
 
 ### What the script checks before it creates anything
@@ -236,8 +236,8 @@ that fails says what to do.
 | `{harness}/config` answers with the harness's settings | nothing on the port, something else on it, or a harness built before `/config` existed |
 | the plan's `credential_format` and `response_mode` match the harness's | a harness configured for the other plan. The two ends spell both differently, so `HARNESS_FORMAT` and `HARNESS_RESPONSE_MODE` map them, and a value missing from a map stops the run |
 | the plan's alias is in the harness's authorization endpoint | a harness pointed at the other plan's alias |
-| the harness's stamped `src/` tree equals the one on disk here | a stale harness of the SAME variant: built before your last change, in another checkout, or from edits since reverted through git |
-| with `--record`, that tree is also `HEAD:src` | a record run from uncommitted `src/`, refused before a plan is created rather than after the whole run |
+| on a regression run, the harness's stamped `src/` tree equals the one on disk here | a stale harness of the SAME variant: built before your last change, in another checkout, or from edits since reverted through git |
+| with `--record`, the harness was built by `serve-export.sh` from a clean export of `HEAD` | a recording from a working-tree build, whose bytes git's view of the source cannot vouch for |
 
 The stamp row is the one that matters most, because that harness passes every other check and answers
 every endpoint correctly with other bytes underneath. The harness build runs `src-tree.sh` and stamps
@@ -255,9 +255,31 @@ and the two differ when:
 - a build file is imported from a directory above the checkout;
 - line endings are converted on the way into the working tree.
 
-Each of those has been used to write a false record. Until the record run builds from a clean export of
-`HEAD`, a record is as trustworthy as the checkout it was run from: build it from a clean checkout, with
-nothing saved during the build.
+Each of those was used to write a false record, which is why a recording refuses a working-tree build
+and needs `serve-export.sh`. It exports `HEAD` into a directory that did not exist a moment earlier, so
+nothing is incremental and no editor has it open, and then VERIFIES every exported file against its blob
+in `HEAD` with filters off, refusing on any byte or mode difference, on any missing or extra file, and
+on any symlink at all, since the compiler follows a link to bytes git does not hold. That matters because `git archive` applies attributes from `.git/info/attributes` and a global
+attributes file as well as the committed ones, which can rewrite line endings, drop a file or run a
+filter. The build then turns off every way MSBuild reaches outside the project: the upward search for
+`Directory.Build.targets` and `Directory.Packages.props`, which this repository does not have,
+`Directory.Build.rsp` response files, imports from the user's MSBuild extensions folder, and the
+compiler's discovery of `.editorconfig` and `.globalconfig` above each source file. It runs
+under an emptied environment with an explicit allowlist, because MSBuild reads environment variables as
+properties. NuGet reads `NuGet.Config` from every directory above a project, so the export sits under
+`TMPDIR`, or the user's cache when that is unset, and the script refuses if any ancestor is world- or
+group-writable, resolving symlinks first so macOS's `/tmp` is judged as `/private/tmp`; on macOS every
+account shares the `staff` group. Still outside what it controls: NuGet's configuration, including a
+`NuGet.Config` above the export or in the user profile, and the package cache. They decide the
+dependencies, which a record does not describe either. The limits still apply to a regression run from the working tree, which is what that run is for.
+
+**What this defends against, and what it does not.** Every check here is aimed at a working copy in an
+accidental state: stale, dirty, reverted, reconfigured, or restarted. A harness stamped as an export
+refuses to start inside or below a git checkout, and outside a directory `serve-export.sh` marked as
+verified, so a `HarnessExportOf` left set in a shell cannot pass a working-tree build off as an export,
+even one copied out of the checkout. None of it stops a person who means to forge a record on their
+own machine, who could as easily edit this script; the record is evidence of a procedure followed, not
+proof against the person following it.
 
 Before each module the harness's whole `/config` is read again, including an `instance` id that changes on
 every start, so a harness restarted or reconfigured between modules stops the run. If a module fails with

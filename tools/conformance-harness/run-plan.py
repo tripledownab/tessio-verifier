@@ -41,7 +41,9 @@ HARNESS_RESPONSE_MODE = {"direct_post": "DirectPost", "direct_post.jwt": "Direct
 
 # What /config must carry to be this harness's. A server answering JSON without them is something else
 # on the port, and the preflight says so rather than failing on a missing key.
-HARNESS_CONFIG_KEYS = {"credentialFormat", "responseMode", "authorizationEndpoint", "srcTree", "instance"}
+HARNESS_CONFIG_KEYS = {"credentialFormat", "responseMode", "authorizationEndpoint", "srcTree", "exportOf", "instance"}
+# Build stamps a harness may legitimately lack: a working-tree build has no exportOf, an export no srcTree.
+HARNESS_OPTIONAL_STAMPS = {"srcTree", "exportOf"}
 
 # This script's own directory. Everything git is asked is asked of the checkout the script lives in,
 # never the current directory: run from elsewhere, the current directory is another tree or no tree.
@@ -194,8 +196,8 @@ def fetch_harness_config(args):
     except json.JSONDecodeError:
         config = None
     if (not isinstance(config, dict) or not HARNESS_CONFIG_KEYS <= config.keys()
-            or not all(isinstance(config[k], str) for k in HARNESS_CONFIG_KEYS - {"srcTree"})
-            or not isinstance(config["srcTree"], (str, type(None)))):
+            or not all(isinstance(config[k], str) for k in HARNESS_CONFIG_KEYS - HARNESS_OPTIONAL_STAMPS)
+            or not all(isinstance(config[k], (str, type(None))) for k in HARNESS_OPTIONAL_STAMPS)):
         sys.exit(f"{args.harness}/config answered {status} but not with this harness's settings, so "
                  "something else holds the port or the harness is older than this script. Stop it and "
                  "start the harness from this checkout.")
@@ -209,7 +211,8 @@ def src_tree():
 
 
 def preflight(args):
-    """Every precondition, BEFORE anything is created. Returns the source plan and the harness's config.
+    """Every precondition, BEFORE anything is created. Returns the source plan, the harness's config, and
+    the src/ tree the harness was built from.
 
     The order is the whole point. This script used to clone a plan first, so a harness that was not
     running left a plan behind in the suite, then died on a traceback naming neither end. Each check
@@ -246,24 +249,44 @@ def preflight(args):
 
     # THE STALE HARNESS THAT MATTERS MOST passes every check above: the same variant, left running since
     # the code changed, or built from another checkout, or from edits reverted through git. It answers
-    # every endpoint correctly with other bytes underneath, and --record would stamp its result against
-    # this tree. The build stamps git's view of src/, and this compares it with the same view on disk.
-    # It is not a hash of what the compiler read: tools/conformance-harness/README.md lists the gaps.
-    built = harness["srcTree"]
-    if not built:
-        sys.exit("the harness carries no src tree stamp, which happens on a Windows build or one older "
-                 "than this script, so it cannot be told apart from a stale one. Rebuild it on macOS or "
-                 "Linux from this checkout.")
-    here = src_tree()
-    if built != here:
-        sys.exit(f"stale harness: it was built from src tree {built[:12]} and src/ here is {here[:12]}. It "
-                 "predates a change, or was built from another checkout or from edits since reverted. "
-                 "Stop it, confirm the port is free, and start it again from this checkout.")
+    # every endpoint correctly with other bytes underneath.
+    export_of = harness["exportOf"]
+    if export_of:
+        # Built by serve-export.sh from `git archive` of this commit, so its src/ IS that commit's.
+        try:
+            built = git(HERE, "rev-parse", f"{export_of}:src")
+        except subprocess.CalledProcessError:
+            sys.exit(f"the harness was exported from {export_of[:12]}, which this repository does not "
+                     "have. Fetch it, or start the harness again with serve-export.sh from this checkout.")
+    else:
+        built = harness["srcTree"]
+        if not built:
+            sys.exit("the harness carries no build stamp, which happens on a Windows build or one older "
+                     "than this script, so it cannot be told apart from a stale one. Rebuild it on macOS or "
+                     "Linux from this checkout.")
+
     if args.record:
+        # A RECORDING needs a harness built from a clean export. A working-tree build is stamped with
+        # git's view of the source, and the compiler can read bytes that view does not describe: files
+        # git ignores, a revert that kept an old timestamp, a save during the build, a build file from
+        # above the checkout. An export has none of those, so its tree is HEAD:src by construction.
+        if not export_of:
+            sys.exit("a recording needs a harness built from a clean export of HEAD, and this one was built "
+                     "from the working tree. Stop it and start it with: sh serve-export.sh "
+                     "<appsettings.Local.json for the variant>")
         refusal = record_refusal(built, git(HERE, "rev-parse", "HEAD:src"))
         if refusal:
             sys.exit(refusal)
-    return plan, harness
+    else:
+        # A regression run tests the working copy, so compare the build with the tree on disk. The build
+        # stamps git's view of src/, and this computes the same view with the same script. It is not a
+        # hash of what the compiler read: tools/conformance-harness/README.md lists the gaps.
+        here = src_tree()
+        if built != here:
+            sys.exit(f"stale harness: it was built from src tree {built[:12]} and src/ here is {here[:12]}. It "
+                     "predates a change, or was built from another checkout or from edits since reverted. "
+                     "Stop it, confirm the port is free, and start it again from this checkout.")
+    return plan, harness, built
 
 
 def resolve_plan(suite, plan, clone_from, source):
@@ -461,8 +484,7 @@ def main():
     parser.add_argument("--record", help="on a clean run, stamp this variant into the release gate's record")
     args = parser.parse_args()
 
-    source_plan, harness = preflight(args)
-    tested_tree = harness["srcTree"]
+    source_plan, harness, tested_tree = preflight(args)
     args.plan_id, plan = resolve_plan(args.suite, args.plan, args.clone_plan, source_plan)
     modules = [m["testModule"] for m in plan["modules"]]
 
