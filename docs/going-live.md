@@ -39,6 +39,25 @@ OpenID4VP 1.0 §B.3.5 defines `vct_values` as "a non-empty array of strings that
 
 Matching is exact, so list every type you accept. A credential that only *inherits* from a listed type is refused, because following SD-JWT VC type inheritance needs Type Metadata that this verifier does not retrieve.
 
+**The single-claim form above names a claim the PID rulebook does not define, and that is deliberate
+as an illustration but wrong as a starting point.** The EU PID Rulebook removed its age verification
+attributes at version 1.1, 4 September 2025, "following CIR 2024/2977", and **read at version 1.7 of
+17 July 2026 it still defines none**, so a conformant `urn:eudi:pid:1` carries no top-level
+`age_over_18`. Both the version read and the version that changed are given because a rulebook this
+young moves: v1.6 of 1 July 2026 is itself "Aligning with updated CIR 2024/2977", so confirm the
+attribute list against the current document rather than against this sentence. Its §4.2 does let a
+domestic type add claims, so
+`urn:eudi:pid:de:1` may carry one, and whether it does is a question about that type rather than
+about this API.
+
+That matters more than a wrong attribute name, because of what happens next. §6.4.1: "If `claims` is
+present, but `claim_sets` is absent, the Verifier requests all claims listed in `claims`", and the
+wallet "MUST NOT return any claims" when it can satisfy none of them. So a single unsatisfiable claim
+does not degrade to a partial answer. It returns nothing, which reads on the wallet as a missing
+credential and on the verifier as a holder who declined.
+
+Ask for the alternatives and say which you prefer, as the next section does.
+
 ### When those types put the same fact in different places
 
 Listing several types is only half the problem. Two credential types can carry the same fact under
