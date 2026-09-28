@@ -167,10 +167,7 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
     /// </summary>
     private static MdocVerificationContext BuildMdocContext(VerificationSession session)
     {
-        var encrypted = string.Equals(
-            RequestParameters.TryGetResponseMode(session.Request),
-            "direct_post.jwt",
-            StringComparison.Ordinal);
+        var encrypted = RequestParameters.AsksForEncryptedResponse(session.Request);
 
         return new MdocVerificationContext
         {

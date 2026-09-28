@@ -66,6 +66,14 @@ internal static class RequestParameters
         Read(request, root => TryGetString(root, "response_mode"));
 
     /// <summary>
+    /// Whether this request asked for an encrypted response, <c>direct_post.jwt</c>. The one place that
+    /// decides it: the mdoc session transcript, the callback's mode check and the mock wallet all ask
+    /// here, so they cannot disagree about what one request demanded.
+    /// </summary>
+    public static bool AsksForEncryptedResponse(PresentationRequest request) =>
+        string.Equals(TryGetResponseMode(request), "direct_post.jwt", StringComparison.Ordinal);
+
+    /// <summary>
     /// The credential format the request's DCQL asks for (<c>dcql_query.credentials[0].format</c>, e.g.
     /// <c>dc+sd-jwt</c> or <c>mso_mdoc</c>), or null. Lets the callback parse per session instead of from a
     /// process-wide format pin.

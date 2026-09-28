@@ -4,7 +4,7 @@ namespace Tessio.Verifier.AspNetCore;
 
 /// <summary>
 /// JSON-friendly projection of a <see cref="VerificationSession"/> for the status endpoint and SSE stream.
-/// Deliberately excludes the raw signed request object.
+/// Deliberately excludes the authorization request, in every form.
 /// </summary>
 /// <remarks>
 /// <b>This is an ANONYMOUS surface, so it is where disclosure is decided.</b> A session id is self-served
@@ -13,14 +13,20 @@ namespace Tessio.Verifier.AspNetCore;
 /// rather than passing it through: every free-text failure message, and the trust list identifier unless
 /// the deployment published it. See <see cref="VerifierOptions.PublicTrustListSources"/> for why that
 /// second one is an allowlist and not a rule about which strings look risky.
+/// <para>
+/// <b>The authorization request is not here, and must not come back.</b> A wallet's callback is matched
+/// to its session by <c>state</c>, so <c>state</c> stays off anything keyed only by a session id. The
+/// authorization request URI leads to <c>state</c> in both delivery modes, embedded in the request
+/// object by value or one anonymous fetch of <c>request_uri</c> away by reference. It belongs only where
+/// it is needed: the start page shows it to the user about to hand it to a wallet, and the wallet fetches
+/// the request object.
+/// </para>
 /// </remarks>
 internal sealed record SessionView
 {
     public required string SessionId { get; init; }
 
     public required string Status { get; init; }
-
-    public required string AuthorizationRequestUri { get; init; }
 
     public required DateTimeOffset ExpiresAt { get; init; }
 
@@ -37,7 +43,6 @@ internal sealed record SessionView
     {
         SessionId = session.SessionId,
         Status = session.Status.ToString().ToLowerInvariant(),
-        AuthorizationRequestUri = session.Request.AuthorizationRequestUri.ToString(),
         ExpiresAt = session.ExpiresAt,
         Result = Narrow(session.Result, publicTrustListSources),
     };

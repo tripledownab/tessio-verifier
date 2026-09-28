@@ -86,6 +86,18 @@ internal sealed class WalletCallbackProcessor
             return new CallbackResult(CallbackOutcome.SessionNotPending, session.SessionId); // Sessions complete exactly once (replay protection).
         }
 
+        // A RESPONSE IN THE WRONG MODE DOES NOT ANSWER THE REQUEST, so it is refused BEFORE completion, the
+        // way a missing state is, and the session stays open for the wallet's own answer. A request that
+        // asked for direct_post.jwt is answered encrypted, and the parser has already refused a response
+        // token that is not a JWE, so a plaintext form here is not the wallet's answer.
+        if (parsed.Encrypted != RequestParameters.AsksForEncryptedResponse(session.Request))
+        {
+            Log.CallbackWrongResponseMode(_logger, session.SessionId,
+                parsed.Encrypted ? "encrypted" : "in plaintext",
+                RequestParameters.TryGetResponseMode(session.Request) ?? "no response_mode");
+            return new CallbackResult(CallbackOutcome.ResponseInvalid, session.SessionId);
+        }
+
         // A host store can hand back a session whose request no longer says what was asked for, in either
         // encoding. Verifying that one accepts a credential of any type, because no expected type skips
         // the type comparison in SdJwtVcVerifier and a null ExpectedDocType skips it in MdocVerifier. The

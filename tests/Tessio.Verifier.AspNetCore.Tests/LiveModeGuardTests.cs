@@ -97,8 +97,10 @@ public sealed class LiveModeGuardTests
             ? provider.GetRequiredService<ResponseEncryptionKeyStore>()
                 .CreateForRequest(DateTimeOffset.UtcNow.AddMinutes(5)).PublicJwk
             : null;
+        // This test posts a plaintext form, so its request asks for a plaintext response: a callback in
+        // the wrong mode is refused before it can end the session.
         var session = await store.CreateAsync(DemoRequestOptionsFactory.Create(
-            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk));
+            options, new Uri("https://verifier.example/verify/callback"), encryptionJwk) with { ResponseMode = ResponseMode.DirectPost });
 
         // An attacker's own issuer: same iss string and SAN as the trusted mock issuer, but a
         // self-signed certificate the trust anchor has never seen. Nonce and audience are correct,

@@ -189,6 +189,13 @@ For encrypted `direct_post.jwt` responses the `state` travels inside the encrypt
 field. Extract it with the public parser once the response key is available:
 `(await new WalletResponseParser(new WalletResponseParserOptions { ResponseDecryptionKey = key }).ParseDetailedAsync(response, ct)).State`.
 
+**Check the response mode before completing.** If your request asked for `direct_post.jwt`, take `state`
+from the parsed response rather than from a form field, and refuse the response unless
+`ParseDetailedAsync(...).Encrypted` is true. If it asked for `direct_post`, refuse one that is encrypted.
+Return a 400 and leave the session pending, so the wallet's own answer can still arrive. A response in
+the wrong mode is not an answer to the request, and the parser already refuses a `response` token that is
+not encrypted (OpenID4VP 1.0 §8.3). The built-in callback does all of this.
+
 ## 5. Multi-tenant correctness
 
 Because the seam reads audience, nonce, `vct`, `docType`, format and response mode from each session's own
