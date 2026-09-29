@@ -196,6 +196,21 @@ Return a 400 and leave the session pending, so the wallet's own answer can still
 the wrong mode is not an answer to the request, and the parser already refuses a `response` token that is
 not encrypted (OpenID4VP 1.0 §8.3). The built-in callback does all of this.
 
+**Decide what a failing response does.** The example completes the session whatever the result, which is the
+built-in callback's default. To complete only on a valid result, as `CompleteOnlyOnValidResponse` does,
+record a failing one instead and answer 400:
+
+```csharp
+if (!result.IsValid)
+{
+    await ((IAttemptRecordingSessionStore)store).RecordFailedAttemptAsync(session.SessionId, result, ct);
+    return Results.BadRequest(new { error = "invalid_response" });
+}
+```
+
+The session stays pending for another response, and its `LastFailure` and `FailedAttempts` say what
+happened. OpenID4VP 1.0 §8.6 requires the failing VP Token to be rejected and leaves the session to you.
+
 ## 5. Multi-tenant correctness
 
 Because the seam reads audience, nonce, `vct`, `docType`, format and response mode from each session's own

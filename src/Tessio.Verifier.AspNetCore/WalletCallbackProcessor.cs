@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Tessio.Verifier.OpenId4Vp;
 
 namespace Tessio.Verifier.AspNetCore;
@@ -11,6 +12,7 @@ internal enum CallbackOutcome
     UnknownSession = 2,
     SessionNotPending = 3,
     SessionNotVerifiable = 4,
+    PresentationRejected = 5,
 }
 
 /// <summary>
@@ -26,19 +28,22 @@ internal readonly record struct CallbackResult(CallbackOutcome Outcome, string? 
 /// Processes a wallet authorization response end to end: parse (<see cref="WalletResponseParser"/>),
 /// correlate the session via <c>state</c>, verify every presented credential
 /// (<see cref="WalletResponseVerifier"/>) against the session's own request, and complete the session
-/// with the outcome.
+/// with the outcome. With <see cref="VerifierOptions.CompleteOnlyOnValidResponse"/> on, a failing outcome
+/// is recorded as a failed attempt instead, and the session stays pending.
 /// </summary>
 internal sealed class WalletCallbackProcessor
 {
     private readonly WalletResponseParser _parser;
     private readonly WalletResponseVerifier _responseVerifier;
     private readonly IStateCorrelatingSessionStore _store;
+    private readonly IAttemptRecordingSessionStore? _attempts;
     private readonly ILogger<WalletCallbackProcessor> _logger;
 
     public WalletCallbackProcessor(
         WalletResponseParser parser,
         WalletResponseVerifier responseVerifier,
         ISessionStore store,
+        IOptions<VerifierOptions> options,
         ILogger<WalletCallbackProcessor> logger)
     {
         _parser = parser;
@@ -50,6 +55,15 @@ internal sealed class WalletCallbackProcessor
             $"The registered {nameof(ISessionStore)} ({store.GetType().Name}) does not implement " +
             $"{nameof(IStateCorrelatingSessionStore)}, which the wallet callback endpoint requires " +
             "to correlate responses by OpenID4VP 'state'. Implement that interface on your store.");
+        // With the option on, a store that cannot record a failure would leave the callback two choices,
+        // both wrong: complete the session the option says to keep open, or drop the failure unseen.
+        _attempts = !options.Value.CompleteOnlyOnValidResponse
+            ? null
+            : store as IAttemptRecordingSessionStore ?? throw new InvalidOperationException(
+                $"{nameof(VerifierOptions)}.{nameof(VerifierOptions.CompleteOnlyOnValidResponse)} is on, but the " +
+                $"registered {nameof(ISessionStore)} ({store.GetType().Name}) does not implement " +
+                $"{nameof(IAttemptRecordingSessionStore)}, which records a failed response without completing " +
+                "the session. Implement that interface on your store, or turn the option off.");
     }
 
     public async Task<CallbackResult> ProcessAsync(WalletResponseData response, CancellationToken ct)
@@ -112,6 +126,14 @@ internal sealed class WalletCallbackProcessor
         // Verify every presented credential; the verifier derives audience, nonce, vct, docType and the
         // response-encryption thumbprint from the session's own request.
         var outcome = await _responseVerifier.VerifyParsedAsync(session, parsed, ct).ConfigureAwait(false);
+
+        if (!outcome.IsValid && _attempts is not null)
+        {
+            await _attempts.RecordFailedAttemptAsync(session.SessionId, outcome, ct).ConfigureAwait(false);
+            Log.VerificationFailedSessionKept(_logger, session.SessionId, outcome.Issuer.Identifier,
+                string.Join(",", outcome.Errors.Select(e => e.Code)));
+            return new CallbackResult(CallbackOutcome.PresentationRejected, session.SessionId);
+        }
 
         await _store.CompleteAsync(session.SessionId, outcome, ct).ConfigureAwait(false);
 

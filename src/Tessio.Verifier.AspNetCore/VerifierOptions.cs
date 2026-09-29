@@ -39,6 +39,36 @@ public sealed class VerifierOptions
     public string CredentialFormat { get; set; } = "dc+sd-jwt";
 
     /// <summary>
+    /// When true, only a response that passes verification completes a session. A response that fails
+    /// verification is answered 400, recorded as <see cref="VerificationSession.LastFailure"/>, and the
+    /// session stays pending for another response until it expires. Defaults to false.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// OpenID4VP 1.0 §8.6 requires a failing VP Token to be rejected and says nothing about the session,
+    /// so both settings conform. They differ in what a failed attempt costs: with this off, a failing
+    /// response completes the session and a holder whose wallet failed starts again with a new one. With
+    /// it on, the holder can retry within the same session.
+    /// </para>
+    /// <para>
+    /// <b>It changes what a failure looks like to your code.</b> A failure no longer arrives as a
+    /// completed session with <c>Result.IsValid</c> false. The session stays pending, carries
+    /// <see cref="VerificationSession.LastFailure"/> and <see cref="VerificationSession.FailedAttempts"/>,
+    /// and ends as completed-and-valid or expired. The status resource carries both, and the SSE stream
+    /// sends an <c>attempt_failed</c> event when <see cref="VerificationSession.FailedAttempts"/> rises.
+    /// Failures close together can share one event, so read the count rather than counting events. Off by
+    /// default because the frozen <see cref="VerificationSessionStatus"/> contract models a failed
+    /// verification as completed, and turning this on changes that meaning for the deployment that does it.
+    /// </para>
+    /// <para>
+    /// The registered <see cref="ISessionStore"/> must implement <see cref="IAttemptRecordingSessionStore"/>.
+    /// The built-in store does. Without it the wallet callback throws when it is first built, which in
+    /// mock mode is at startup and in live mode is the first callback.
+    /// </para>
+    /// </remarks>
+    public bool CompleteOnlyOnValidResponse { get; set; }
+
+    /// <summary>
     /// Expected mdoc document type when <see cref="CredentialFormat"/> is <c>mso_mdoc</c>.
     /// Defaults to the mobile driving licence (<c>org.iso.18013.5.1.mDL</c>).
     /// </summary>

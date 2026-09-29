@@ -44,6 +44,10 @@ internal static partial class Log
         Message = "Wallet response for session {SessionId} arrived {Arrived} but the request asked for {Asked}, so it was rejected without ending the session")]
     public static partial void CallbackWrongResponseMode(ILogger logger, string sessionId, string arrived, string asked);
 
+    [LoggerMessage(EventId = 10, Level = LogLevel.Warning,
+        Message = "Session {SessionId} stays pending: credential INVALID (issuer {Issuer}, errors: {ErrorCodes}), recorded as a failed attempt")]
+    public static partial void VerificationFailedSessionKept(ILogger logger, string sessionId, string issuer, string errorCodes);
+
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Mock wallet failed for session {SessionId}.")]
     public static partial void MockWalletFailed(ILogger logger, Exception exception, string sessionId);

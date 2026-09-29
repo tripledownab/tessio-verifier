@@ -56,7 +56,7 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
         endpoints.MapGet($"{prefix}/start", (HttpContext http) => StartAsync(http, prefix));
         endpoints.MapGet($"{prefix}/request/{{requestId}}", (string requestId, HttpContext http) => ServeRequestObjectAsync(requestId, http));
         endpoints.MapGet($"{prefix}/{{sessionId}}", (string sessionId, HttpContext http) => GetStatusAsync(sessionId, http));
-        endpoints.MapGet($"{prefix}/{{sessionId}}/stream", (string sessionId, HttpContext http) => StreamAsync(sessionId, http));
+        endpoints.MapGet($"{prefix}/{{sessionId}}/stream", (string sessionId, HttpContext http) => SessionEventStream.StreamAsync(sessionId, http, SerializerOptions));
         endpoints.MapPost($"{prefix}/callback", (HttpContext http) => CallbackAsync(http, prefix));
 
         return endpoints;
@@ -173,84 +173,6 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             http.RequestAborted).ConfigureAwait(false);
     }
 
-    private static async Task StreamAsync(string sessionId, HttpContext http)
-    {
-        var store = http.RequestServices.GetRequiredService<ISessionStore>();
-        var session = await store.GetAsync(sessionId, http.RequestAborted).ConfigureAwait(false);
-        if (session is null)
-        {
-            http.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-
-        http.Response.ContentType = "text/event-stream";
-        // no-store, as on the status resource: the same verdict and claims travel on this stream.
-        http.Response.Headers.CacheControl = "no-store";
-        http.Response.Headers["X-Accel-Buffering"] = "no";
-
-        await WriteEventAsync(http, "pending", session).ConfigureAwait(false);
-
-        var terminal = session.Status != VerificationSessionStatus.Pending
-            ? session
-            : await AwaitTerminalAsync(store, sessionId, session.ExpiresAt, http).ConfigureAwait(false);
-
-        if (terminal is null)
-        {
-            return; // client disconnected
-        }
-
-        var eventName = terminal.Status == VerificationSessionStatus.Completed ? "completed" : "expired";
-        await WriteEventAsync(http, eventName, terminal).ConfigureAwait(false);
-    }
-
-    private static async Task<VerificationSession?> AwaitTerminalAsync(
-        ISessionStore store, string sessionId, DateTimeOffset expiresAt, HttpContext http)
-    {
-        var clock = http.RequestServices.GetService<TimeProvider>() ?? TimeProvider.System;
-        var remaining = expiresAt - clock.GetUtcNow();
-        if (remaining <= TimeSpan.Zero)
-        {
-            return await store.GetAsync(sessionId, http.RequestAborted).ConfigureAwait(false);
-        }
-
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted);
-        deadline.CancelAfter(remaining);
-
-        try
-        {
-            // The in-memory store supports push-based waiting; other stores are polled.
-            if (store is InMemorySessionStore inMemory)
-            {
-                return await inMemory.WaitForTerminalAsync(sessionId, deadline.Token).ConfigureAwait(false);
-            }
-
-            return await PollUntilTerminalAsync(store, sessionId, deadline.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!http.RequestAborted.IsCancellationRequested)
-        {
-            // Session lifetime elapsed — re-read to surface the Expired transition.
-            return await store.GetAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            return null; // client disconnected
-        }
-    }
-
-    private static async Task<VerificationSession> PollUntilTerminalAsync(ISessionStore store, string sessionId, CancellationToken ct)
-    {
-        while (true)
-        {
-            var session = await store.GetAsync(sessionId, ct).ConfigureAwait(false);
-            if (session is null || session.Status != VerificationSessionStatus.Pending)
-            {
-                return session!;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(500), ct).ConfigureAwait(false);
-        }
-    }
-
     private static async Task CallbackAsync(HttpContext http, string prefix)
     {
         // SPEC: OpenID4VP 1.0 §8.2 — wallets POST application/x-www-form-urlencoded to response_uri.
@@ -285,6 +207,9 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             // The response may be perfectly well formed. It is the stored session that cannot be checked
             // against, so this is a conflict with the session's state rather than a bad request.
             CallbackOutcome.SessionNotVerifiable => (StatusCodes.Status409Conflict, "session_not_verifiable"),
+            // The response was read and checked, and the credential failed. The session stays open for another
+            // response (VerifierOptions.CompleteOnlyOnValidResponse), so the wallet is told the answer was refused.
+            CallbackOutcome.PresentationRejected => (StatusCodes.Status400BadRequest, "invalid_response"),
             _ => (StatusCodes.Status400BadRequest, "invalid_response"),
         };
 
@@ -297,18 +222,6 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
                 ? new { redirect_uri = $"{http.Request.Scheme}://{http.Request.Host}{prefix}/{result.SessionId}" }
                 : (object)new { error },
             SerializerOptions, http.RequestAborted).ConfigureAwait(false);
-    }
-
-    private static async Task WriteEventAsync(HttpContext http, string eventName, VerificationSession session)
-    {
-        // The SSE stream carries the same projection as the status resource, through the same narrowing.
-        // Two write paths for one view is how an anonymous surface ends up disclosing on one and not the
-        // other, so both go through SessionView.From and neither serialises the result directly.
-        var options = http.RequestServices.GetRequiredService<IOptions<VerifierOptions>>().Value;
-        var json = JsonSerializer.Serialize(
-            SessionView.From(session, options.PublicTrustListSources), SerializerOptions);
-        await http.Response.WriteAsync($"event: {eventName}\ndata: {json}\n\n", http.RequestAborted).ConfigureAwait(false);
-        await http.Response.Body.FlushAsync(http.RequestAborted).ConfigureAwait(false);
     }
 
     private static string NormalizePrefix(string prefix)

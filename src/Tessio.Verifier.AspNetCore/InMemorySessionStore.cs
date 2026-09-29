@@ -9,7 +9,7 @@ namespace Tessio.Verifier.AspNetCore;
 /// Default in-memory <see cref="ISessionStore"/>. Suitable for a single-process app, the demo, and tests.
 /// Production deployments swap in a distributed store (Redis, SQL, …).
 /// </summary>
-public sealed class InMemorySessionStore : IStateCorrelatingSessionStore
+public sealed class InMemorySessionStore : IStateCorrelatingSessionStore, IAttemptRecordingSessionStore
 {
     /// <summary>
     /// How long a session stays readable after <see cref="VerificationSession.ExpiresAt"/> before it
@@ -91,9 +91,40 @@ public sealed class InMemorySessionStore : IStateCorrelatingSessionStore
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
+    public Task RecordFailedAttemptAsync(string sessionId, VerificationResult failure, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(sessionId);
+        ArgumentNullException.ThrowIfNull(failure);
+
+        if (!_sessions.TryGetValue(sessionId, out var entry))
+        {
+            throw new KeyNotFoundException($"No verification session with id '{sessionId}'.");
+        }
+
+        entry.RecordFailure(failure);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Awaits any change to the session after <paramref name="seen"/>: a recorded failure, completion or
+    /// expiry. Returns at once when the session has already moved on. Used by the SSE stream.
+    /// </summary>
+    internal Task<VerificationSession> WaitForChangeAsync(string sessionId, VerificationSession seen, CancellationToken ct)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var entry))
+        {
+            throw new KeyNotFoundException($"No verification session with id '{sessionId}'.");
+        }
+
+        EvaluateExpiry(entry);
+        return entry.NextChangeAfter(seen).WaitAsync(ct);
+    }
+
     /// <summary>
     /// Awaits the session reaching a terminal state (<see cref="VerificationSessionStatus.Completed"/> or
-    /// <see cref="VerificationSessionStatus.Expired"/>). Used by the SSE result stream to avoid polling.
+    /// <see cref="VerificationSessionStatus.Expired"/>), ignoring recorded failures. The SSE stream uses
+    /// <see cref="WaitForChangeAsync"/> instead, so this serves callers that want only the outcome.
     /// </summary>
     internal async Task<VerificationSession> WaitForTerminalAsync(string sessionId, CancellationToken ct)
     {
@@ -148,15 +179,24 @@ public sealed class InMemorySessionStore : IStateCorrelatingSessionStore
     {
         private readonly object _gate = new();
         private VerificationSession _current;
+        private TaskCompletionSource<VerificationSession> _changed = NewSignal();
 
         public SessionEntry(VerificationSession initial) => _current = initial;
 
-        public TaskCompletionSource<VerificationSession> Terminal { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<VerificationSession> Terminal { get; } = NewSignal();
 
         public VerificationSession Current
         {
             get { lock (_gate) { return _current; } }
+        }
+
+        /// <summary>The session as it is now if it differs from <paramref name="seen"/>, else the next change.</summary>
+        public Task<VerificationSession> NextChangeAfter(VerificationSession seen)
+        {
+            lock (_gate)
+            {
+                return ReferenceEquals(_current, seen) ? _changed.Task : Task.FromResult(_current);
+            }
         }
 
         public void Complete(VerificationResult result)
@@ -168,8 +208,21 @@ public sealed class InMemorySessionStore : IStateCorrelatingSessionStore
                     return;
                 }
 
-                _current = _current with { Status = VerificationSessionStatus.Completed, Result = result };
+                Publish(_current with { Status = VerificationSessionStatus.Completed, Result = result });
                 Terminal.TrySetResult(_current);
+            }
+        }
+
+        public void RecordFailure(VerificationResult failure)
+        {
+            lock (_gate)
+            {
+                if (_current.Status != VerificationSessionStatus.Pending)
+                {
+                    return;
+                }
+
+                Publish(_current with { LastFailure = failure, FailedAttempts = _current.FailedAttempts + 1 });
             }
         }
 
@@ -179,12 +232,25 @@ public sealed class InMemorySessionStore : IStateCorrelatingSessionStore
             {
                 if (_current.Status == VerificationSessionStatus.Pending)
                 {
-                    _current = _current with { Status = VerificationSessionStatus.Expired };
+                    Publish(_current with { Status = VerificationSessionStatus.Expired });
                     Terminal.TrySetResult(_current);
                 }
 
                 return _current;
             }
         }
+
+        // Called under _gate. Replaces the signal before releasing the old one, so a waiter woken here
+        // that asks again waits for the NEXT change rather than returning this one twice.
+        private void Publish(VerificationSession next)
+        {
+            _current = next;
+            var released = _changed;
+            _changed = NewSignal();
+            released.TrySetResult(next);
+        }
+
+        private static TaskCompletionSource<VerificationSession> NewSignal() =>
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }
