@@ -125,11 +125,11 @@ public sealed class MdocVerifier
         errors.AddRange(DigestVerifier.Verify(document, mso));
         errors.AddRange(VerifyDeviceAuth(document, mso, context));
 
-        var trust = await _trustListResolver.ResolveAsync(resolution.Issuer, resolution.CertificateChain, ct)
-            .ConfigureAwait(false);
+        var (trust, trustFailure) = await TrustSeam.ResolveAsync(
+            _trustListResolver, resolution.Issuer, resolution.CertificateChain, ct).ConfigureAwait(false);
         if (!trust.Trusted)
         {
-            errors.Add(new VerificationError
+            errors.Add(trustFailure ?? new VerificationError
             {
                 Code = MdocErrorCodes.IssuerUntrusted,
                 Message = trust.Reason ?? "The Document Signer does not chain to a trusted IACA root.",

@@ -14,7 +14,9 @@ namespace Tessio.Verifier.Core;
 /// <remarks>
 /// Structural violations (malformed credential, failed signature, RFC 9901 MUST-reject rules) yield a
 /// single-error invalid result; policy failures (expiry, nonce/audience, trust, vct) are accumulated
-/// so callers see every problem at once. All cryptography is delegated to
+/// so callers see every problem at once. Nothing the credential names is fetched for an untrusted
+/// issuer: its status list is never requested, and on the metadata route trust is decided before the key
+/// is, so that credential fails with the trust error alone. All cryptography is delegated to
 /// Microsoft.IdentityModel and <c>System.Security.Cryptography</c> — nothing custom.
 /// </remarks>
 public sealed class SdJwtVcVerifier : ICredentialVerifier
@@ -144,10 +146,29 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
                 ErrorCodes.AlgorithmNotAllowed, $"Issuer JWT algorithm '{issuerJwt.Alg}' is not permitted.");
         }
 
-        // 5. Issuer key resolution (x5c or JWT VC Issuer Metadata).
-        var resolution = await _keyResolver.ResolveAsync(issuerJwt, ct).ConfigureAwait(false);
+        // 5. The issuer, from the credential alone (x5c chain, or iss for JWT VC Issuer Metadata).
+        var identified = IssuerKeyResolver.Identify(issuerJwt);
 
-        // 6. Issuer signature.
+        // 6. On the metadata route, issuer trust BEFORE the key is fetched. The key lives on the host
+        // the credential names, so only an issuer the deployment trusts has it requested. The seam is
+        // asked with iss and an empty chain, which it can answer from its own configuration. On the x5c
+        // route the key is already in hand, so trust is asked below, after the checks that need no fetch.
+        IssuerTrustStatus? trust = null;
+        VerificationError? trustFailure = null;
+        if (identified.Method == SdJwtConstants.KeyResolutionMetadata)
+        {
+            (trust, trustFailure) = await TrustSeam.ResolveAsync(
+                _trustListResolver, identified.Issuer, identified.CertificateChain, ct).ConfigureAwait(false);
+            if (!trust.Trusted)
+            {
+                // The trust error alone: every later check needs the key this withholds.
+                return Invalid(trustFailure ?? Untrusted(trust, identified.Issuer), IssuerInfoFrom(identified, trust));
+            }
+        }
+
+        var resolution = await _keyResolver.FetchKeysAsync(identified, ct).ConfigureAwait(false);
+
+        // 7. Issuer signature.
         var validation = await new JsonWebTokenHandler().ValidateTokenAsync(presentation.IssuerJwt, new TokenValidationParameters
         {
             ValidateIssuer = false,
@@ -165,47 +186,41 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
                 new IssuerInfo { Identifier = resolution.Issuer, Trusted = false, KeyResolutionMethod = resolution.Method });
         }
 
-        // 7. Payload reconstruction per RFC 9901 §7.1 (throws on MUST-reject violations).
+        // 8. Payload reconstruction per RFC 9901 §7.1 (throws on MUST-reject violations).
         var payload = (JsonObject)JsonNode.Parse(Base64UrlEncoder.Decode(issuerJwt.EncodedPayload))!;
         var vctIsPlain = payload.ContainsKey("vct");
         var processed = DisclosureProcessor.Process(payload, presentation.Disclosures);
 
-        // 8. Policy checks — accumulated so the caller sees every failure at once.
+        // 9. Policy checks, accumulated so the caller sees every failure at once.
         var errors = new List<VerificationError>();
         var credentialType = ReadVct(processed);
         CheckVct(credentialType, vctIsPlain, context, errors);
         CheckTimeClaims(processed, errors);
         await CheckKeyBindingAsync(presentation, processed, context, transactionData, errors, ct).ConfigureAwait(false);
 
-        // SPEC: draft-ietf-oauth-status-list §8.3 — enforce the status claim when present (revocation).
-        if (_options.CheckStatus)
+        // Issuer trust on the x5c route: after every check that needs nothing but the credential, so a
+        // credential that fails one never reaches the seam, and before the status list, which is fetched
+        // only when trusted.
+        if (trust is null)
+        {
+            (trust, trustFailure) = await TrustSeam.ResolveAsync(
+                _trustListResolver, resolution.Issuer, resolution.CertificateChain, ct).ConfigureAwait(false);
+        }
+
+        var issuerInfo = IssuerInfoFrom(resolution, trust);
+
+        // SPEC: draft-ietf-oauth-status-list §8.3, enforce the status claim when present (revocation).
+        // Only for a trusted issuer. The uri is the credential's own, and an untrusted credential fails
+        // whatever its status says.
+        if (_options.CheckStatus && trust.Trusted)
         {
             errors.AddRange(await _statusChecker.CheckAsync(processed, ct).ConfigureAwait(false));
         }
 
-        // 9. Issuer trust via the pluggable trust seam.
-        var trust = await _trustListResolver.ResolveAsync(resolution.Issuer, resolution.CertificateChain, ct).ConfigureAwait(false);
         if (!trust.Trusted)
         {
-            errors.Add(new VerificationError
-            {
-                Code = ErrorCodes.IssuerUntrusted,
-                Message = trust.Reason ?? $"Issuer '{resolution.Issuer}' does not chain to a trusted list.",
-            });
+            errors.Add(trustFailure ?? Untrusted(trust, resolution.Issuer));
         }
-
-        var issuerInfo = new IssuerInfo
-        {
-            Identifier = resolution.Issuer,
-            Trusted = trust.Trusted,
-            KeyResolutionMethod = resolution.Method,
-            // Carried on both verdicts, as on the mdoc path. On this path the anchor fields are null
-            // whenever the key came from issuer metadata, which is the common case here and is the
-            // mechanism rather than a gap.
-            TrustListSource = trust.TrustListSource,
-            TrustAnchorSubject = trust.TrustAnchorSubject,
-            TrustAnchorThumbprint = trust.TrustAnchorThumbprint,
-        };
 
         // CredentialType on BOTH branches. The failing one is the more useful of the two: a caller
         // looking at a vct mismatch wants to know what actually arrived, and every earlier return in
@@ -395,6 +410,25 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
             ? DateTimeOffset.FromUnixTimeSeconds(seconds)
             : DateTimeOffset.FromUnixTimeSeconds((long)element.GetDouble());
     }
+
+    private static IssuerInfo IssuerInfoFrom(IssuerKeyResolution resolution, IssuerTrustStatus trust) => new()
+    {
+        Identifier = resolution.Issuer,
+        Trusted = trust.Trusted,
+        KeyResolutionMethod = resolution.Method,
+        // Carried on both verdicts, as on the mdoc path. On this path the anchor fields are null
+        // whenever the key came from issuer metadata, which is the common case here and is the
+        // mechanism rather than a gap.
+        TrustListSource = trust.TrustListSource,
+        TrustAnchorSubject = trust.TrustAnchorSubject,
+        TrustAnchorThumbprint = trust.TrustAnchorThumbprint,
+    };
+
+    private static VerificationError Untrusted(IssuerTrustStatus trust, string issuer) => new()
+    {
+        Code = ErrorCodes.IssuerUntrusted,
+        Message = trust.Reason ?? $"Issuer '{issuer}' does not chain to a trusted list.",
+    };
 
     private static VerificationResult Invalid(VerificationError error, IssuerInfo? issuer = null) =>
         Invalid([error], issuer);

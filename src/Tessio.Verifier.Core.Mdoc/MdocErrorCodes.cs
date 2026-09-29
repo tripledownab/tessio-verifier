@@ -24,6 +24,9 @@ public static class MdocErrorCodes
     /// <summary>The issuer does not chain to a configured trust anchor (shared with Core).</summary>
     public const string IssuerUntrusted = ErrorCodes.IssuerUntrusted;
 
+    /// <summary>The trust seam could not answer, so the issuer was neither trusted nor refused (shared with Core).</summary>
+    public const string IssuerTrustUnresolvable = ErrorCodes.IssuerTrustUnresolvable;
+
     /// <summary>The MSO validity window has passed (shared with Core).</summary>
     public const string CredentialExpired = ErrorCodes.CredentialExpired;
 

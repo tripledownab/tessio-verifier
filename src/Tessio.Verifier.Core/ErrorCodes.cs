@@ -41,4 +41,10 @@ public static class ErrorCodes
     public const string TransactionDataMissing = "transaction_data_missing";
     public const string TransactionDataHashMismatch = "transaction_data_hash_mismatch";
     public const string TransactionDataAlgUnsupported = "transaction_data_alg_unsupported";
+
+    /// <summary>
+    /// The trust seam could not answer, for example because a trust list it reads is unreachable. The
+    /// issuer was neither trusted nor refused, so the credential fails closed with this instead.
+    /// </summary>
+    public const string IssuerTrustUnresolvable = "issuer_trust_unresolvable";
 }

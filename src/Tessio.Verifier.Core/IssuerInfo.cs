@@ -31,8 +31,9 @@ public sealed record IssuerInfo
     /// </summary>
     /// <remarks>
     /// <b>Null carries two different meanings and cannot distinguish them.</b> Either the resolver in use
-    /// reports no source, or no trust list was ever consulted: a malformed credential, a bad signature or
-    /// a synthesised result all reach a verdict without asking the seam. So null is "no attribution
+    /// reports no source, or the verdict carries no trust attribution: a malformed credential, a bad
+    /// signature or a synthesised result all report none. A bad signature reports none even where the
+    /// seam was asked first, which on the SD-JWT VC metadata route it is. So null is "no attribution
     /// available", never "no list accepted this". A caller storing an audit record should treat a null
     /// source as unevaluated rather than as a negative finding.
     /// </remarks>
