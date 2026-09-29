@@ -32,6 +32,15 @@ internal sealed record SessionView
 
     public VerificationResult? Result { get; init; }
 
+    /// <summary>
+    /// The latest failed attempt while the session stays pending, narrowed exactly as <see cref="Result"/>
+    /// is. Null until a failed attempt is recorded, which the built-in callback does only with
+    /// <see cref="VerifierOptions.CompleteOnlyOnValidResponse"/> on.
+    /// </summary>
+    public VerificationResult? LastFailure { get; init; }
+
+    public int FailedAttempts { get; init; }
+
     /// <summary>Projects a session for an anonymous caller.</summary>
     /// <param name="session">The session to project.</param>
     /// <param name="publicTrustListSources">
@@ -45,6 +54,8 @@ internal sealed record SessionView
         Status = session.Status.ToString().ToLowerInvariant(),
         ExpiresAt = session.ExpiresAt,
         Result = Narrow(session.Result, publicTrustListSources),
+        LastFailure = Narrow(session.LastFailure, publicTrustListSources),
+        FailedAttempts = session.FailedAttempts,
     };
 
     /// <summary>

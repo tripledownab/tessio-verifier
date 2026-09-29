@@ -9,6 +9,9 @@ namespace Tessio.Verifier.AspNetCore;
 /// <remarks>
 /// FROZEN contract (contracts-v0). A failed verification (e.g., bad signature, untrusted issuer) is still
 /// modeled as <see cref="Completed"/>; consult <see cref="VerificationResult.IsValid"/> for pass/fail.
+/// Unless the deployment turns on <see cref="VerifierOptions.CompleteOnlyOnValidResponse"/>, an opt-in that
+/// keeps a session <see cref="Pending"/> after a failed verification, and so can end it as
+/// <see cref="Expired"/> after responses arrived.
 /// </remarks>
 public enum VerificationSessionStatus
 {
@@ -53,4 +56,27 @@ public sealed record VerificationSession
 
     /// <summary>Absolute session expiration (UTC). Stores should transition stale sessions to <see cref="VerificationSessionStatus.Expired"/>.</summary>
     public required DateTimeOffset ExpiresAt { get; init; }
+
+    /// <summary>
+    /// The most recent response that failed verification while the session stayed
+    /// <see cref="VerificationSessionStatus.Pending"/>, or null when there has been none.
+    /// </summary>
+    /// <remarks>
+    /// Set by <see cref="IAttemptRecordingSessionStore.RecordFailedAttemptAsync"/>, which the built-in wallet
+    /// callback calls only when <see cref="VerifierOptions.CompleteOnlyOnValidResponse"/> is on. With it off,
+    /// a failing response completes the session and is read from <see cref="Result"/> instead. The built-in
+    /// store keeps it after a later valid response completes the session. Added to this frozen record as an
+    /// optional init-only property, which contracts-v0 permits.
+    /// </remarks>
+    public VerificationResult? LastFailure { get; init; }
+
+    /// <summary>
+    /// How many responses failed verification while the session stayed pending. Zero until the first.
+    /// </summary>
+    /// <remarks>
+    /// Counted rather than inferred from <see cref="LastFailure"/>, because two failures can carry equal
+    /// results and a reader watching for a new one needs something that always moves. Added to this
+    /// frozen record as an optional init-only property, which contracts-v0 permits.
+    /// </remarks>
+    public int FailedAttempts { get; init; }
 }

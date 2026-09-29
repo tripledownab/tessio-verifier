@@ -134,10 +134,12 @@ The endpoints `MapTessioVerifier` exposes (default prefix `/verify`):
 | `GET /verify/start` | Creates a session and renders the request page with the `openid4vp://` authorization URI |
 | `GET /verify/request/{id}` | Serves the signed request object (by-reference delivery, see below) |
 | `GET /verify/{sessionId}` | Session status and result as JSON, for your own frontend. Carries no authorization request (see "What the session endpoints may say") |
-| `GET /verify/{sessionId}/stream` | Server-Sent Events: `pending`, then `completed` or `expired` |
+| `GET /verify/{sessionId}/stream` | Server-Sent Events: `pending`, then `attempt_failed` when `failedAttempts` rises (with `CompleteOnlyOnValidResponse` on, and failures close together can share one), then `completed` or `expired` |
 | `POST /verify/callback` | The wallet's `response_uri`. Returns 200 on completion, 400 for invalid or unknown responses, 409 when the session cannot take this response |
 
 The callback endpoint enforces `state` correlation and completes each session exactly once, so replayed responses get a 409 (`session_not_pending`) and stray posts a 400. A response in a mode the request did not ask for also gets a 400 and does not end the session. That covers a plaintext form answering a `direct_post.jwt` request, and a `response` token that is not encrypted: OpenID4VP 1.0 §8.3 requires an unsigned, encrypted JWT.
+
+**What a response that fails verification does is a setting.** By default it completes the session, and you read `Result.IsValid` false, so a holder whose wallet failed starts again with a new session. With `options.CompleteOnlyOnValidResponse = true` it gets a 400 instead, is recorded on the session as `LastFailure` and counted in `FailedAttempts`, and the session stays pending for another response until it expires. The status resource carries both, `lastFailure` narrowed exactly like `result`, and the stream sends `attempt_failed`. OpenID4VP 1.0 §8.6 requires the failing VP Token to be rejected and says nothing about the session, so both settings conform. The option is off by default because the frozen `VerificationSessionStatus` contract models a failed verification as completed, and turning it on changes that meaning for your deployment: a session then ends only as completed-and-valid or expired.
 
 It also refuses a session whose stored request cannot be read, or whose query never said which credential type it asked for, with a 409 (`session_not_verifiable`). Verifying either one accepts a credential of any type, because the verifier skips the type comparison when it has nothing to compare rather than failing it.
 
@@ -391,12 +393,14 @@ builder.Services.AddSingleton<ISessionStore, RedisSessionStore>();
 
 `FindByStateAsync` is the extra member beyond the base `ISessionStore`: a wallet response carries only the OpenID4VP `state` value, so the callback path needs a state index next to the sessions. Registering a store without it fails fast with an explanatory exception on the first callback.
 
+With `CompleteOnlyOnValidResponse` on, the store must also implement `IAttemptRecordingSessionStore`, whose `RecordFailedAttemptAsync` sets `LastFailure`, increments `FailedAttempts` and leaves the session pending. It must do nothing once the session has left `Pending`, so a failure that loses a race with a valid response cannot overwrite it. A store without it fails fast the same way, when the callback is first built.
+
 If you drive creation and completion from your own API (bypassing `/start` and `/callback`) or host many tenants in one process, see [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md) for the `IWalletResponseVerifier` seam, a durable Postgres store and the request-object round-trip.
 
 Two behaviors to know:
 
 - `CreateAsync` builds the presentation request (inject `IPresentationRequestBuilder`) and must index the request's `state`. Complete each session at most once and treat later completions as no-ops or conflicts.
-- The SSE stream endpoint gets push notifications from the in-memory store. With a custom store it polls `GetAsync` every 500 ms until the session leaves `Pending`, which works unchanged with any store.
+- The SSE stream endpoint gets push notifications from the in-memory store. With a custom store it polls `GetAsync` every 500 ms until the session leaves `Pending` or its `FailedAttempts` changes, which works unchanged with any store.
 
 ## 6. Response encryption across instances
 
