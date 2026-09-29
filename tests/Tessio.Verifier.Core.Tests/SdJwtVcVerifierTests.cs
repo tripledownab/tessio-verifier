@@ -376,6 +376,11 @@ public class SdJwtVcVerifierTests
         Assert.Contains(result.Errors, e => e.Code == "vct_missing");
     }
 
+    /// <remarks>
+    /// On the x5c route, because the key is in hand there whatever the trust verdict. On the metadata
+    /// route an untrusted issuer's key is never fetched, so nothing after trust can be checked (see
+    /// <see cref="UntrustedIssuer_OnTheMetadataRoute_IsRefusedWithoutAnyFetch"/>).
+    /// </remarks>
     [Fact]
     public async Task PolicyFailures_AreAccumulated_NotFirstOnly()
     {
@@ -384,14 +389,138 @@ public class SdJwtVcVerifierTests
             Exp = DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeSeconds(),
             KbNonce = "wrong-nonce",
         };
+        builder.UseCertificate();
 
-        var result = await MetadataVerifier(builder, new FakeTrustListResolver(trusted: false))
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver(trusted: false))
             .VerifyAsync(Credential(builder.Build()), Context());
 
         var codes = result.Errors.Select(e => e.Code).ToList();
         Assert.Contains("credential_expired", codes);
         Assert.Contains("nonce_mismatch", codes);
         Assert.Contains("issuer_untrusted", codes);
+    }
+
+    // ---- Trust before any fetch ---------------------------------------------------------------
+
+    /// <summary>
+    /// An issuer the trust seam refuses gets no request of any kind: its metadata lives on a host the
+    /// credential names, and so does its status list.
+    /// </summary>
+    [Fact]
+    public async Task UntrustedIssuer_OnTheMetadataRoute_IsRefusedWithoutAnyFetch()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.Status = (0, "https://issuer.example/statuslists/1");
+        var http = new FakeHttpHandler().Map(
+            "https://issuer.example/.well-known/jwt-vc-issuer",
+            $$"""{"issuer":"{{builder.Issuer}}","jwks":{{builder.BuildJwksJson()}}}""");
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver(trusted: false), httpClient: new HttpClient(http))
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.Empty(http.Requested);
+        Assert.False(result.IsValid);
+        Assert.Equal(["issuer_untrusted"], result.Errors.Select(e => e.Code));
+        Assert.Equal(TestCredentialBuilder.DefaultIssuer, result.Issuer.Identifier);
+        Assert.Equal("jwt-vc-issuer-metadata", result.Issuer.KeyResolutionMethod);
+        Assert.Equal("fake://trust-list", result.Issuer.TrustListSource);
+        Assert.Empty(result.DisclosedClaims);
+    }
+
+    /// <summary>
+    /// On the x5c route the key is in the credential, so the signature is checked before the trust seam
+    /// is asked, and a forged credential never reaches the seam at all.
+    /// </summary>
+    [Fact]
+    public async Task ForgedSignature_OnTheX5cRoute_NeverReachesTheTrustSeam()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.UseCertificate();
+        var trust = new FakeTrustListResolver();
+
+        var result = await new SdJwtVcVerifier(trust).VerifyAsync(Credential(TamperIssuerSignature(builder.Build())), Context());
+
+        Assert.Equal(["signature_invalid"], result.Errors.Select(e => e.Code));
+        Assert.Null(trust.SeenIssuer);
+    }
+
+    /// <summary>
+    /// On the x5c route the trust seam is asked only after every check that needs nothing but the
+    /// credential, so a correctly signed credential that fails structurally never reaches it either.
+    /// </summary>
+    [Fact]
+    public async Task StructurallyInvalidCredential_OnTheX5cRoute_NeverReachesTheTrustSeam()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.UseCertificate();
+        var parts = builder.Build().Split('~');
+        parts[1] = TestCredentialBuilder.MakeDisclosure("family_name", "Mallory");
+        var trust = new FakeTrustListResolver();
+
+        var result = await new SdJwtVcVerifier(trust).VerifyAsync(Credential(string.Join('~', parts)), Context());
+
+        Assert.Equal(["disclosure_unreferenced"], result.Errors.Select(e => e.Code));
+        Assert.Null(trust.SeenIssuer);
+    }
+
+    /// <summary>
+    /// A trusted issuer whose iss is not HTTPS is refused before its metadata is requested, even though
+    /// metadata is served at the cleartext address.
+    /// </summary>
+    [Fact]
+    public async Task TrustedIssuer_WithANonHttpsIss_IsRefused_WithoutFetchingItsMetadata()
+    {
+        using var builder = new TestCredentialBuilder { Issuer = "http://issuer.example" };
+        var http = new FakeHttpHandler().Map(
+            "http://issuer.example/.well-known/jwt-vc-issuer",
+            $$"""{"issuer":"{{builder.Issuer}}","jwks":{{builder.BuildJwksJson()}}}""");
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver(), httpClient: new HttpClient(http))
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.Empty(http.Requested);
+        Assert.Equal(["issuer_key_unresolvable"], result.Errors.Select(e => e.Code));
+    }
+
+    /// <summary>
+    /// The control for the test above: the same credential from a trusted issuer does fetch, so an
+    /// empty request log there means trust stopped it, not that nothing ever fetches.
+    /// </summary>
+    [Fact]
+    public async Task TrustedIssuer_OnTheMetadataRoute_FetchesItsMetadata()
+    {
+        using var builder = new TestCredentialBuilder();
+        var http = new FakeHttpHandler().Map(
+            "https://issuer.example/.well-known/jwt-vc-issuer",
+            $$"""{"issuer":"{{builder.Issuer}}","jwks":{{builder.BuildJwksJson()}}}""");
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver(), httpClient: new HttpClient(http))
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+        Assert.Equal(["https://issuer.example/.well-known/jwt-vc-issuer"], http.Requested);
+    }
+
+    /// <summary>
+    /// On the x5c route the key needs no fetch, but the status list still would. An untrusted chain
+    /// must not send it, and still reports its other failures.
+    /// </summary>
+    [Fact]
+    public async Task UntrustedIssuer_OnTheX5cRoute_DoesNotFetchTheStatusList()
+    {
+        using var builder = new TestCredentialBuilder { KbNonce = "wrong-nonce" };
+        builder.UseCertificate();
+        builder.Status = (0, "https://issuer.example/statuslists/1");
+        var http = new FakeHttpHandler();
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver(trusted: false), httpClient: new HttpClient(http))
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.Empty(http.Requested);
+        var codes = result.Errors.Select(e => e.Code).ToList();
+        Assert.Contains("issuer_untrusted", codes);
+        Assert.Contains("nonce_mismatch", codes);
+        Assert.DoesNotContain(codes, code => code.StartsWith("status_", StringComparison.Ordinal));
     }
 
     // ---- Format & resolution ------------------------------------------------------------------

@@ -72,6 +72,53 @@ public sealed class RefusalDisclosureTests : IDisposable
         Assert.Contains(_presented.Issuer, status.Reason, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The sentence saying where an incomplete chain stops describes the PRESENTED chain only. This
+    /// chain is issued by a CA nobody presented, so that sentence is in the reason, and the anchor this
+    /// deployment holds is still not.
+    /// </summary>
+    [Fact]
+    public async Task AnIncompleteChain_IsDescribed_WithoutNamingTheAnchorsThisDeploymentHolds()
+    {
+        using var caKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var leafKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var caRequest = new CertificateRequest("CN=An Unpresented CA", caKey, HashAlgorithmName.SHA256);
+        caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        using var leaf = new CertificateRequest("CN=A Leaf Below It", leafKey, HashAlgorithmName.SHA256)
+            .Create(ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(20), Guid.NewGuid().ToByteArray());
+
+        var status = await new StaticTrustListResolver([Issuer], trustAnchors: [_anchor]).ResolveAsync(Issuer, [leaf.RawData]);
+
+        Assert.False(status.Trusted);
+        Assert.Contains("carries no certificate above 'CN=A Leaf Below It'", status.Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain(AnchorSubject, status.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A chain refused for a reason other than being incomplete does not get the sentence, so it does
+    /// not send an operator looking for a certificate that is not missing.
+    /// </summary>
+    [Fact]
+    public async Task ACompleteChainRefusedForAnotherReason_DoesNotClaimACertificateIsMissing()
+    {
+        using var caKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var leafKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var caRequest = new CertificateRequest("CN=A Configured CA", caKey, HashAlgorithmName.SHA256);
+        caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-2), DateTimeOffset.UtcNow.AddDays(30));
+        // Issued by the configured CA, so nothing is missing, but its window closed an hour ago.
+        using var expired = new CertificateRequest("CN=An Expired Leaf", leafKey, HashAlgorithmName.SHA256)
+            .Create(ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddHours(-1), Guid.NewGuid().ToByteArray());
+
+        var status = await new StaticTrustListResolver([Issuer], trustAnchors: [ca]).ResolveAsync(Issuer, [expired.RawData]);
+
+        Assert.False(status.Trusted);
+        // The refusal is about time, which proves the chain did build and this is the case under test.
+        Assert.Contains("NotTimeValid", status.Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("carries no certificate above", status.Reason, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task WhenTheOperatorAsks_ARefusalNamesThemWithTheirKeyIdentifiers()
     {

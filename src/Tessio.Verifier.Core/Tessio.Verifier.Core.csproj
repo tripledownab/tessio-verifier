@@ -13,6 +13,8 @@
     <!-- For CompactJwt, which the wallet response parser needs and no consumer of this package does.
          Mirrors the grant Tessio.Verifier.OpenId4Vp already makes to Tessio.Verifier.AspNetCore. -->
     <InternalsVisibleTo Include="Tessio.Verifier.OpenId4Vp" />
+    <!-- For TrustSeam, so both credential verifiers turn a failing trust source into the same result. -->
+    <InternalsVisibleTo Include="Tessio.Verifier.Core.Mdoc" />
   </ItemGroup>
 
   <PropertyGroup>

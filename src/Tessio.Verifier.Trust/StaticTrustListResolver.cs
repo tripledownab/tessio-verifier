@@ -257,6 +257,14 @@ public sealed class StaticTrustListResolver : ITrustListResolver
             // Certificate revocation is the production trust layer's concern; credential revocation
             // is checked separately via Token Status Lists.
             chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            // The chain is built from what was presented and what is configured, and nothing else. A
+            // certificate can name a URL for its issuer's certificate, and the platform follows it
+            // unless told not to, so the answer would depend on a host the certificate chose. For an
+            // SD-JWT VC, HAIP 1.0 Final section 6.1.1 requires the x5c header to carry the trust chain
+            // without the anchor, so nothing is missing. A Token Status List signer may send its own
+            // certificate alone (section 6.1), and it anchors when the certificate that issued it is
+            // configured alongside its root.
+            chain.ChainPolicy.DisableCertificateDownloads = true;
             foreach (var anchor in _trustAnchors)
             {
                 chain.ChainPolicy.CustomTrustStore.Add(anchor);
@@ -309,9 +317,21 @@ public sealed class StaticTrustListResolver : ITrustListResolver
 
             // EVERYTHING BELOW IS ABOUT THE CALLER'S OWN CERTIFICATE. What this deployment holds is
             // added only on request, because the reason travels to the caller.
+            // WHERE THE PRESENTED CHAIN STOPS. A signer may legitimately send its own certificate alone
+            // (a Token Status List signer under HAIP 1.0 Final section 6.1), and then the certificate that
+            // issued it has to be one this resolver holds. Saying where the chain ends, and what it names
+            // above that, is what points an operator at the certificate to install.
+            // Only when the platform says the chain is incomplete, so a chain refused for another reason,
+            // an expired leaf say, does not send the reader looking for a certificate that is not missing.
+            var top = certificates[^1];
+            var endsBelowARoot = chain.ChainStatus.Any(s => s.Status.HasFlag(X509ChainStatusFlags.PartialChain))
+                && !top.SubjectName.RawData.AsSpan().SequenceEqual(top.IssuerName.RawData);
             return (false,
                 $"{status} The chain's leaf names its issuer as '{leaf.Issuer}'. "
                 + $"Leaf's authority key id: {(wantedKey is null ? "none" : Convert.ToHexString(wantedKey.Value.Span))}."
+                + (endsBelowARoot
+                    ? $" The chain carries no certificate above '{top.Subject}', whose issuer is '{top.Issuer}'."
+                    : string.Empty)
                 + ConfiguredAnchorsDump()
                 + LeafDump(leaf),
                 null);

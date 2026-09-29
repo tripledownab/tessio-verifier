@@ -49,14 +49,36 @@ internal sealed class FakeTrustListResolver : ITrustListResolver
     }
 }
 
+/// <summary>A trust seam whose trust source is down: every question throws, as a failed fetch would.</summary>
+internal sealed class FailingTrustListResolver(Func<Exception>? failure = null) : ITrustListResolver
+{
+    private readonly Func<Exception> _failure = failure ?? (() => new HttpRequestException("trust source unreachable"));
+
+    public int Calls { get; private set; }
+
+    public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default)
+    {
+        Calls++;
+        throw _failure();
+    }
+}
+
 /// <summary>Serves canned JSON responses by absolute URL; anything else is a 404.</summary>
 internal sealed class FakeHttpHandler : HttpMessageHandler
 {
     private readonly Dictionary<string, string> _responses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, byte[]> _binary = new(StringComparer.Ordinal);
 
     public FakeHttpHandler Map(string url, string json)
     {
         _responses[url] = json;
+        return this;
+    }
+
+    /// <summary>Serves raw bytes, such as a DER certificate, at <paramref name="url"/>.</summary>
+    public FakeHttpHandler MapBytes(string url, byte[] body)
+    {
+        _binary[url] = body;
         return this;
     }
 
@@ -66,6 +88,11 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
     {
         var url = request.RequestUri!.ToString();
         Requested.Add(url);
+        if (_binary.TryGetValue(url, out var body))
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) });
+        }
+
         return Task.FromResult(_responses.TryGetValue(url, out var json)
             ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") }
             : new HttpResponseMessage(HttpStatusCode.NotFound));

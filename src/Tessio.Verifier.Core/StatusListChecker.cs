@@ -160,10 +160,11 @@ internal sealed class StatusListChecker
             return [Error(ErrorCodes.StatusInvalid, $"Status list token algorithm '{token.Alg}' is not permitted.")];
         }
 
+        // Identified from the token alone. Its keys are fetched only once the signer is trusted, below.
         IssuerKeyResolution resolution;
         try
         {
-            resolution = await _keyResolver.ResolveAsync(token, ct).ConfigureAwait(false);
+            resolution = IssuerKeyResolver.Identify(token);
         }
         catch (SdJwtProcessingException e)
         {
@@ -206,18 +207,15 @@ internal sealed class StatusListChecker
         // credential's issuer is an HTTPS URI and the status token omits iss, a subject DN is compared
         // to a URI. Where both resolve to DNs it could pass. Found 2026-09-20 against the EUDI Wallet
         // Reference Implementation, whose lists are served by another host under another CA with no iss.
-        IssuerTrustStatus trust;
-        try
+        // A signer that sends only its own certificate, which HAIP 1.0 Final section 6.1 allows, anchors
+        // when the deployment has configured the certificate that issued it. Nothing is fetched to find it.
+        var (trust, trustFailure) = await TrustSeam.ResolveAsync(
+            _trustListResolver, resolution.Issuer, resolution.CertificateChain, ct).ConfigureAwait(false);
+
+        if (trustFailure is not null)
         {
-            trust = await _trustListResolver.ResolveAsync(resolution.Issuer, resolution.CertificateChain, ct)
-                .ConfigureAwait(false);
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException)
-        {
-            // A trust seam may do network I/O (a LOTL-backed resolver does). VerifyAsync promises it
-            // "never throws on input", and it catches only three types, so an escaping resolver failure
-            // would break that promise from inside a status check. Fail closed and name the cause.
-            return [Error(ErrorCodes.StatusUnresolvable, $"The status list signer's trust could not be resolved: {e.Message}")];
+            // A trust seam may do network I/O. Fail closed and name the cause, as TrustSeam explains.
+            return [Error(ErrorCodes.StatusUnresolvable, $"The status list signer's trust could not be resolved: {trustFailure.Message}")];
         }
 
         if (!trust.Trusted)
@@ -230,6 +228,17 @@ internal sealed class StatusListChecker
                         ? $"The status list token's signer '{resolution.Issuer}' is not trusted."
                         : $"The status list token's signer is not trusted: {trust.Reason}"),
             ];
+        }
+
+        // AFTER the trust verdict, as for the credential's own issuer: on the metadata route this
+        // fetches from the host the token names.
+        try
+        {
+            resolution = await _keyResolver.FetchKeysAsync(resolution, ct).ConfigureAwait(false);
+        }
+        catch (SdJwtProcessingException e)
+        {
+            return [Error(ErrorCodes.StatusUnresolvable, $"The status list signer's key could not be resolved: {e.Message}")];
         }
 
         var validation = await new JsonWebTokenHandler().ValidateTokenAsync(statusListJwt, new TokenValidationParameters

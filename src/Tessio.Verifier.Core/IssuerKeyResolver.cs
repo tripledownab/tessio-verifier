@@ -10,6 +10,10 @@ namespace Tessio.Verifier.Core;
 /// <summary>The outcome of issuer signing-key resolution.</summary>
 internal sealed record IssuerKeyResolution
 {
+    /// <summary>
+    /// The issuer's signing keys. Empty after <see cref="IssuerKeyResolver.Identify"/> on the metadata
+    /// route, whose keys only <see cref="IssuerKeyResolver.FetchKeysAsync"/> reads.
+    /// </summary>
     public required IReadOnlyList<SecurityKey> Keys { get; init; }
 
     /// <summary>"x5c" or "jwt-vc-issuer-metadata" (the contract's canonical values).</summary>
@@ -47,7 +51,16 @@ internal sealed class IssuerKeyResolver
 
     public IssuerKeyResolver(HttpClient httpClient) => _httpClient = httpClient;
 
-    public async Task<IssuerKeyResolution> ResolveAsync(JsonWebToken issuerJwt, CancellationToken ct)
+    /// <summary>
+    /// Who signed the token, read from its own header and claims with no network access: the issuer
+    /// identifier, the route, and the <c>x5c</c> chain with its key where there is one.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="FetchKeysAsync"/> so a caller can decide whether it trusts the issuer
+    /// before any request is made. On the metadata route the key lives on the host the token names, and
+    /// the identifier the trust seam judges is known without it.
+    /// </remarks>
+    public static IssuerKeyResolution Identify(JsonWebToken issuerJwt)
     {
         var iss = issuerJwt.TryGetClaim("iss", out var issClaim) ? issClaim.Value : null;
 
@@ -64,8 +77,30 @@ internal sealed class IssuerKeyResolver
                 "The credential carries neither an x5c header nor an iss claim; no key resolution mechanism applies.");
         }
 
-        return await ResolveFromMetadataAsync(iss, ct).ConfigureAwait(false);
+        if (!Uri.TryCreate(iss, UriKind.Absolute, out var issUri) || issUri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new SdJwtProcessingException(
+                ErrorCodes.IssuerKeyUnresolvable,
+                "The iss claim is not an HTTPS URI; JWT VC Issuer Metadata resolution requires one.");
+        }
+
+        return new IssuerKeyResolution
+        {
+            Keys = [],
+            Method = SdJwtConstants.KeyResolutionMetadata,
+            Issuer = iss,
+            CertificateChain = [],
+        };
     }
+
+    /// <summary>
+    /// The identified issuer with its keys. The <c>x5c</c> route already has them. The metadata route
+    /// fetches JWT VC Issuer Metadata from the <c>iss</c> host.
+    /// </summary>
+    public async Task<IssuerKeyResolution> FetchKeysAsync(IssuerKeyResolution identified, CancellationToken ct) =>
+        identified.Method == SdJwtConstants.KeyResolutionMetadata
+            ? identified with { Keys = await FetchMetadataKeysAsync(identified.Issuer, ct).ConfigureAwait(false) }
+            : identified;
 
     // ---- X.509 (x5c) --------------------------------------------------------------------------
 
@@ -266,16 +301,10 @@ internal sealed class IssuerKeyResolver
 
     // ---- JWT VC Issuer Metadata ---------------------------------------------------------------
 
-    private async Task<IssuerKeyResolution> ResolveFromMetadataAsync(string iss, CancellationToken ct)
+    // Identify has already required iss to be an absolute HTTPS URI.
+    private async Task<IReadOnlyList<SecurityKey>> FetchMetadataKeysAsync(string iss, CancellationToken ct)
     {
-        if (!Uri.TryCreate(iss, UriKind.Absolute, out var issUri) || issUri.Scheme != Uri.UriSchemeHttps)
-        {
-            throw new SdJwtProcessingException(
-                ErrorCodes.IssuerKeyUnresolvable,
-                "The iss claim is not an HTTPS URI; JWT VC Issuer Metadata resolution requires one.");
-        }
-
-        var metadataUri = BuildMetadataUri(issUri);
+        var metadataUri = BuildMetadataUri(new Uri(iss, UriKind.Absolute));
         var metadata = await FetchJsonAsync(metadataUri, ct).ConfigureAwait(false);
 
         // SPEC: draft-ietf-oauth-sd-jwt-vc §3.3 — the metadata's issuer MUST be identical to iss.
@@ -312,13 +341,7 @@ internal sealed class IssuerKeyResolver
                 ErrorCodes.IssuerMetadataInvalid, "The issuer's JWK Set contains no usable signing keys.");
         }
 
-        return new IssuerKeyResolution
-        {
-            Keys = keys,
-            Method = SdJwtConstants.KeyResolutionMetadata,
-            Issuer = iss,
-            CertificateChain = [],
-        };
+        return keys;
     }
 
     // SPEC: draft-ietf-oauth-sd-jwt-vc §3 — insert "/.well-known/jwt-vc-issuer" between the host

@@ -179,6 +179,51 @@ public sealed class MdocVerifierTests : IDisposable
         Assert.Equal(_builder.IacaCertificate.RawData, seen[1].ToArray());
     }
 
+    /// <summary>
+    /// A trust source that is down becomes a result with its own code, never an exception, so the
+    /// verifier keeps its promise to return a result for any input.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TrustSourceDown_FailsClosed_WithoutThrowing(bool notReady)
+    {
+        var result = await new MdocVerifier(new ThrowingResolver(notReady)).VerifyAsync(Credential(_builder), Context());
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors, e => e.Code == MdocErrorCodes.IssuerTrustUnresolvable);
+        Assert.Contains("trust source unreachable", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(result.Errors, e => e.Code == MdocErrorCodes.IssuerUntrusted);
+    }
+
+    /// <summary>A cancellation the caller asked for is not a trust source failure, so it propagates.</summary>
+    [Fact]
+    public async Task ACallerCancellation_AtTheTrustSeam_StillPropagates()
+    {
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new MdocVerifier(new CancellationObservingResolver()).VerifyAsync(Credential(_builder), Context(), cancelled.Token));
+    }
+
+    private sealed class CancellationObservingResolver : ITrustListResolver
+    {
+        public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(new IssuerTrustStatus { Trusted = true });
+        }
+    }
+
+    private sealed class ThrowingResolver(bool notReady) : ITrustListResolver
+    {
+        public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default) =>
+            throw (notReady
+                ? new InvalidOperationException("trust source unreachable")
+                : new HttpRequestException("trust source unreachable"));
+    }
+
     private sealed class CapturingResolver(Action<ReadOnlyMemory<byte>[]> onResolve) : ITrustListResolver
     {
         public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default)

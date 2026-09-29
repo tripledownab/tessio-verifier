@@ -172,6 +172,8 @@ public class StatusListTests
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.Code == "status_invalid");
+        // Refused on its identifier, before its metadata was fetched from the host the token names.
+        Assert.DoesNotContain("https://someone-else.example/.well-known/jwt-vc-issuer", http.Requested);
     }
 
     // SPEC: draft-ietf-oauth-status-list section 2 — "The Status Issuer can be either the Issuer or an
@@ -205,6 +207,47 @@ public class StatusListTests
     // does when one is present. So these two use the shipped resolver rather than a double, and they
     // are the only thing pinning the claim that a self-signed status token served from the issuer's own
     // uri is refused.
+
+    /// <summary>
+    /// The trust seam failing for the STATUS SIGNER, while the credential's own issuer is decided, is
+    /// reported as the status being unresolvable, and every other error found so far is kept.
+    /// </summary>
+    [Theory]
+    [InlineData("http")]
+    [InlineData("not ready")]
+    public async Task StatusSignerTrust_Failing_IsStatusUnresolvable_AndKeepsTheOtherErrors(string kind)
+    {
+        using var builder = CredentialWithStatus(idx: 0);
+        builder.KbNonce = "wrong-nonce";
+        using var signer = SelfSignedStatusSigner("status-signer");
+        var token = builder.BuildStatusListToken(StatusUri, bits: 1, statuses: [0], signWith: signer);
+        Exception failure = kind == "http"
+            ? new HttpRequestException("trust list unreachable")
+            : new InvalidOperationException("trust list unreachable");
+        var trust = new ChainFailingResolver(failure);
+
+        var http = new FakeHttpHandler()
+            .Map("https://issuer.example/.well-known/jwt-vc-issuer",
+                $$"""{"issuer":"{{builder.Issuer}}","jwks":{{builder.BuildJwksJson()}}}""")
+            .Map(StatusUri, token);
+        var result = await new SdJwtVcVerifier(trust, options: null, new HttpClient(http)).VerifyAsync(
+            new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() }, Context());
+
+        var codes = result.Errors.Select(e => e.Code).ToList();
+        Assert.Contains("status_unresolvable", codes);
+        Assert.Contains("nonce_mismatch", codes);
+        Assert.DoesNotContain("structure_invalid", codes);
+        Assert.Contains("trust list unreachable", result.Errors.Single(e => e.Code == "status_unresolvable").Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Trusts any identifier asked about with no chain, and fails for any chain.</summary>
+    private sealed class ChainFailingResolver(Exception failure) : ITrustListResolver
+    {
+        public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default) =>
+            x5c.Length == 0
+                ? Task.FromResult(new IssuerTrustStatus { Trusted = true, TrustListSource = "test" })
+                : throw failure;
+    }
 
     private static X509Certificate2 SelfSignedStatusSigner(string commonName)
     {
