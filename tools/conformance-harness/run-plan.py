@@ -53,6 +53,12 @@ HERE = pathlib.Path(__file__).resolve().parent
 # What each module is supposed to do. Unknown modules are a hard error rather than a guess: the suite
 # adds modules over time, and quietly assuming a new one is positive would report a pass we never made.
 ACCEPT, REJECT, SUITE_DECIDES = "accept", "reject", "suite"
+
+# Log entries that fail a module whatever our verifier concluded. The suite plays the wallet, so it is
+# the party judging OUR authorization request, and it can log a failure and still present: our verdict
+# would then be right while the request was wrong. Warnings count too. A clean run logs neither: every
+# module of both 0.15.0 recording runs, the negative ones included, logged zero of each.
+SUITE_LOG_PROBLEMS = ("FAILURE", "WARNING")
 EXPECTED = {
     "oid4vp-1final-verifier-happy-flow": ACCEPT,
     "oid4vp-1final-verifier-minimal-cnf-jwk": ACCEPT,
@@ -384,14 +390,32 @@ def run_module(args, module):
     else:
         info = get_json(f"{args.suite}/api/info/{test_id}")
         suite_status, suite_result = info.get("status"), info.get("result")
+
+    # The log, not the final result: a regression run leaves modules WAITING, so the suite has no final
+    # result to read, while every condition it evaluated is already in the log.
+    suite_problems = suite_log_problems(get_json(f"{args.suite}/api/log/{test_id}"))
     return {"module": module, "testId": test_id, "session": session_id, "result": result,
-            "evidence": evidence, "suiteStatus": suite_status, "suiteResult": suite_result}
+            "evidence": evidence, "suiteStatus": suite_status, "suiteResult": suite_result,
+            "suiteProblems": suite_problems}
+
+
+def suite_log_problems(log):
+    """Every entry of a module's suite log that fails it, as a line naming the condition."""
+    return [f"{e['result']} in {e.get('src', '?')}: {e.get('msg', '')}"
+            for e in log if e.get("result") in SUITE_LOG_PROBLEMS]
 
 
 def check(outcome):
     """What the run has to show for each module, as a reason or None when it is right."""
     expectation = EXPECTED[outcome["module"]]
     result = outcome["result"]
+
+    # First, and for every module: our verdict cannot rescue a module the suite found fault with.
+    if outcome["suiteProblems"]:
+        count = len(outcome["suiteProblems"])
+        return f"the suite logged {count} failure(s) or warning(s), first: {outcome['suiteProblems'][0]}"
+    if outcome["suiteStatus"] == "INTERRUPTED":
+        return "the suite interrupted the module"
 
     if expectation is SUITE_DECIDES:
         return None if outcome["suiteResult"] in ("SKIPPED", "PASSED", "REVIEW") \

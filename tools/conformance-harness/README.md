@@ -297,6 +297,11 @@ Three things the script knows that are easy to get wrong by hand:
   separate call. Without that the module never finishes.
 - **A positive module that discloses nothing is a failure**, even though the suite is happy. The script
   fails the run and points at `Request:Claim`.
+- **A module the suite found fault with is a failure**, even when our verifier reached the expected
+  verdict. The suite plays the wallet, so it judges our authorization request, and it can log a failure
+  and still present. The script reads each module's suite log and fails the module on any `FAILURE` or
+  `WARNING` entry, naming the first one, and on a module the suite `INTERRUPTED`. A clean run logs
+  neither.
 
 `EXPECTED` in the script says what each module should do. A module missing from it stops the run rather
 than being assumed to pass: the suite gains modules over time, and a silent assumption there would
