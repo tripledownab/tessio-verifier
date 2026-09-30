@@ -13,8 +13,13 @@ on:
       - 'site/**'
       - '**/*.md'
       - '.github/dependabot.yml'
+  # Every pull request, whatever its base. A base filter here made a pull request stacked on another
+  # branch run no checks at all, and "no checks reported" reads like "not run yet" rather than "never
+  # will", so untested code could merge into the base and reach main inside one squashed commit.
+  # Retargeting a pull request to another base does NOT rerun it: that is an `edited` event, and
+  # listening for it would let a title edit cancel a running check through the concurrency group
+  # below. After retargeting, push a commit or rerun the workflow.
   pull_request:
-    branches: [main]
     paths-ignore:
       - 'docs/**'
       - 'site/**'
@@ -50,8 +55,11 @@ jobs:
             10.0.x
           global-json-file: global.json
 
+      # Locked mode: a restore whose resolution differs from the committed packages.lock.json fails
+      # here, which catches a dependency change that did not regenerate the lock files. It guards
+      # against accidents, not deliberate edits; see tools/check-conformance-record.py.
       - name: Restore
-        run: dotnet restore Tessio.Verifier.sln
+        run: dotnet restore Tessio.Verifier.sln --locked-mode
 
       - name: Build
         run: dotnet build Tessio.Verifier.sln --no-restore --configuration Release
