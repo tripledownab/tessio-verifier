@@ -36,8 +36,11 @@ jobs:
             10.0.x
           global-json-file: global.json
 
+      # Locked mode: a restore whose resolution differs from the committed packages.lock.json fails
+      # here, which catches a dependency change that did not regenerate the lock files. It guards
+      # against accidents, not deliberate edits; see tools/check-conformance-record.py.
       - name: Restore
-        run: dotnet restore Tessio.Verifier.sln
+        run: dotnet restore Tessio.Verifier.sln --locked-mode
 
       - name: Build
         run: dotnet build Tessio.Verifier.sln --no-restore --configuration Release

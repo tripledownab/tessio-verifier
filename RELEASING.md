@@ -90,6 +90,11 @@ a fix, minor for additive API. A `contracts-v0` change must be additive (see the
    positive module depends on the issuer's certificate resolving to a trusted anchor, so a change
    filed under trust is on the tested path. Neither does "dependency bumps only", because a JWT or
    CBOR library sits directly under the verification code. Run both plans, every time.
+
+   A dependency bump is inside what the gate compares. Each `src/` project commits its
+   `packages.lock.json`, so a bump moves the `src` tree, and release restores in locked mode, so a
+   bump that did not regenerate the lock files fails. This guards against accidents, not deliberate
+   edits to the build files; `tools/check-conformance-record.py` lists what it does not cover.
 3. Bump `<Version>` in `Directory.Build.props`, commit, push `main`.
 4. Tag and push:
 

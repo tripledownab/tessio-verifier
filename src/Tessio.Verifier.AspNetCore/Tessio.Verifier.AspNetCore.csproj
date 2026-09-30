@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- The resolved package graph, transitive packages included, is committed as packages.lock.json
+         beside this file, inside src/, so the conformance record's src tree covers it. CI restores in
+         locked mode, so a bump that did not regenerate the lock file fails. It guards against
+         accidents, not deliberate edits; see tools/check-conformance-record.py. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
   </PropertyGroup>
 

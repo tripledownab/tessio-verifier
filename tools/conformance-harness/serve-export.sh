@@ -146,7 +146,7 @@ clean_env() {
     env -i HOME="$HOME" PATH="$PATH" TMPDIR="${TMPDIR:-}" LANG="${LANG:-C.UTF-8}" "$@"
 }
 clean_env dotnet build conformance-harness.csproj --no-incremental -noAutoResponse \
-    -p:HarnessExportOf="$commit" \
+    -p:HarnessExportOf="$commit" -p:RestoreLockedMode=true \
     -p:ImportDirectoryBuildTargets=false -p:ImportDirectoryPackagesProps=false \
     -p:ImportUserLocationsByWildcardBeforeMicrosoftCommonProps=false \
     -p:ImportUserLocationsByWildcardAfterMicrosoftCommonProps=false \

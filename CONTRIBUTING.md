@@ -14,6 +14,10 @@ dotnet test Tessio.Verifier.sln
 
 The build treats warnings as errors with analyzers on. If it builds clean locally, CI will agree.
 
+Every project under `src/` commits a `packages.lock.json`, and CI restores in locked mode. After changing
+a package reference, run `dotnet restore` and commit the updated lock file with it, or CI fails with
+`NU1004`.
+
 ## Ground rules
 
 - **Frozen contracts.** Anything marked `FROZEN contract (contracts-v0)` obeys one rule: **no existing member changes.** Not its type, not its name, not whether it is required, not what it means. What may be ADDED depends on the kind, and the difference matters: a record or DTO accepts a new OPTIONAL init-only property, because every existing construction still compiles and behaves as it did; an **interface accepts nothing**, since a new member breaks every implementer, including ones outside this repository. A default implementation is the exception someone will reach for, and it still needs the issue, because it makes the seam mean two things at once. An **enum accepts nothing** either: a new value is a break for any consumer switching exhaustively or deserialising it, and this repository cannot see those. A new required member is a break on all three. Where a DTO has been extended this way, its own remarks say so. If you need more than that, open an issue rather than sending a PR that edits them.
