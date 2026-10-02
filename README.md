@@ -87,7 +87,8 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 ## Standards
 
 - OpenID4VP 1.0: <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html>
-- SD-JWT VC: <https://datatracker.ietf.org/doc/html/draft-ietf-oauth-sd-jwt-vc>
+- SD-JWT VC: <https://datatracker.ietf.org/doc/html/draft-ietf-oauth-sd-jwt-vc-13>. Code citations name draft -13 because HAIP 1.0 lists it as a normative reference. Later drafts renumber the sections, so a section number means nothing without its draft number.
+- Token Status List: <https://datatracker.ietf.org/doc/html/draft-ietf-oauth-status-list-18>. HAIP 1.0 cites -14. The code follows -18 because -18 is stricter: it makes an out-of-range index a MUST reject.
 - EUDI Architecture & Reference Framework: <https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework>
 - WRPAC profile: ETSI TS 119 475
 

@@ -3,7 +3,7 @@ namespace Tessio.Verifier.Core;
 /// <summary>Wire-format constants for SD-JWT VC verification.</summary>
 internal static class SdJwtConstants
 {
-    // SPEC: draft-ietf-oauth-sd-jwt-vc §2.2.1 — the JOSE typ MUST be "dc+sd-jwt"
+    // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §3.2.1: the JOSE typ MUST use "dc+sd-jwt"
     // (changed from the legacy "vc+sd-jwt" in Nov 2024 to avoid a W3C media-type conflict).
     public const string Typ = "dc+sd-jwt";
     public const string LegacyTyp = "vc+sd-jwt";
@@ -23,13 +23,13 @@ internal static class SdJwtConstants
     public const string KeyResolutionMetadata = "jwt-vc-issuer-metadata";
     public const string KeyResolutionX5c = "x5c";
 
-    // SPEC: draft-ietf-oauth-sd-jwt-vc §3 — well-known segment inserted between host and path of iss.
+    // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §5: well-known segment inserted between host and path of iss.
     public const string WellKnownSegment = "/.well-known/jwt-vc-issuer";
 
     /// <summary>
     /// Claims that MUST NOT be selectively disclosable at the top level of an SD-JWT VC.
     /// </summary>
-    // SPEC: draft-ietf-oauth-sd-jwt-vc §2.2.2.2 — iss, nbf, exp, cnf, vct, vct#integrity, status.
+    // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §3.2.2.2: iss, nbf, exp, cnf, vct, vct#integrity, status.
     public static readonly IReadOnlySet<string> NeverSelectivelyDisclosable = new HashSet<string>(StringComparer.Ordinal)
     {
         "iss", "nbf", "exp", "cnf", "vct", "vct#integrity", "status",

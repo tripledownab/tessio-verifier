@@ -1,8 +1,8 @@
 namespace Tessio.Verifier.Core.Tests;
 
 /// <summary>
-/// Status list caching (draft-ietf-oauth-status-list §11.2): validated lists are reused within the
-/// cache window, the token's ttl shortens the window, failures are never cached and revocation
+/// Status list caching (draft-ietf-oauth-status-list-18 §8.3 step 4d and §13.7): validated lists
+/// are reused within the cache window, the token's ttl shortens the window, failures are never cached and revocation
 /// verdicts stay per-index correct when served from cache.
 /// </summary>
 public class StatusListCacheTests

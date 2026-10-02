@@ -5,7 +5,7 @@ using Tessio.Verifier.Trust;
 namespace Tessio.Verifier.Core.Tests;
 
 /// <summary>
-/// Token Status List enforcement (draft-ietf-oauth-status-list): revoked and suspended credentials
+/// Token Status List enforcement (draft-ietf-oauth-status-list-18): revoked and suspended credentials
 /// fail verification, unreachable or forged status lists fail closed, and the bit packing follows
 /// the spec's LSB-first layout.
 /// </summary>
@@ -113,6 +113,23 @@ public class StatusListTests
     }
 
     [Fact]
+    public async Task IndexOutsideTheList_IsRejected()
+    {
+        // SPEC: draft-ietf-oauth-status-list-18 section 8.3 step 6: an index out of bounds of the list
+        // "MUST be rejected". Draft -14 said SHOULD. Four 1-bit entries pack into one byte, which holds
+        // indices 0 to 7, so 8 is the first index outside it.
+        using var builder = CredentialWithStatus(idx: 8);
+        var statusList = builder.BuildStatusListToken(StatusUri, bits: 1, statuses: [0, 0, 0, 0]);
+        var (verifier, _) = VerifierFor(builder, statusList);
+
+        var result = await verifier.VerifyAsync(
+            new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() }, Context());
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == "status_invalid");
+    }
+
+    [Fact]
     public async Task WrongTyp_IsRejected()
     {
         using var builder = CredentialWithStatus(idx: 0);
@@ -176,7 +193,7 @@ public class StatusListTests
         Assert.DoesNotContain("https://someone-else.example/.well-known/jwt-vc-issuer", http.Requested);
     }
 
-    // SPEC: draft-ietf-oauth-status-list section 2 — "The Status Issuer can be either the Issuer or an
+    // SPEC: draft-ietf-oauth-status-list-18 section 1: "The Status Issuer can be either the Issuer or an
     // entity that has been authorized by the Issuer to issue Status List Tokens." The issuer authorises
     // by putting that uri inside the credential it signs, so a different BUT TRUSTED signer serving that
     // uri is the delegation the specification describes, not an attack.

@@ -576,7 +576,7 @@ public class SdJwtVcVerifierTests
     }
 
     // A leaf with NO subject alternative name asserts no name, so there is nothing for iss to
-    // contradict. SPEC: draft-ietf-oauth-sd-jwt-vc section 3.5, "the Issuer of the Verifiable
+    // contradict. SPEC: draft-ietf-oauth-sd-jwt-vc-13 section 3.5, "the Issuer of the Verifiable
     // Credential is the subject of the end-entity certificate". The EUDI Wallet Reference
     // Implementation's PID issuer ships exactly such a leaf, and we rejected its every credential
     // until 2026-09-20. The test above covers a certificate that names the WRONG host; this one
@@ -657,7 +657,7 @@ public class SdJwtVcVerifierTests
     [Fact]
     public async Task WellKnownPath_InsertsSegmentBetweenHostAndPath()
     {
-        // SPEC: draft-ietf-oauth-sd-jwt-vc §3 — iss with a path component.
+        // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §5.1: iss with a path component.
         using var builder = new TestCredentialBuilder { Issuer = "https://issuer.example/tenant/1234" };
         var http = new FakeHttpHandler().Map(
             "https://issuer.example/.well-known/jwt-vc-issuer/tenant/1234",
