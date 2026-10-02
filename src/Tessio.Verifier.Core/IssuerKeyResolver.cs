@@ -358,10 +358,10 @@ internal sealed class IssuerKeyResolver
     {
         try
         {
-            using var response = await _httpClient.GetAsync(uri, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            var body = await OutboundFetch.GetBoundedAsync(
+                _httpClient, uri, accept: null, "issuer metadata or key set", OutboundFetch.MaxMetadataBytes, ct)
+                .ConfigureAwait(false);
+            using var document = JsonDocument.Parse(body);
             return document.RootElement.Clone();
         }
         catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException)
