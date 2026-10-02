@@ -172,7 +172,7 @@ internal static class DisclosureProcessor
                         ErrorCodes.ClaimNameReserved, $"A disclosure uses the reserved claim name '{name}'.");
                 }
 
-                // SPEC: draft-ietf-oauth-sd-jwt-vc §2.2.2.2 — registered credential claims
+                // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §3.2.2.2: registered credential claims
                 // (iss, nbf, exp, cnf, vct, vct#integrity, status) must never arrive via disclosure.
                 if (isTopLevel && SdJwtConstants.NeverSelectivelyDisclosable.Contains(name))
                 {

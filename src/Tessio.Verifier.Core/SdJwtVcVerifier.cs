@@ -129,7 +129,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
             throw new SdJwtProcessingException(ErrorCodes.StructureInvalid, "The issuer-signed JWT is malformed.");
         }
 
-        // 3. typ header. SPEC: draft-ietf-oauth-sd-jwt-vc §2.2.1.
+        // 3. typ header. SPEC: draft-ietf-oauth-sd-jwt-vc-13 §3.2.1.
         var typOk = string.Equals(issuerJwt.Typ, SdJwtConstants.Typ, StringComparison.Ordinal)
                     || (_options.AcceptLegacyVcSdJwtTyp
                         && string.Equals(issuerJwt.Typ, SdJwtConstants.LegacyTyp, StringComparison.Ordinal));
@@ -209,7 +209,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
 
         var issuerInfo = IssuerInfoFrom(resolution, trust);
 
-        // SPEC: draft-ietf-oauth-status-list §8.3, enforce the status claim when present (revocation).
+        // SPEC: draft-ietf-oauth-status-list-18 §8.3, enforce the status claim when present (revocation).
         // Only for a trusted issuer. The uri is the credential's own, and an untrusted credential fails
         // whatever its status says.
         if (_options.CheckStatus && trust.Trusted)
@@ -241,7 +241,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
     /// The credential's own declared type, or null when it declares none usable.
     /// </summary>
     /// <remarks>
-    /// SPEC: draft-ietf-oauth-sd-jwt-vc-10 §3.2.2.2 lists vct among the registered JWT claims that
+    /// SPEC: draft-ietf-oauth-sd-jwt-vc-13 §3.2.2.2 lists vct among the registered JWT claims that
     /// "MUST NOT be included in the Disclosures, i.e., cannot be selectively disclosed", and marks it
     /// REQUIRED. The section number moved between drafts, so the draft is named with it.
     /// One reader, because two callers now want this value: the check below, and the result, which

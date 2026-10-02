@@ -10,7 +10,7 @@ namespace Tessio.Verifier.Core.Tests;
 /// <summary>
 /// Builds real, signed SD-JWT VC presentations for tests: ES256 issuer/holder keys, selective
 /// disclosures with salts, optional decoys, cnf.jwk, KB-JWT, and an optional self-signed x5c chain.
-/// Structure follows RFC 9901 §4 / draft-ietf-oauth-sd-jwt-vc.
+/// Structure follows RFC 9901 §4 / draft-ietf-oauth-sd-jwt-vc-13.
 /// </summary>
 internal sealed class TestCredentialBuilder : IDisposable
 {
@@ -166,7 +166,7 @@ internal sealed class TestCredentialBuilder : IDisposable
 
         if (Status is { } status)
         {
-            // SPEC: draft-ietf-oauth-status-list §6.2 — the referenced-token status claim.
+            // SPEC: draft-ietf-oauth-status-list-18 §6.2: the referenced-token status claim.
             payload["status"] = new Dictionary<string, object>
             {
                 ["status_list"] = new Dictionary<string, object> { ["idx"] = status.Idx, ["uri"] = status.Uri },
@@ -259,7 +259,7 @@ internal sealed class TestCredentialBuilder : IDisposable
 
     /// <summary>
     /// Builds a signed Token Status List JWT for the given per-index status values, packed LSB-first
-    /// and zlib-deflate compressed per draft-ietf-oauth-status-list §4.1/§4.2.
+    /// and zlib-deflate compressed per draft-ietf-oauth-status-list-18 §4.1/§4.2.
     /// </summary>
     /// <remarks>
     /// Set <c>signWith</c> to sign with that certificate's key and carry it in an <c>x5c</c> header.

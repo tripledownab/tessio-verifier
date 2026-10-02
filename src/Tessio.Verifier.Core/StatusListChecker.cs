@@ -17,9 +17,10 @@ namespace Tessio.Verifier.Core;
 /// per uri for min(cache duration, the token's <c>ttl</c> claim, its <c>exp</c>); failures are
 /// never cached, so an unresolvable status stays fail-closed on every attempt.
 /// </summary>
-// SPEC: draft-ietf-oauth-status-list-18 — §6.2 (status claim), §5.1 (status list token in JWT
+// SPEC: draft-ietf-oauth-status-list-18: §6.2 (status claim), §5.1 (status list token in JWT
 // format), §8.3 (Relying Party validation rules), §4.1/§4.2 (bit packing and compression),
-// §11.2 (ttl-driven caching).
+// §8.3 step 4d and §13.7 (ttl-driven caching). Every bare section number in this file means -18.
+// HAIP 1.0 cites -14, and -18 is the stricter of the two: it makes an out-of-range index a MUST reject.
 internal sealed class StatusListChecker
 {
     private const string StatusListTyp = "statuslist+jwt";
@@ -107,7 +108,8 @@ internal sealed class StatusListChecker
 
         // HTTPS, which is the bar JWT VC Issuer Metadata resolution already holds in IssuerKeyResolver.
         // A status list says whether a credential is still valid, so fetching one in clear lets anyone
-        // on the path answer that question. SPEC: draft-ietf-oauth-status-list section 11.4 on the fetch.
+        // on the path answer that question. This is our bar, not the draft's: section 8.1 asks only for
+        // an HTTP GET to the uri.
         //
         // Checked BEFORE the cache, so a cleartext uri cannot be answered from a previously cached list
         // either, and checked here rather than left to the handler, because the failure it prevents is
@@ -179,7 +181,7 @@ internal sealed class StatusListChecker
         //
         // WHAT THE SPECIFICATIONS REQUIRE, and the normative weight of each.
         //
-        // draft-ietf-oauth-status-list section 8.3 is the Relying Party's MUST list. Signer identity is
+        // draft-ietf-oauth-status-list-18 section 8.3 is the Relying Party's MUST list. Signer identity is
         // not on it. The only binding it requires to the referenced token is "The subject claim (sub or
         // 2) of the Status List Token MUST be equal to the uri claim in the status_list object".
         //
@@ -306,8 +308,8 @@ internal sealed class StatusListChecker
 
     /// <summary>
     /// Caches the validated, decompressed list. Lifetime is the configured cache duration, shortened
-    /// by the token's <c>ttl</c> claim (the issuer's cache ceiling, SPEC §11.2) and capped by its
-    /// <c>exp</c>. A non-positive lifetime disables caching for this list.
+    /// by the token's <c>ttl</c> claim (the issuer's cache ceiling, SPEC §8.3 step 4d and §13.7) and
+    /// capped by its <c>exp</c>. A non-positive lifetime disables caching for this list.
     /// </summary>
     private void CacheList(
         JsonWebToken token, string uri, int bits, byte[] list, DateTimeOffset? expiresAt)

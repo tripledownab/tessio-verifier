@@ -30,7 +30,7 @@ internal sealed record IssuerKeyResolution
 /// Resolves the issuer's signing key via the two SD-JWT VC mechanisms: the X.509 chain in the
 /// <c>x5c</c> JOSE header, or JWT VC Issuer Metadata fetched from the <c>iss</c> HTTPS URI.
 /// </summary>
-// SPEC: draft-ietf-oauth-sd-jwt-vc §2.5 (key resolution) and §3 (JWT VC Issuer Metadata).
+// SPEC: draft-ietf-oauth-sd-jwt-vc-13 §3.5 (Issuer Signature Mechanisms) and §5 (JWT VC Issuer Metadata).
 internal sealed class IssuerKeyResolver
 {
     /// <summary>id-ce-subjectAltName, RFC 5280 section 4.2.1.6.</summary>
@@ -144,7 +144,7 @@ internal sealed class IssuerKeyResolver
     {
         var leaf = certificates[0];
 
-        // SPEC: draft-ietf-oauth-sd-jwt-vc §2.5 — the end-entity certificate identifies the issuer.
+        // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §3.5: the end-entity certificate identifies the issuer.
         // When iss is also present, require it to be consistent with the certificate (SAN DNS matching
         // the iss host, or the iss URI appearing as a SAN entry) so an unrelated certificate cannot
         // vouch for an arbitrary iss value.
@@ -188,11 +188,11 @@ internal sealed class IssuerKeyResolver
     private static bool CertificateMatchesIssuer(X509Certificate2 certificate, string iss)
     {
         // A certificate that asserts NO names cannot contradict iss, so there is nothing to check.
-        // SPEC: draft-ietf-oauth-sd-jwt-vc-10 section 3.5 says that with an x5c header "the Issuer of the
+        // SPEC: draft-ietf-oauth-sd-jwt-vc-13 section 3.5 says that with an x5c header "the Issuer of the
         // Verifiable Credential is the subject of the end-entity certificate", and section 3.2.2.2 makes
         // iss OPTIONAL precisely because the certificate conveys the issuer. Requiring a SAN match
-        // unconditionally invents a requirement the specification does not make. (Later drafts renumber
-        // these to 2.5 and 2.2.2.3; the text is unchanged. This file cites the -10 numbering throughout.)
+        // unconditionally invents a requirement the specification does not make. (Draft -19 renumbers
+        // these to 2.5 and 2.2.2.3 and rewords them. The meaning is unchanged.)
         //
         // It is not hypothetical. The EUDI Wallet Reference Implementation's PID issuer signs SD-JWT VC
         // PIDs with a leaf carrying NO subjectAltName, while its iss is https://issuer-backend.eudiw.dev.
@@ -307,7 +307,7 @@ internal sealed class IssuerKeyResolver
         var metadataUri = BuildMetadataUri(new Uri(iss, UriKind.Absolute));
         var metadata = await FetchJsonAsync(metadataUri, ct).ConfigureAwait(false);
 
-        // SPEC: draft-ietf-oauth-sd-jwt-vc §3.3 — the metadata's issuer MUST be identical to iss.
+        // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §5.3: the metadata's issuer MUST be identical to iss.
         if (!metadata.TryGetProperty("issuer", out var issuerProp)
             || issuerProp.ValueKind != JsonValueKind.String
             || !string.Equals(issuerProp.GetString(), iss, StringComparison.Ordinal))
@@ -316,6 +316,8 @@ internal sealed class IssuerKeyResolver
                 ErrorCodes.IssuerMetadataInvalid, "JWT VC Issuer Metadata 'issuer' does not match the credential's iss.");
         }
 
+        // A jwks_uri must be HTTPS. -13 §5.2 sets no scheme for it, but §10.1 requires HTTPS for the
+        // metadata URL, and the key set it points to is held to the same bar.
         JsonElement jwks;
         if (metadata.TryGetProperty("jwks", out var inlineJwks))
         {
@@ -344,8 +346,8 @@ internal sealed class IssuerKeyResolver
         return keys;
     }
 
-    // SPEC: draft-ietf-oauth-sd-jwt-vc §3 — insert "/.well-known/jwt-vc-issuer" between the host
-    // component and the path component of iss; strip any terminating '/' first.
+    // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §5 and §5.1: insert "/.well-known/jwt-vc-issuer" between the
+    // host component and the path component of iss, after removing any terminating '/'.
     internal static Uri BuildMetadataUri(Uri issUri)
     {
         var path = issUri.AbsolutePath.TrimEnd('/');
