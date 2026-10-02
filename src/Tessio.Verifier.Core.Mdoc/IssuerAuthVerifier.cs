@@ -131,7 +131,7 @@ internal static class IssuerAuthVerifier
 
             return chain;
         }
-        catch (Exception e) when (e is CborContentException or InvalidOperationException or CryptographicException)
+        catch (Exception e) when (CborFailure.IsMalformed(e) || e is CryptographicException)
         {
             throw new MdocProcessingException(
                 MdocErrorCodes.IssuerKeyUnresolvable, $"The x5chain header is not a valid certificate chain: {e.Message}");

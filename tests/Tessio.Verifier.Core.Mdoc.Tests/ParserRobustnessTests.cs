@@ -7,8 +7,13 @@ namespace Tessio.Verifier.Core.Mdoc.Tests;
 /// <summary>
 /// Mutation-based robustness: the parser and verifier consume attacker-controlled bytes, so every
 /// mutated input must either parse, throw <see cref="MdocProcessingException"/> or produce an
-/// invalid <see cref="VerificationResult"/>. Any other exception type is a robustness bug. Seeded
-/// for determinism; a failure prints the seed and iteration for reproduction.
+/// invalid <see cref="VerificationResult"/>. Any other exception type is a robustness bug.
+/// <para>
+/// The seed fixes the MUTATIONS, not the input: <see cref="MdocTestBuilder"/> signs a fresh credential
+/// on every run, so the same seed and iteration land on different bytes each time. A failure therefore
+/// prints the mutated input itself, base64url, which is what reproduces it. Pin those bytes in a
+/// regression test, as <c>CborIntegerRangeTests</c> does.
+/// </para>
 /// </summary>
 public sealed class ParserRobustnessTests
 {
@@ -77,7 +82,7 @@ public sealed class ParserRobustnessTests
                 catch (Exception e)
 #pragma warning restore CA1031
                 {
-                    Assert.Fail($"Unexpected {e.GetType().Name} at seed {Seed} iteration {i}: {e.Message}");
+                    Assert.Fail($"Unexpected {e.GetType().Name} at iteration {i}: {e.Message}\nInput: {Base64UrlEncoder.Encode(mutated)}");
                 }
             }
         }
@@ -115,7 +120,7 @@ public sealed class ParserRobustnessTests
             catch (Exception e)
 #pragma warning restore CA1031
             {
-                Assert.Fail($"VerifyAsync threw {e.GetType().Name} at seed {Seed} iteration {i}: {e.Message}");
+                Assert.Fail($"VerifyAsync threw {e.GetType().Name} at iteration {i}: {e.Message}\nInput: {Base64UrlEncoder.Encode(mutated)}");
             }
         }
     }

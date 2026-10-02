@@ -42,35 +42,44 @@ internal static class CoseKey
     /// </summary>
     public static ECParameters ReadEc2PublicKey(byte[] coseKey)
     {
-        var reader = new CborReader(coseKey, CborConformanceMode.Lax);
         long? kty = null, crv = null;
         byte[]? x = null, y = null;
 
-        reader.ReadStartMap();
-        while (reader.PeekState() != CborReaderState.EndMap)
+        // Translated here, by the reader, because its callers each catch a different set: the device
+        // key path caught none of these, so a malformed key in a presented credential escaped untyped.
+        try
         {
-            var label = reader.ReadInt64();
-            switch (label)
+            var reader = new CborReader(coseKey, CborConformanceMode.Lax);
+            reader.ReadStartMap();
+            while (reader.PeekState() != CborReaderState.EndMap)
             {
-                case 1:
-                    kty = reader.ReadInt64();
-                    break;
-                case -1:
-                    crv = reader.ReadInt64();
-                    break;
-                case -2:
-                    x = reader.ReadByteString();
-                    break;
-                case -3:
-                    y = reader.ReadByteString();
-                    break;
-                default:
-                    reader.SkipValue();
-                    break;
+                var label = reader.ReadInt64();
+                switch (label)
+                {
+                    case 1:
+                        kty = reader.ReadInt64();
+                        break;
+                    case -1:
+                        crv = reader.ReadInt64();
+                        break;
+                    case -2:
+                        x = reader.ReadByteString();
+                        break;
+                    case -3:
+                        y = reader.ReadByteString();
+                        break;
+                    default:
+                        reader.SkipValue();
+                        break;
+                }
             }
-        }
 
-        reader.ReadEndMap();
+            reader.ReadEndMap();
+        }
+        catch (Exception e) when (CborFailure.IsMalformed(e))
+        {
+            throw new MdocProcessingException(MdocErrorCodes.StructureInvalid, $"The COSE_Key CBOR is malformed: {e.Message}");
+        }
 
         if (kty != 2 || x is null || y is null)
         {
