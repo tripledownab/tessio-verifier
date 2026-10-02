@@ -130,6 +130,39 @@ public class StatusListTests
     }
 
     [Fact]
+    public async Task StatusListTokenOverTheLimit_FailsClosed()
+    {
+        using var builder = CredentialWithStatus(idx: 0);
+        var (verifier, http) = VerifierFor(builder, statusListJwt: null);
+        http.MapBytes(StatusUri, new byte[OutboundFetch.MaxStatusListTokenBytes + 1]);
+
+        var result = await verifier.VerifyAsync(
+            new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() }, Context());
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors, e => e.Code == "status_unresolvable");
+        Assert.Contains("limit", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StatusListThatInflatesPastTheLimit_IsRejected()
+    {
+        // A list of zeros compresses about 1000:1, so this token is small and its list is not. One
+        // byte per entry at bits=8, so one entry more than the limit is one byte more.
+        using var builder = CredentialWithStatus(idx: 0);
+        var statusList = builder.BuildStatusListToken(
+            StatusUri, bits: 8, statuses: new byte[OutboundFetch.MaxDecompressedStatusListBytes + 1]);
+        var (verifier, _) = VerifierFor(builder, statusList);
+
+        var result = await verifier.VerifyAsync(
+            new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() }, Context());
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors, e => e.Code == "status_invalid");
+        Assert.Contains("limit", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WrongTyp_IsRejected()
     {
         using var builder = CredentialWithStatus(idx: 0);

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -127,12 +128,11 @@ internal sealed class StatusListChecker
         string statusListJwt;
         try
         {
-            // SPEC: §8.1 — request the JWT representation.
-            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            request.Headers.Accept.ParseAdd("application/statuslist+jwt");
-            using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            statusListJwt = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            // SPEC: §8.1: request the JWT representation.
+            var body = await OutboundFetch.GetBoundedAsync(
+                _httpClient, statusUri, "application/statuslist+jwt", "status list token",
+                OutboundFetch.MaxStatusListTokenBytes, ct).ConfigureAwait(false);
+            statusListJwt = Encoding.UTF8.GetString(body);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException or UriFormatException)
         {
@@ -292,14 +292,17 @@ internal sealed class StatusListChecker
         try
         {
             using var compressed = new MemoryStream(Base64UrlEncoder.DecodeBytes(lstProp.GetString()!));
-            using var zlib = new ZLibStream(compressed, CompressionMode.Decompress);
-            using var output = new MemoryStream();
-            zlib.CopyTo(output);
-            decompressed = output.ToArray();
+            await using var zlib = new ZLibStream(compressed, CompressionMode.Decompress);
+            decompressed = await OutboundFetch.ReadBoundedAsync(
+                zlib, "decompressed status list", OutboundFetch.MaxDecompressedStatusListBytes, ct).ConfigureAwait(false);
         }
         catch (Exception e) when (e is InvalidDataException or FormatException)
         {
             return [Error(ErrorCodes.StatusInvalid, "The status list bitstring could not be decompressed.")];
+        }
+        catch (OutboundFetch.TooLargeException e)
+        {
+            return [Error(ErrorCodes.StatusInvalid, e.Message)];
         }
 
         CacheList(token, uri, bits, decompressed, expiresAt);

@@ -21,7 +21,7 @@ namespace Tessio.Verifier.Core;
 /// </remarks>
 public sealed class SdJwtVcVerifier : ICredentialVerifier
 {
-    private static readonly HttpClient DefaultHttpClient = new();
+    private static readonly HttpClient DefaultHttpClient = OutboundFetch.CreateClient();
 
     private readonly ITrustListResolver _trustListResolver;
     private readonly SdJwtVcVerifierOptions _options;
@@ -32,7 +32,12 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
     /// <summary>Creates a verifier.</summary>
     /// <param name="trustListResolver">Trust seam deciding whether the issuer is trusted.</param>
     /// <param name="options">Policy options; defaults are HAIP-aligned.</param>
-    /// <param name="httpClient">HTTP client for JWT VC Issuer Metadata resolution; a shared default is used when null.</param>
+    /// <param name="httpClient">
+    /// HTTP client for JWT VC Issuer Metadata, issuer key sets and status lists. Every fetch, on any
+    /// client, has a deadline and a size limit. When null, a shared default also refuses non-public
+    /// addresses and redirects, and ignores the process proxy. A client supplied here gets none of those
+    /// three, so it must enforce them itself.
+    /// </param>
     /// <param name="clock">Time source for exp/nbf evaluation; system clock when null.</param>
     public SdJwtVcVerifier(
         ITrustListResolver trustListResolver,
