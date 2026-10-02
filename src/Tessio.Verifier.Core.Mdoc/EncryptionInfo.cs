@@ -63,7 +63,7 @@ internal static class EncryptionInfo
             return key ?? throw new MdocProcessingException(
                 MdocErrorCodes.StructureInvalid, "The EncryptionInfo carries no recipientPublicKey.");
         }
-        catch (Exception e) when (e is CborContentException or InvalidOperationException)
+        catch (Exception e) when (CborFailure.IsMalformed(e))
         {
             throw new MdocProcessingException(
                 MdocErrorCodes.StructureInvalid, $"The EncryptionInfo parameters are not the expected CBOR shape: {e.Message}");
@@ -93,7 +93,7 @@ internal static class EncryptionInfo
             reader.ReadEndArray();
             return parameters;
         }
-        catch (Exception e) when (e is CborContentException or InvalidOperationException)
+        catch (Exception e) when (CborFailure.IsMalformed(e))
         {
             throw new MdocProcessingException(
                 MdocErrorCodes.StructureInvalid, $"The EncryptionInfo is not the expected CBOR shape: {e.Message}");

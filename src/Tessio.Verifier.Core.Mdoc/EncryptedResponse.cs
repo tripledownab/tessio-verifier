@@ -71,7 +71,7 @@ internal static class EncryptedResponse
 
             return (enc, cipherText);
         }
-        catch (Exception e) when (e is CborContentException or InvalidOperationException)
+        catch (Exception e) when (CborFailure.IsMalformed(e))
         {
             throw new MdocProcessingException(
                 MdocErrorCodes.StructureInvalid, $"The EncryptedResponse is not the expected CBOR shape: {e.Message}");

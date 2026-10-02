@@ -29,7 +29,7 @@ internal static class DeviceResponseParser
             var reader = new CborReader(cbor, CborConformanceMode.Lax);
             return ReadDeviceResponse(reader);
         }
-        catch (Exception e) when (e is CborContentException or InvalidOperationException or FormatException)
+        catch (Exception e) when (CborFailure.IsMalformed(e))
         {
             throw new MdocProcessingException(MdocErrorCodes.StructureInvalid, $"The DeviceResponse CBOR is malformed: {e.Message}");
         }
@@ -65,7 +65,7 @@ internal static class DeviceResponseParser
             var msoBytes = outer.ReadByteString();
             return ReadMso(new CborReader(msoBytes, CborConformanceMode.Lax));
         }
-        catch (Exception e) when (e is CborContentException or InvalidOperationException or FormatException)
+        catch (Exception e) when (CborFailure.IsMalformed(e))
         {
             throw new MdocProcessingException(MdocErrorCodes.MsoInvalid, $"The MSO CBOR is malformed: {e.Message}");
         }
