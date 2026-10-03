@@ -316,6 +316,16 @@ internal sealed class IssuerKeyResolver
                 ErrorCodes.IssuerMetadataInvalid, "JWT VC Issuer Metadata 'issuer' does not match the credential's iss.");
         }
 
+        // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §5.2: metadata "MUST include either jwks_uri or jwks ...,
+        // but not both". That binds the Issuer, and the draft does not say what a verifier does when it is broken.
+        // Refused rather than resolved by picking one, because the two can name different keys and either
+        // choice would silently trust a key set the issuer may not have meant.
+        if (metadata.TryGetProperty("jwks", out _) && metadata.TryGetProperty("jwks_uri", out _))
+        {
+            throw new SdJwtProcessingException(
+                ErrorCodes.IssuerMetadataInvalid, "JWT VC Issuer Metadata carries both 'jwks' and 'jwks_uri'.");
+        }
+
         // A jwks_uri must be HTTPS. -13 §5.2 sets no scheme for it, but §10.1 requires HTTPS for the
         // metadata URL, and the key set it points to is held to the same bar.
         JsonElement jwks;

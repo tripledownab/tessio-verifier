@@ -562,6 +562,26 @@ public class SdJwtVcVerifierTests
         Assert.Equal("issuer_metadata_invalid", result.Errors.Single().Code);
     }
 
+    /// <summary>
+    /// Both key sources at once is refused, and neither key set is used. The inline set is the issuer's real
+    /// key, so without the check this credential would verify, and the uri would never be read.
+    /// </summary>
+    [Fact]
+    public async Task MetadataWithBothJwksAndJwksUri_IsRejected_WithoutReadingTheUri()
+    {
+        using var builder = new TestCredentialBuilder();
+        var http = new FakeHttpHandler().Map(
+            "https://issuer.example/.well-known/jwt-vc-issuer",
+            $$"""{"issuer":"{{builder.Issuer}}","jwks":{{builder.BuildJwksJson()}},"jwks_uri":"https://issuer.example/jwks"}""");
+        var verifier = new SdJwtVcVerifier(new FakeTrustListResolver(), httpClient: new HttpClient(http));
+
+        var result = await verifier.VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.False(result.IsValid);
+        Assert.Equal("issuer_metadata_invalid", result.Errors.Single().Code);
+        Assert.DoesNotContain("https://issuer.example/jwks", http.Requested);
+    }
+
     [Fact]
     public async Task X5cSanMismatch_IsRejected()
     {
