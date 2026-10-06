@@ -188,7 +188,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         {
             return Invalid(
                 new VerificationError { Code = ErrorCodes.SignatureInvalid, Message = "The issuer signature does not verify against the resolved key." },
-                new IssuerInfo { Identifier = resolution.Issuer, Trusted = false, KeyResolutionMethod = resolution.Method });
+                new IssuerInfo { Identifier = resolution.Issuer, ClaimedIssuer = resolution.ClaimedIssuer, Trusted = false, KeyResolutionMethod = resolution.Method });
         }
 
         // 8. Payload reconstruction per RFC 9901 §7.1 (throws on MUST-reject violations).
@@ -419,6 +419,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
     private static IssuerInfo IssuerInfoFrom(IssuerKeyResolution resolution, IssuerTrustStatus trust) => new()
     {
         Identifier = resolution.Issuer,
+        ClaimedIssuer = resolution.ClaimedIssuer,
         Trusted = trust.Trusted,
         KeyResolutionMethod = resolution.Method,
         // Carried on both verdicts, as on the mdoc path. On this path the anchor fields are null

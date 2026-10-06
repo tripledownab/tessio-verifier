@@ -19,8 +19,17 @@ internal sealed record IssuerKeyResolution
     /// <summary>"x5c" or "jwt-vc-issuer-metadata" (the contract's canonical values).</summary>
     public required string Method { get; init; }
 
-    /// <summary>Issuer identifier: the <c>iss</c> claim, or the end-entity subject when iss is absent.</summary>
+    /// <summary>
+    /// Issuer identifier. Metadata route: the <c>iss</c> claim. <c>x5c</c> route: <c>iss</c> when a
+    /// subjectAltName of the end-entity certificate names it, otherwise the end-entity subject.
+    /// </summary>
     public required string Issuer { get; init; }
+
+    /// <summary>
+    /// The <c>iss</c> claim when it is NOT the <see cref="Issuer"/>: an <c>x5c</c> credential whose
+    /// certificate does not name it. Null otherwise.
+    /// </summary>
+    public string? ClaimedIssuer { get; init; }
 
     /// <summary>DER certificate chain from <c>x5c</c>; empty for metadata resolution.</summary>
     public required ReadOnlyMemory<byte>[] CertificateChain { get; init; }
@@ -37,7 +46,7 @@ internal sealed class IssuerKeyResolver
     /// <remarks>
     /// Matched as an OID rather than as a parsed extension type because this value decides whether a
     /// certificate asserts any name at all, and that answer must not depend on whether a given runtime
-    /// chose to parse the extension. See <c>CertificateMatchesIssuer</c>.
+    /// chose to parse the extension. See <c>CertificateNamesIssuer</c>.
     /// </remarks>
     private const string SubjectAltNameOid = "2.5.29.17";
 
@@ -144,16 +153,23 @@ internal sealed class IssuerKeyResolver
     {
         var leaf = certificates[0];
 
-        // SPEC: draft-ietf-oauth-sd-jwt-vc-13 §3.5: the end-entity certificate identifies the issuer.
-        // When iss is also present, require it to be consistent with the certificate (SAN DNS matching
-        // the iss host, or the iss URI appearing as a SAN entry) so an unrelated certificate cannot
-        // vouch for an arbitrary iss value.
-        if (iss is not null && !CertificateMatchesIssuer(leaf, iss))
-        {
-            throw new SdJwtProcessingException(
-                ErrorCodes.IssuerCertificateMismatch,
-                "The iss claim does not match any subject alternative name of the end-entity certificate.");
-        }
+        // SPEC: draft-ietf-oauth-sd-jwt-vc-13 section 3.5, the version HAIP 1.0 Final section 6.1.1 pins:
+        // with an x5c header, "the Issuer of the Verifiable Credential is the subject of the end-entity
+        // certificate". Section 3.2.2.2 makes iss OPTIONAL "when it is not conveyed by other means (e.g.,
+        // the subject of the end-entity certificate of an x5c header)". Draft -19 keeps both (sections 2.5
+        // and 2.2.2.3). Neither asks for iss to match a subjectAltName; that MUST was draft -09's section
+        // 3.5 and was removed in -10.
+        //
+        // THIS USED TO REFUSE a mismatch as issuer_certificate_mismatch, which enforced the withdrawn -09
+        // rule. It refused genuine credentials: an issuer whose iss is a URL on its own service and whose
+        // certificate carries only a dNSName for another host is conformant to -13 and -19.
+        //
+        // The certificate is what was trusted, so it is what names the issuer. Trust on this route is
+        // decided by anchoring the chain, never by the identifier (StaticTrustListResolver), so accepting
+        // the credential grants nothing new. What must not happen is reporting an iss the certificate does
+        // not back as the issuer: that would let any anchored certificate put any name in the result. So
+        // iss is the Issuer only when a subjectAltName names it, and is otherwise reported separately.
+        var issuer = iss is not null && CertificateNamesIssuer(leaf, iss) ? iss : leaf.Subject;
 
         // Extract the typed public key: X509SecurityKey does not support ECDSA certificates in
         // Microsoft.IdentityModel's crypto providers, and ES256 is the norm for EUDI issuers.
@@ -180,48 +196,38 @@ internal sealed class IssuerKeyResolver
         {
             Keys = [leafKey],
             Method = SdJwtConstants.KeyResolutionX5c,
-            Issuer = iss ?? leaf.Subject,
+            Issuer = issuer,
+            ClaimedIssuer = iss is not null && !string.Equals(issuer, iss, StringComparison.Ordinal) ? iss : null,
             CertificateChain = certificates.Select(c => new ReadOnlyMemory<byte>(c.RawData)).ToArray(),
         };
     }
 
-    private static bool CertificateMatchesIssuer(X509Certificate2 certificate, string iss)
+    /// <summary>Whether a subjectAltName of the certificate names <paramref name="iss"/>.</summary>
+    /// <remarks>
+    /// A dNSName equal to the iss host, or a uniformResourceIdentifier equal to iss. A certificate that
+    /// asserts NO names does not name iss: its subject is then the issuer. That case is real: the EUDI
+    /// Wallet Reference Implementation's PID issuer signs with a leaf carrying no subjectAltName while its
+    /// iss is https://issuer-backend.eudiw.dev (found 2026-09-20 from a real presentation).
+    /// <para>
+    /// NO subjectAltName, not "no extensions": that leaf carries six others, one of them an ISSUER
+    /// Alternative Name, OID 2.5.29.18, one digit from 2.5.29.17 and carrying an unrelated URL. Matching
+    /// "any name-ish extension" would pull that URL into issuer naming.
+    /// </para>
+    /// <para>
+    /// FOUND BY OID, never by the parsed CLR type. X509SubjectAlternativeNameExtension is a parsed view, so
+    /// a runtime that handed back a plain X509Extension for this OID would make a typed list empty on a
+    /// certificate that does assert names. The OID is present or it is not, on every platform.
+    /// </para>
+    /// </remarks>
+    private static bool CertificateNamesIssuer(X509Certificate2 certificate, string iss)
     {
-        // A certificate that asserts NO names cannot contradict iss, so there is nothing to check.
-        // SPEC: draft-ietf-oauth-sd-jwt-vc-13 section 3.5 says that with an x5c header "the Issuer of the
-        // Verifiable Credential is the subject of the end-entity certificate", and section 3.2.2.2 makes
-        // iss OPTIONAL precisely because the certificate conveys the issuer. Requiring a SAN match
-        // unconditionally invents a requirement the specification does not make. (Draft -19 renumbers
-        // these to 2.5 and 2.2.2.3 and rewords them. The meaning is unchanged.)
-        //
-        // It is not hypothetical. The EUDI Wallet Reference Implementation's PID issuer signs SD-JWT VC
-        // PIDs with a leaf carrying NO subjectAltName, while its iss is https://issuer-backend.eudiw.dev.
-        // Every such credential was rejected as issuer_certificate_mismatch, which is the Commission's own
-        // reference PID refused by us. Found 2026-09-20 from a real presentation, not from review.
-        //
-        // NO subjectAltName, not "no extensions": that leaf carries six others. An earlier note here said
-        // it had none, from misreading `openssl x509 -ext subjectAltName`, whose "No extensions in
-        // certificate" means none MATCHING, not none at all. The distinction matters because one of the
-        // six is an ISSUER Alternative Name, OID 2.5.29.18, one digit from the OID used here and carrying
-        // an unrelated URL. Matching "any name-ish extension" would pull that URL into issuer matching.
-        //
-        // The check is KEPT where it has something to compare, so a certificate naming one host cannot
-        // vouch for an iss naming another. Authenticity still rests on the chain reaching a configured
-        // trust anchor, which is the control that was doing the real work all along.
-        //
-        // FOUND BY OID, never by the parsed CLR type, and the difference is a security one. This branch
-        // is the only place that turns "we found nothing" into "accept".
-        // X509SubjectAlternativeNameExtension is a PARSED view, so a runtime that handed back a plain
-        // X509Extension for this OID would make a typed list empty on a certificate that does assert
-        // names, and keying acceptance on that would vouch for somebody else's certificate. The OID is
-        // present or it is not, on every platform.
         var sanExtensions = certificate.Extensions
             .Where(e => string.Equals(e.Oid?.Value, SubjectAltNameOid, StringComparison.Ordinal))
             .ToList();
 
         if (sanExtensions.Count == 0)
         {
-            return true;
+            return false;
         }
 
         var issHost = Uri.TryCreate(iss, UriKind.Absolute, out var issUri) ? issUri.Host : null;
@@ -253,8 +259,8 @@ internal sealed class IssuerKeyResolver
     /// 2026-09-20, which the release workflow does not run. RFC 5280 section 4.2.1.6 gives GeneralName
     /// as a CHOICE with implicit context tags, so the bytes say the same thing everywhere.
     /// <para>
-    /// A SAN that does not parse yields no names, so nothing matches and the caller refuses. An
-    /// unreadable assertion of a name is not an absent one.
+    /// A SAN that does not parse yields no names, so nothing matches and iss is not taken as the
+    /// issuer. An unreadable assertion of a name never vouches for one.
     /// </para>
     /// </remarks>
     private static List<(int Tag, string Value)> ReadGeneralNames(X509Extension extension)

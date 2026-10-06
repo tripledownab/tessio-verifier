@@ -582,54 +582,73 @@ public class SdJwtVcVerifierTests
         Assert.DoesNotContain("https://issuer.example/jwks", http.Requested);
     }
 
+    // WITH x5c THE CERTIFICATE NAMES THE ISSUER, and iss is the issuer only where a subjectAltName names
+    // it. SPEC: draft-ietf-oauth-sd-jwt-vc-13 section 3.5 (pinned by HAIP 1.0 Final section 6.1.1),
+    // "the Issuer of the Verifiable Credential is the subject of the end-entity certificate"; drafts -13
+    // and -19 carry no requirement that iss match a SAN, which was draft -09's. A certificate naming
+    // another host therefore VERIFIES, and its subject, not the unbacked iss, is the reported issuer.
+    // The trust verdict rests on the chain alone, so the resolver must be asked about that subject.
     [Fact]
-    public async Task X5cSanMismatch_IsRejected()
+    public async Task X5cWithDnsSanNamingAnother_IsAccepted_AndNamesTheIssuerByCertificate()
     {
         using var builder = new TestCredentialBuilder();
-        builder.UseCertificate(sanDnsName: "not-the-issuer.example");
+        var leaf = builder.UseCertificate(sanDnsName: "not-the-issuer.example");
+        var trust = new FakeTrustListResolver();
 
-        var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
-            .VerifyAsync(Credential(builder.Build()), Context());
+        var result = await new SdJwtVcVerifier(trust).VerifyAsync(Credential(builder.Build()), Context());
 
-        Assert.False(result.IsValid);
-        Assert.Equal("issuer_certificate_mismatch", result.Errors.Single().Code);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+        AssertNamedByCertificate(result, leaf);
+        Assert.Equal(leaf.Subject, trust.SeenIssuer);
     }
 
-    // A leaf with NO subject alternative name asserts no name, so there is nothing for iss to
-    // contradict. SPEC: draft-ietf-oauth-sd-jwt-vc-13 section 3.5, "the Issuer of the Verifiable
-    // Credential is the subject of the end-entity certificate". The EUDI Wallet Reference
-    // Implementation's PID issuer ships exactly such a leaf, and we rejected its every credential
-    // until 2026-09-20. The test above covers a certificate that names the WRONG host; this one
-    // covers a certificate that names nothing, and only the pair pins the rule.
+    // A leaf with NO subject alternative name names nothing, so iss is not backed either and the subject
+    // is the issuer. The EUDI Wallet Reference Implementation's PID issuer ships exactly such a leaf, and
+    // we rejected its every credential until 2026-09-20; it is accepted, and now also named correctly.
     [Fact]
-    public async Task X5cWithoutSan_IsAccepted()
+    public async Task X5cWithoutSan_IsAccepted_AndNamesTheIssuerByCertificate()
     {
         using var builder = new TestCredentialBuilder();
-        builder.UseCertificate(withSan: false);
+        var leaf = builder.UseCertificate(withSan: false);
 
         var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
             .VerifyAsync(Credential(builder.Build()), Context());
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
         Assert.Equal("x5c", result.Issuer.KeyResolutionMethod);
+        AssertNamedByCertificate(result, leaf);
     }
 
-    // ASSERTING NO NAME and ASSERTING A NAME WE CANNOT ENUMERATE are different, and only the first may
-    // be accepted. The test above covers a certificate with no SAN extension. These two cover one whose
-    // SAN carries a uniformResourceIdentifier and no dNSName, so EnumerateDnsNames yields nothing and
-    // the URI fallback is the only thing that can answer. Without them, a resolver that stopped finding
-    // the parsed extension would look correct here while accepting a certificate naming someone else.
+    // ASSERTING NO NAME and ASSERTING A NAME WE CANNOT ENUMERATE are different. These cover a SAN that
+    // carries a uniformResourceIdentifier and no dNSName, so only the URI comparison can name iss. Without
+    // them, a resolver that stopped finding the parsed extension would report a certificate's unbacked
+    // iss as the issuer.
     [Fact]
-    public async Task X5cWithUriSanNamingAnother_IsRejected()
+    public async Task X5cWithUriSanNamingAnother_NamesTheIssuerByCertificate()
     {
         using var builder = new TestCredentialBuilder();
-        builder.UseCertificate(sanUri: "https://not-the-issuer.example/");
+        var leaf = builder.UseCertificate(sanUri: "https://not-the-issuer.example/");
 
         var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
             .VerifyAsync(Credential(builder.Build()), Context());
 
-        Assert.False(result.IsValid);
-        Assert.Equal("issuer_certificate_mismatch", result.Errors.Single().Code);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+        AssertNamedByCertificate(result, leaf);
+    }
+
+    // The ordinary case: a dNSName equal to the iss host names iss, so iss stays the issuer.
+    [Fact]
+    public async Task X5cWithDnsSanMatchingIssHost_KeepsIssAsTheIssuer()
+    {
+        using var builder = new TestCredentialBuilder();
+        builder.UseCertificate();
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
+        Assert.Equal(TestCredentialBuilder.DefaultIssuer, result.Issuer.Identifier);
+        Assert.Null(result.Issuer.ClaimedIssuer);
     }
 
     [Fact]
@@ -643,23 +662,29 @@ public class SdJwtVcVerifierTests
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Code)));
         Assert.Equal("x5c", result.Issuer.KeyResolutionMethod);
+        Assert.Equal(TestCredentialBuilder.DefaultIssuer, result.Issuer.Identifier);
+        Assert.Null(result.Issuer.ClaimedIssuer);
     }
 
     // A LOOKALIKE DOMAIN IS NOT A MATCH. The URI comparison used to be a substring test over the
     // formatted extension, so any name that merely STARTS with iss satisfied it and registering
-    // `issuer.example.attacker.test` was the whole attack. The entry below differs from the accepted one
-    // above only by a suffix, which is exactly what the old test pair could not tell apart.
+    // `issuer.example.attacker.test` was the whole attack. A lookalike must never get iss as its name.
     [Fact]
-    public async Task X5cWithLookalikeUriSan_IsRejected()
+    public async Task X5cWithLookalikeUriSan_NamesTheIssuerByCertificate()
     {
         using var builder = new TestCredentialBuilder();
-        builder.UseCertificate(sanUri: TestCredentialBuilder.DefaultIssuer + ".attacker.test/");
+        var leaf = builder.UseCertificate(sanUri: TestCredentialBuilder.DefaultIssuer + ".attacker.test/");
 
         var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
             .VerifyAsync(Credential(builder.Build()), Context());
 
-        Assert.False(result.IsValid);
-        Assert.Equal("issuer_certificate_mismatch", result.Errors.Single().Code);
+        AssertNamedByCertificate(result, leaf);
+    }
+
+    private static void AssertNamedByCertificate(VerificationResult result, System.Security.Cryptography.X509Certificates.X509Certificate2 leaf)
+    {
+        Assert.Equal(leaf.Subject, result.Issuer.Identifier);
+        Assert.Equal(TestCredentialBuilder.DefaultIssuer, result.Issuer.ClaimedIssuer);
     }
 
     [Fact]
