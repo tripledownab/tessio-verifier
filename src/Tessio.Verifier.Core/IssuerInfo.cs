@@ -14,6 +14,18 @@ public sealed record IssuerInfo
     public required string Identifier { get; init; }
 
     /// <summary>
+    /// The credential's <c>iss</c> claim when it is NOT the <see cref="Identifier"/>. Null otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Set on an SD-JWT VC carrying <c>x5c</c> whose end-entity certificate does not name its <c>iss</c>
+    /// in a subjectAltName. The certificate is what the trust verdict rests on, so its subject is the
+    /// <see cref="Identifier"/> (draft-ietf-oauth-sd-jwt-vc-13 section 3.5: "the Issuer of the Verifiable
+    /// Credential is the subject of the end-entity certificate"). The <c>iss</c> value is the credential's
+    /// own claim about itself, which nothing here verified. Show it, but do not identify an issuer by it.
+    /// </remarks>
+    public string? ClaimedIssuer { get; init; }
+
+    /// <summary>
     /// Whether the issuer chains to a trusted root. See <see cref="VerificationResult.IsValid"/> for the overall verdict.
     /// </summary>
     public required bool Trusted { get; init; }

@@ -14,6 +14,12 @@ public static class ErrorCodes
     public const string SignatureInvalid = "signature_invalid";
     public const string IssuerKeyUnresolvable = "issuer_key_unresolvable";
     public const string IssuerMetadataInvalid = "issuer_metadata_invalid";
+    /// <summary>No longer emitted. Kept so existing references still compile.</summary>
+    /// <remarks>
+    /// It refused an <c>x5c</c> credential whose <c>iss</c> no subjectAltName named, which was
+    /// draft-ietf-oauth-sd-jwt-vc-09's rule. Drafts -13 and -19 make the certificate subject the issuer
+    /// instead, so such a credential now verifies and reports <c>IssuerInfo.ClaimedIssuer</c>.
+    /// </remarks>
     public const string IssuerCertificateMismatch = "issuer_certificate_mismatch";
     public const string SdAlgUnsupported = "sd_alg_unsupported";
     public const string DisclosureInvalid = "disclosure_invalid";
