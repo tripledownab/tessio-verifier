@@ -21,6 +21,7 @@ If you verify those credentials from .NET, this library does the protocol and th
 ## What you get
 
 - OpenID4VP 1.0 verifier flow (cross-device / QR), **DCQL** queries, JAR-signed requests (RFC 9101)
+- **EU Age Verification profile** requests: unsigned, with the DCQL query in plain parameters and no request object, as that profile specifies (`AvPresentationRequestBuilder`)
 - **SD-JWT VC** verification: issuer signature (JWT VC Issuer Metadata and X.509), selective disclosure, key binding (KB-JWT), transaction data
 - **mdoc** (`mso_mdoc`) verification: ISO 18013-5/-7 mobile documents like the mDL, validated against the spec's own vectors and an independent implementation
 - **W3C Digital Credentials API transport** (ISO/IEC 18013-7 Annex C): build the `{deviceRequest, encryptionInfo}` request pair, open the HPKE-encrypted response (RFC 9180, checked against the RFC's own vectors) and verify device auth over the Annex C session transcript (`Iso18013AnnexC`). The request can be signed with `readerAuth` by your reader certificate (`MdocReaderKey`, construction checked against the ISO 18013-5 Annex D signed request as reproduced in the multipaz test vectors) and carry your registration certificate under `euWrprc`
@@ -82,15 +83,18 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 
 ## Going to production
 
-[docs/going-live.md](docs/going-live.md) walks through the code side: signed requests (Key Vault/HSM included), real trust lists, distributed session stores and shared response-encryption keys. For self-driving or multi-tenant hosting (your own store, one process serving many tenants), see [docs/self-driving-and-multi-tenant.md](docs/self-driving-and-multi-tenant.md). Beyond the code, live verification against real wallets requires a **registered Relying Party** and a **WRPAC** (Wallet Relying Party Access Certificate) from a Qualified Trust Service Provider, plus maintained EU trust lists. This library handles the protocol and credential verification. The trust and compliance layer is provided separately (see `docs/production.md`). Relying parties do **not** need their own HSM/QSCD, since the QTSP holds those.
+[docs/going-live.md](docs/going-live.md) walks through the code side: signed requests (Key Vault/HSM included), real trust lists, distributed session stores and shared response-encryption keys. For self-driving or multi-tenant hosting (your own store, one process serving many tenants), see [docs/self-driving-and-multi-tenant.md](docs/self-driving-and-multi-tenant.md). Beyond the code, a signed request to an EUDI Wallet needs a **wallet-relying party access certificate (WRPAC)**. You register as a relying party in your member state, and a certificate authority that member state has authorised issues the certificate, to registered relying parties only (Implementing Regulation (EU) 2025/848, Article 7). Not every profile signs: the EU Age Verification profile sends unsigned requests, so it needs no access certificate. Whether your signing key must sit in a secure device depends on your certificate provider's terms. This library handles the protocol and credential verification. Registration, certificates and trust lists are yours to arrange; [docs/production.md](docs/production.md) covers them.
 
 ## Standards
 
 - OpenID4VP 1.0: <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html>
+- OpenID4VC High Assurance Interoperability Profile (HAIP) 1.0: <https://openid.net/specs/openid4vc-high-assurance-interoperability-profile-1_0.html>
+- EU Age Verification technical specification: <https://github.com/eu-digital-identity-wallet/av-doc-technical-specification>
 - SD-JWT VC: <https://datatracker.ietf.org/doc/html/draft-ietf-oauth-sd-jwt-vc-13>. Code citations name draft -13 because HAIP 1.0 lists it as a normative reference. Later drafts renumber the sections, so a section number means nothing without its draft number.
 - Token Status List: <https://datatracker.ietf.org/doc/html/draft-ietf-oauth-status-list-18>. HAIP 1.0 cites -14. The code follows -18 because -18 is stricter: it makes an out-of-range index a MUST reject.
 - EUDI Architecture & Reference Framework: <https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework>
-- WRPAC profile: ETSI TS 119 475
+- Relying party registration and access certificates: Implementing Regulation (EU) 2025/848, <https://eur-lex.europa.eu/eli/reg_impl/2025/848/oj>
+- WRPAC profile: ETSI TS 119 475. Certificate policy: ETSI TS 119 411-8
 
 ## Free validators
 
