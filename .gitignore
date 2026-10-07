@@ -1,4 +1,4 @@
-# Per CLAUDE.md instruction: ignore legacy workspace
+# Local scratch workspace
 Legacy/
 
 # Build output
@@ -61,7 +61,7 @@ project.fragment.lock.json
 .DS_Store
 Thumbs.db
 
-# Internal working documents — never commit
+# Local working notes
 CLAUDE.md
 AGENTS.md
 ARCHITECTURE.md
@@ -82,8 +82,7 @@ suite-paste/
 # configuration and the committed copy of one already drifted from the test fixture.
 tools/conformance-harness/*.cer
 
-# Local agent tooling. The skills here are symlinks into a private checkout,
-# so committing them publishes a path from one machine and nothing usable.
+# Local editor and tooling state
 .claude/
 
 # Python bytecode from the conformance tooling. Machine specific, regenerated on every run.
