@@ -10,7 +10,7 @@ Verify credentials presented by EUDI Wallets directly from your .NET backend, ov
 
 > Relying-party (verifier) side only. This library never acts as a wallet or an issuer.
 
-> **Status: the full pipeline runs on `main`, and the quickstart below works end to end.** Version 0.9.1 is [on NuGet](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore). **SD-JWT VC** and **mso_mdoc** credentials (ISO 18013-5/-7 mobile documents, e.g. the mDL) are verified through the same pipeline, over either the OpenID4VP redirect flow or the **W3C Digital Credentials API transport** (ISO/IEC 18013-7 Annex C), and every layer is validated against external artifacts rather than fixtures we wrote ourselves. What changed in each release lives in the [release notes](https://github.com/tripledownab/tessio-verifier/releases), which is the only place it is maintained.
+> **Status: the full pipeline runs on `main`, and the quickstart below works end to end.** It is [on NuGet](https://www.nuget.org/packages/Tessio.Verifier.AspNetCore). **SD-JWT VC** and **mso_mdoc** credentials (ISO 18013-5/-7 mobile documents, e.g. the mDL) are verified through the same pipeline, over either the OpenID4VP redirect flow or the **W3C Digital Credentials API transport** (ISO/IEC 18013-7 Annex C), and every layer is validated against external artifacts rather than fixtures we wrote ourselves. What changed in each release lives in the [release notes](https://github.com/tripledownab/tessio-verifier/releases), which is the only place it is maintained.
 
 ## Why this exists
 
@@ -23,7 +23,7 @@ If you verify those credentials from .NET, this library does the protocol and th
 - OpenID4VP 1.0 verifier flow (cross-device / QR), **DCQL** queries, JAR-signed requests (RFC 9101)
 - **SD-JWT VC** verification: issuer signature (JWT VC Issuer Metadata and X.509), selective disclosure, key binding (KB-JWT), transaction data
 - **mdoc** (`mso_mdoc`) verification: ISO 18013-5/-7 mobile documents like the mDL, validated against the spec's own vectors and an independent implementation
-- **W3C Digital Credentials API transport** (ISO/IEC 18013-7 Annex C): build the `{deviceRequest, encryptionInfo}` request pair, open the HPKE-encrypted response (RFC 9180, checked against the RFC's own vectors) and verify device auth over the Annex C session transcript (`Iso18013AnnexC`)
+- **W3C Digital Credentials API transport** (ISO/IEC 18013-7 Annex C): build the `{deviceRequest, encryptionInfo}` request pair, open the HPKE-encrypted response (RFC 9180, checked against the RFC's own vectors) and verify device auth over the Annex C session transcript (`Iso18013AnnexC`). The request can be signed with `readerAuth` by your reader certificate (`MdocReaderKey`, construction checked against the ISO 18013-5 Annex D signed request as reproduced in the multipaz test vectors) and carry your registration certificate under `euWrprc`
 - Token Status List revocation checking
 - **Demo / Mock / Test / Live** modes so you can build before wallets exist, then serve real ones
 - Idiomatic ASP.NET Core integration (DI + minimal APIs) and a runnable sample

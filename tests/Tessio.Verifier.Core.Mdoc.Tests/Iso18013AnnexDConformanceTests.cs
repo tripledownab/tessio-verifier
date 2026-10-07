@@ -1,3 +1,5 @@
+using System.Formats.Cbor;
+using System.Security.Cryptography.Cose;
 using System.Security.Cryptography.X509Certificates;
 using Tessio.Verifier.Core;
 using Tessio.Verifier.Trust;
@@ -94,6 +96,31 @@ public sealed class Iso18013AnnexDConformanceTests
 
         // The x5chain leaf must be byte-identical to the separately published DS certificate.
         Assert.Equal(Iso18013AnnexDVectors.DsCertificate, resolution.CertificateChain[0].ToArray());
+    }
+
+    [Fact]
+    public void ReaderAuth_ThePublishedSignatureVerifiesOverTheBytesWeBuild()
+    {
+        // The only external check on what readerAuth is computed over: if our ReaderAuthenticationBytes
+        // differ from the ones the example was signed over by a single byte, its signature fails.
+        var (itemsRequest, encodedReaderAuth) = DeviceRequestReader.ReadSingleDocRequest(Iso18013AnnexDVectors.DeviceRequest);
+        Assert.NotNull(encodedReaderAuth);
+        var transcript = new CborReader(Iso18013AnnexDVectors.SessionTranscriptBytes, CborConformanceMode.Lax);
+        Assert.Equal((CborTag)24, transcript.ReadTag());
+
+        var signedBytes = ReaderAuthentication.BuildBytes(transcript.ReadByteString(), itemsRequest);
+
+        var readerAuth = CoseMessage.DecodeSign1(encodedReaderAuth);
+        Assert.Null(readerAuth.Content);
+        var x5chain = new CborReader(
+            readerAuth.UnprotectedHeaders[new CoseHeaderLabel(33)].EncodedValue, CborConformanceMode.Lax);
+#if NET9_0_OR_GREATER
+        using var readerCertificate = X509CertificateLoader.LoadCertificate(x5chain.ReadByteString());
+#else
+        using var readerCertificate = new X509Certificate2(x5chain.ReadByteString());
+#endif
+        using var readerKey = readerCertificate.GetECDsaPublicKey()!;
+        Assert.True(readerAuth.VerifyDetached(readerKey, signedBytes));
     }
 
     [Fact]
