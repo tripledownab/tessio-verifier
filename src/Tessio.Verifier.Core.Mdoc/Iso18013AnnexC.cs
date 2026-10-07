@@ -15,13 +15,76 @@ public static class Iso18013AnnexC
     /// request. The key is fresh per request and must never be reused: a stable advertised key
     /// would let colluding verifiers correlate the people presenting to it.
     /// </summary>
+    /// <remarks>
+    /// The request is unsigned. ETSI TS 119 472-2 V1.2.1 ISO/IEC 18013-REQ-01 says "All the elements
+    /// of the docRequests array shall contain the readerAuth member", and CIR (EU) 2026/1731 neither
+    /// amends nor voids it. Its ISO/IEC 18013-7-API-01 has Annex C presentations comply "as further
+    /// profiled in clauses 5.3 and 5.4", although its clause 5.1 calls clause 5.3 specific to the
+    /// non-API mechanism. Read either way, a signed request meets it: for an EUDI Wallet, use
+    /// <see cref="CreateSignedRequest"/>.
+    /// </remarks>
     public static Iso18013AnnexCRequest CreateRequest(
-        string docType, string nameSpace, IReadOnlyList<string> elementIdentifiers)
-    {
+        string docType, string nameSpace, IReadOnlyList<string> elementIdentifiers) =>
         // This seam never retains disclosed elements, so IntentToRetain is always false here.
         // DeviceRequestBuilder exposes the flag for callers that do retain.
-        var deviceRequest = DeviceRequestBuilder.Build(docType, nameSpace, elementIdentifiers, intentToRetain: false);
+        Create(_ => DeviceRequestBuilder.Build(docType, nameSpace, elementIdentifiers, intentToRetain: false));
 
+    /// <summary>
+    /// Builds the request pair with the docRequest signed by <paramref name="reader"/>, so the wallet
+    /// can authenticate the reader. Otherwise as <see cref="CreateRequest"/>.
+    /// </summary>
+    /// <remarks>
+    /// The signature covers the session transcript, which commits to this request's EncryptionInfo
+    /// and to <paramref name="origin"/>. A wallet reached from any other origin computes another
+    /// transcript, and the signature does not verify there.
+    /// </remarks>
+    /// <param name="docType">The requested document type.</param>
+    /// <param name="nameSpace">The namespace the elements live in.</param>
+    /// <param name="elementIdentifiers">The elements to request.</param>
+    /// <param name="origin">
+    /// The origin of the page that will make the browser call, serialized as the browser reports it,
+    /// for example <c>https://verifier.example.com</c>: no <c>origin:</c> prefix, no trailing slash or
+    /// path, a lower-case ASCII host (punycode for an internationalised name), no default port; or an
+    /// Android app's <c>android:apk-key-hash:</c> origin. The usual mistakes (a missing scheme, a
+    /// trailing slash, upper case, a default port) are refused, because the wallet would compute a
+    /// different transcript and the signature would not verify. The check is a syntactic guard, not a
+    /// URL parser: a few strings no browser reports, such as non-canonical IPv4, still pass it and
+    /// fail at the wallet instead.
+    /// </param>
+    /// <param name="reader">The reader key and certificate path to sign with.</param>
+    /// <param name="registrationCertificate">
+    /// The relying party's registration certificate, exactly as issued, carried in the
+    /// ItemsRequest's <c>requestInfo</c> under <c>euWrprc</c>, inside the signed bytes. Null for
+    /// none, which CIR (EU) 2026/1731 does not allow in a request to an EUDI Wallet (its
+    /// ISO/IEC 18013-5-REQ-04 and -REQ-06). Its REQ-07 asks for "a CBOR-encoded registration
+    /// certificate", which read plainly means the CWT form of the two ETSI TS 119 475 allows. The
+    /// bytes are passed through unchanged: which form they are is not checked here.
+    /// </param>
+    public static Iso18013AnnexCRequest CreateSignedRequest(
+        string docType,
+        string nameSpace,
+        IReadOnlyList<string> elementIdentifiers,
+        string origin,
+        MdocReaderKey reader,
+        byte[]? registrationCertificate)
+    {
+        BrowserOrigin.RequireSerialized(origin);
+        return Create(encryptionInfo => DeviceRequestBuilder.BuildSigned(
+            docType,
+            nameSpace,
+            elementIdentifiers,
+            intentToRetain: false,
+            BuildSessionTranscript(encryptionInfo, origin),
+            reader,
+            registrationCertificate));
+    }
+
+    /// <summary>
+    /// Mints the response key and EncryptionInfo, then builds the DeviceRequest from them. In that
+    /// order because a signed request covers the EncryptionInfo bytes through the transcript.
+    /// </summary>
+    private static Iso18013AnnexCRequest Create(Func<byte[], byte[]> buildDeviceRequest)
+    {
         using var responseKey = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         var encryptionInfo = EncryptionInfo.Encode(
             RandomNumberGenerator.GetBytes(EncryptionInfo.NonceLength),
@@ -29,7 +92,7 @@ public static class Iso18013AnnexC
 
         return new Iso18013AnnexCRequest
         {
-            DeviceRequest = deviceRequest,
+            DeviceRequest = buildDeviceRequest(encryptionInfo),
             EncryptionInfo = encryptionInfo,
             ResponseKeyPkcs8 = responseKey.ExportPkcs8PrivateKey(),
         };
@@ -99,7 +162,9 @@ public sealed record Iso18013AnnexCRequest
     public required byte[] DeviceRequest { get; init; }
 
     /// <summary>
-    /// Encoded <c>EncryptionInfo</c>; base64url this into the API request's <c>encryptionInfo</c>.
+    /// Encoded <c>EncryptionInfo</c>; base64url this, unpadded, into the API request's
+    /// <c>encryptionInfo</c>. Wallets hash the string the page sends into the session transcript,
+    /// and this library hashes the unpadded form, so padding breaks decryption and readerAuth alike.
     /// Store the exact bytes: the session transcript digest covers them.
     /// </summary>
     public required byte[] EncryptionInfo { get; init; }

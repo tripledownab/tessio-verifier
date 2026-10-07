@@ -79,7 +79,7 @@ public static class SessionTranscriptBuilder
     public static byte[] BuildForIso18013AnnexC(byte[] encryptionInfo, string origin)
     {
         ArgumentNullException.ThrowIfNull(encryptionInfo);
-        RequireBareOrigin(origin);
+        BrowserOrigin.RequireBare(origin);
 
         var info = new CborWriter(CborConformanceMode.Lax);
         info.WriteStartArray(2);
@@ -119,26 +119,10 @@ public static class SessionTranscriptBuilder
         return w.Encode();
     }
 
-    /// <summary>
-    /// The <c>origin:</c> prefix belongs to the Client Identifier, never to a transcript. Refuse
-    /// rather than strip it: a caller passing the prefixed form has confused the two values, and
-    /// silently accepting it would produce a transcript that verifies here and nowhere else.
-    /// </summary>
-    private static void RequireBareOrigin(string origin)
-    {
-        ArgumentNullException.ThrowIfNull(origin);
-        if (origin.StartsWith("origin:", StringComparison.Ordinal))
-        {
-            throw new ArgumentException(
-                "The Origin must not carry the 'origin:' Client Identifier Prefix. Pass the bare origin, " +
-                "for example https://verifier.example.com.", nameof(origin));
-        }
-    }
-
     internal static byte[] BuildDcApiHandoverInfo(string origin, string nonce, byte[]? encryptionKeyThumbprint)
     {
         ArgumentNullException.ThrowIfNull(nonce);
-        RequireBareOrigin(origin);
+        BrowserOrigin.RequireBare(origin);
 
         var w = new CborWriter(CborConformanceMode.Lax);
         w.WriteStartArray(3);
