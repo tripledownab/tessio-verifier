@@ -1,17 +1,20 @@
 # Going to production
 
-`Tessio.Verifier` handles the OpenID4VP protocol and SD-JWT VC verification. To verify credentials from **real** EUDI Wallets in production, not just in DEMO/MOCK/TEST mode, you also need to be a recognised Relying Party and to validate against live EU trust lists. This page covers what that involves and how the library supports it.
+`Tessio.Verifier` handles the OpenID4VP protocol and SD-JWT VC and mdoc verification. To verify credentials from **real** EUDI Wallets in production, not just in DEMO/MOCK/TEST mode, you also need to be a recognised Relying Party and to validate against live EU trust lists. This page covers what that involves and how the library supports it.
 
 > Implementation guidance, not legal advice. Registration specifics vary by member state.
 
 ## What production requires beyond the protocol
 
-Under **Article 5b of Regulation (EU) 2024/1183 (eIDAS 2.0)**, a service that requests attributes from EUDI Wallets must be a registered Relying Party and authenticate itself with certificates. Two are mandatory:
+**Article 5b(1) of Regulation (EU) 2024/1183 (eIDAS 2.0)**: a relying party that intends to rely upon EUDI Wallets "shall register in the Member State where it is established". Implementing Regulation (EU) 2025/848 sets out what follows from registration:
 
-1. **Relying Party Registration → Registration Certificate (RPRC).** You register with your member state's national authority and appear in a public register stating who you are and which attributes you're authorised to request. Registration produces a Registration Certificate conveying those entitlements.
-2. **Wallet Relying Party Access Certificate (WRPAC).** Issued by a **Qualified Trust Service Provider (QTSP)** and profiled in **ETSI TS 119 475**. The wallet checks your WRPAC *before* showing the user a consent screen; if it's missing, expired, or not chained to a provider on the trust list, the wallet refuses the request. A WRPAC can only be obtained after registration is complete.
+1. **Registration.** You register with your member state, which publishes what you declared, including the data you intend to request (2024/1183 Article 5b(2) and (5)).
+2. **Wallet-relying party access certificate (WRPAC).** Each member state authorises at least one certificate authority to issue them, and it issues them to registered relying parties only (2025/848 Article 7(1) and (2)). The text names an authorised certificate authority, not a qualified trust service provider. The certificate is profiled in **ETSI TS 119 475** under the policy in **ETSI TS 119 411-8**. It is what signs your request, so a wallet that checks reader authentication refuses a request without one.
+3. **Registration certificate.** Each member state authorises at least one certificate authority to issue them, "in an automated manner and without undue delay after the registration", and each one expresses an intended use you registered (2025/848 Article 8(1) and (2), as replaced by Implementing Regulation (EU) 2026/1730). The original 2025/848 made these optional; the amendment did not.
 
-You do **not** need your own HSM or QSCD: the QTSP holds those. You hold and present the certificate.
+**Not every profile signs.** The EU Age Verification profile sends unsigned requests: "Reader authentication is not required and therefore is out of scope of this profile" (AV technical specification, Annex A). An age check under that profile needs no access certificate.
+
+**Keys.** You hold the private key that signs your requests. Whether it must sit in a secure device depends on your certificate provider's terms.
 
 ## Trust validation
 
@@ -23,21 +26,21 @@ EU List of Trusted Lists (LOTL) → national trusted list → trust service prov
 
 across all 27 member states, kept current as trust lists and the ARF evolve.
 
-**That hierarchy is where the EUDIW profile is going, and it is not where it is today.** The national PID-issuer lists are expected to ride the same ETSI TS 119 612 infrastructure and **are not published yet**, so there is nothing for a resolver to read, this library's included.
+**That hierarchy is where the EUDIW profile is going, and it is not where it is today.** A production list of PID providers is **not published yet**, so there is nothing for a resolver to read, this library's included.
 
-What exists, and what this library reads today:
+What exists today. The library reads none of these by itself: it gives you the `ITrustListResolver` seam and a static resolver, and you, or a hosted service, connect a source behind it.
 
 | Source | State |
 |---|---|
-| The Commission's **age verification trusted list** | Live. Read, refreshed on a schedule, and filtered so an anchor outside its validity window is dropped and named |
-| **Pinned anchors** you configure | Live. The route for a pilot or an interoperability issuer, which is how interop testing is done today |
-| **National PID-issuer lists** via the LOTL | Not published. Nothing to read |
+| The Commission's **age verification trusted list** | Published. Read it on a schedule and drop an anchor outside its validity window |
+| **Pinned anchors** you configure | Available. The route for a pilot or an interoperability issuer, which is how interop testing is done today |
+| A **production PID provider list** | Not published. Nothing to read |
 
-In the library this is the `ITrustListResolver` seam (`Tessio.Verifier.Trust`). Three implementations already sit behind it, so adding a national-list resolver is a registration change rather than a rewrite.
+In the library this is the `ITrustListResolver` seam (`Tessio.Verifier.Trust`), with `StaticTrustListResolver` as the shipped implementation. A resolver for any other list is a class behind the same interface, registered in DI, not a change to the verification pipeline.
 
 ## Two paths to production
 
-**Self-managed.** Register as a Relying Party in your member state, obtain a WRPAC from a QTSP, and implement an `ITrustListResolver` against whichever lists your profile actually requires. You own certificate renewal (WRPACs are typically valid ~1 year), trust-list updates, and audit logging.
+**Self-managed.** Register as a Relying Party in your member state, obtain a WRPAC from a certificate authority your member state has authorised if your profile signs its requests, and implement an `ITrustListResolver` against whichever lists your profile actually requires. You own certificate renewal, trust-list updates, and audit logging.
 
 **Tessio managed.** The hosted service runs the trust layer for you: the live age verification trusted list with scheduled refresh and expiry filtering, anchor configuration, audit-grade logging, and a hosted verifier endpoint. You keep the same `Tessio.Verifier` APIs. National issuer lists are added when the Commission publishes them, behind the same seam and with no API change on your side. *(Contact: tessio.eu)*
 
@@ -52,15 +55,17 @@ In the library this is the `ITrustListResolver` seam (`Tessio.Verifier.Trust`). 
 ## Production checklist
 
 - [ ] Confirm which flows will accept the wallet (age verification, KYC onboarding, SCA, etc.).
-- [ ] Register as a Relying Party with your national authority; obtain the Registration Certificate.
-- [ ] Obtain a WRPAC from a QTSP (or via the Tessio managed service).
+- [ ] Register as a Relying Party in your member state; obtain a registration certificate where your member state issues them.
+- [ ] If your profile signs requests, obtain a WRPAC from a certificate authority your member state has authorised (or via the Tessio managed service).
 - [ ] Wire a production `ITrustListResolver` (self-managed) or switch to the managed resolver.
 - [ ] Enforce nonce/state, audit logging, and certificate renewal.
-- [ ] Run the conformance harness against the EU reference wallet before go-live.
+- [ ] Run the OpenID Foundation conformance suite against your deployment (`tools/conformance-harness` shows how), and complete a check with a real wallet before go-live.
 
 ## References
 
 - Regulation (EU) 2024/1183 (eIDAS 2.0): <https://eur-lex.europa.eu/eli/reg/2024/1183/oj>
-- WRPAC profile: ETSI TS 119 475
+- Implementing Regulation (EU) 2025/848, relying party registration: <https://eur-lex.europa.eu/eli/reg_impl/2025/848/oj>
+- WRPAC profile: ETSI TS 119 475. Certificate policy: ETSI TS 119 411-8
+- EU Age Verification technical specification: <https://github.com/eu-digital-identity-wallet/av-doc-technical-specification>
 - EUDI Architecture & Reference Framework: <https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework>
 - OpenID4VP 1.0: <https://openid.net/specs/openid-4-verifiable-presentations-1_0.html>

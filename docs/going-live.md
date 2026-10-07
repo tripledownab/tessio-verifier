@@ -502,7 +502,7 @@ The pipeline logs through `Microsoft.Extensions.Logging`, so whatever your host 
 
 ## What the library does not cover
 
-Verifying real EUDI wallets in production also requires registering as a relying party in your member state and holding a Wallet Relying Party Access Certificate (WRPAC) from a Qualified Trust Service Provider, plus maintained EU trust lists. See [docs/production.md](https://github.com/tripledownab/tessio-verifier/blob/main/docs/production.md) for that landscape. The library covers the protocol and the credential verification; the registration and trust layer is yours or a provider's.
+Verifying real EUDI wallets in production also requires registering as a relying party in your member state, plus maintained EU trust lists, and for a profile that signs its requests a wallet-relying party access certificate (WRPAC) from a certificate authority your member state has authorised. See [docs/production.md](https://github.com/tripledownab/tessio-verifier/blob/main/docs/production.md) for that landscape. The library covers the protocol and the credential verification; the registration and trust layer is yours or a provider's.
 
 ## Checklist
 
