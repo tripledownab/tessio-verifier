@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
@@ -7,12 +9,23 @@ namespace Tessio.Verifier.OpenId4Vp.Tests;
 public sealed class SignedPresentationRequestBuilderTests : IDisposable
 {
     private readonly ECDsa _ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    private readonly X509Certificate2 _certificate;
 
-    private SignedPresentationRequestBuilder Builder(Uri? requestUriBase = null) => new(
+    public SignedPresentationRequestBuilderTests()
+    {
+        var request = new CertificateRequest("CN=verifier.example", _ecdsa, HashAlgorithmName.SHA256);
+        _certificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
+    }
+
+    private SignedPresentationRequestBuilder Builder(
+        Uri? requestUriBase = null, IReadOnlyList<X509Certificate2>? chain = null, TimeProvider? clock = null) => new(
         new PresentationRequestBuilderOptions
         {
             SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(_ecdsa), SecurityAlgorithms.EcdsaSha256),
             RequestUriBase = requestUriBase,
+            SigningCertificateChain = chain,
+            Clock = clock,
         });
 
     private static PresentationRequestOptions Options() => new()
@@ -98,5 +111,49 @@ public sealed class SignedPresentationRequestBuilderTests : IDisposable
         Assert.InRange(exp, before.AddMinutes(9), before.AddMinutes(11));
     }
 
-    public void Dispose() => _ecdsa.Dispose();
+    // SPEC: ETSI TS 119 472-2 V1.3.1 §6.4.2 governs the request object of the redirect mechanism, which
+    // §6.4.1 REDIRECTS-04 delivers by reference and RO-01 requires to carry x5c. Both delivery modes and a
+    // configured chain are built, so a branch that loses the header on either path goes red.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProtectedHeader_CarriesIat_EqualToPayloadIatAndClock(bool byReference)
+    {
+        var clock = new SteppingClock();
+        var builder = Builder(
+            byReference ? new Uri("https://verifier.example/verify/request") : null,
+            chain: [_certificate],
+            clock: clock);
+
+        var request = await builder.BuildAsync(Options());
+        Assert.Equal(byReference, request is PresentationRequest.ByReference);
+
+        // The raw header JSON, so the test checks that iat is a JSON number and not only its value.
+        var token = new JsonWebToken(request.SignedRequestObject);
+        using var header = JsonDocument.Parse(Base64UrlEncoder.DecodeBytes(token.EncodedHeader));
+        Assert.True(header.RootElement.TryGetProperty("x5c", out _), "fixture must exercise the x5c path");
+        Assert.True(header.RootElement.TryGetProperty("iat", out var headerIat), "protected header has no iat");
+        Assert.Equal(JsonValueKind.Number, headerIat.ValueKind);
+
+        // The clock moves on every read, so an iat taken from a second read, or from another clock,
+        // differs from the instant the request was built at.
+        using var payload = JsonDocument.Parse(Base64UrlEncoder.DecodeBytes(token.EncodedPayload));
+        Assert.Equal(SteppingClock.Start.ToUnixTimeSeconds(), payload.RootElement.GetProperty("iat").GetInt64());
+        Assert.Equal(SteppingClock.Start.ToUnixTimeSeconds(), headerIat.GetInt64());
+    }
+
+    public void Dispose()
+    {
+        _certificate.Dispose();
+        _ecdsa.Dispose();
+    }
+
+    /// <summary>Starts at a fixed instant and moves one second forward on every read.</summary>
+    private sealed class SteppingClock : TimeProvider
+    {
+        public static readonly DateTimeOffset Start = new(2026, 8, 21, 9, 0, 0, TimeSpan.Zero);
+        private int _reads;
+
+        public override DateTimeOffset GetUtcNow() => Start.AddSeconds(_reads++);
+    }
 }

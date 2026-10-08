@@ -46,6 +46,11 @@ public sealed class SignedPresentationRequestBuilder : IPresentationRequestBuild
         // SPEC: OpenID4VP 1.0 §5.2 / RFC 9101 — the request object typ MUST be "oauth-authz-req+jwt".
         var headers = new Dictionary<string, object> { ["typ"] = "oauth-authz-req+jwt" };
 
+        // SPEC: ETSI TS 119 472-2 V1.3.1 §6.4.2 OIDFVP-HAIP-REDIRECTS_RO-03 — "The JWS Protected Header of
+        // the JWS signature on the RO shall incorporate the iat header parameter." Same instant as the
+        // payload's iat, so the two cannot disagree.
+        headers["iat"] = iat.ToUnixTimeSeconds();
+
         // SPEC: RFC 7515 §4.1.6 — x5c is base64 (not base64url) DER, leaf certificate first.
         // Required in practice: a wallet using the x509_san_dns client_id scheme has no other way to
         // obtain the certificate whose SAN it must match, so it rejects a signed request that omits this
