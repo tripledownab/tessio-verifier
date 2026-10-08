@@ -7,10 +7,11 @@ namespace Tessio.Verifier.ConformanceHarness;
 /// The key and certificate chain the harness signs request objects with, persisted between runs.
 /// </summary>
 /// <remarks>
-/// A two-certificate chain, not a self-signed leaf: OpenID4VP 1.0 §5.9.3 requires the leaf in
-/// <c>x5c</c> to be issued by something, and the suite fails a self-signed one outright. So we mint a
-/// throwaway CA and issue the signing certificate from it. The CA is what goes in the plan's
-/// <c>client.request_object_trust_anchor_pem</c>; the leaf is what <c>client_id</c> hashes.
+/// A leaf issued by a throwaway CA, not a self-signed leaf: HAIP 1.0 section 5 says "The X.509
+/// certificate signing the request MUST NOT be self-signed", the suite fails a self-signed one
+/// outright, and the library refuses one. So we mint a throwaway CA and issue the signing certificate
+/// from it. The CA is what goes in the plan's <c>client.request_object_trust_anchor_pem</c>; the leaf
+/// is what <c>client_id</c> hashes.
 /// <para>
 /// Persistence matters because that plan field would otherwise go stale on every restart, and the
 /// symptom is the suite rejecting the request object with no hint that a restart is the cause.

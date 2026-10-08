@@ -68,9 +68,11 @@ Two networking facts that otherwise cost an afternoon:
   chain is enough: the suite installs a trust-all X509TrustManager and a `NoopHostnameVerifier`, so
   nothing needs adding to the container's truststore. Kestrel is configured in `Program.cs` from
   `PublicBaseUri`, so changing that one value moves both URIs.
-- **The signing leaf must not be self-signed** (OID4VP §5.9.3). The harness mints a throwaway CA and
-  issues the leaf from it, sending both in `x5c`. The **CA** is what goes in the plan's
-  `client.request_object_trust_anchor_pem`; the **leaf** is what `client_id` hashes.
+- **The signing leaf must not be self-signed** (HAIP 1.0 §5). The harness mints a throwaway CA and
+  issues the leaf from it, sending only the leaf in `x5c`: the suite refuses a chain that contains the
+  configured trust anchor, and the library refuses one that holds a self-signed certificate. The **CA**
+  is what goes in the plan's `client.request_object_trust_anchor_pem`; the **leaf** is what `client_id`
+  hashes.
 - The library derives `response_uri` from `Request.Host`, which is correct behind a proxy. There is no
   proxy here, so the harness rewrites the host to `PublicBaseUri` on every request. Without that,
   `response_uri` would be `localhost:5099`, which inside the container means the container itself: the
@@ -110,8 +112,8 @@ guessing, because a wrong endpoint fails as a timeout twenty seconds later with 
 
 ### Where key material lives
 
-**Outside this working tree.** The harness signs with a self-signed certificate it generates per run,
-and the private key must not sit in a git working tree at all. `.gitignore` would catch it, but an
+**Outside this working tree.** The harness signs with a leaf its own throwaway CA issues, both kept
+between runs (see `HarnessCertificate.cs`), and the private key must not sit in a git working tree at all. `.gitignore` would catch it, but an
 ignore rule is one `git add -f`, one edited `.gitignore` or one tool that does not read `.gitignore`
 away from failing. A file that is not in the tree cannot be committed.
 
@@ -339,6 +341,6 @@ plan first and fix anything red before paying. See <https://openid.net/certifica
 | `Request:Claim` | Single claim to request. The suite requires DCQL to name exactly one credential. It must be a claim the suite's credential actually carries: `family_name` for `sd_jwt_vc`, `age_over_18` for `iso_mdl`. |
 | `Request:ExpectedVct` | `urn:eudi:pid:1` for the suite's SD-JWT VC credential. |
 
-The signing certificate is self-signed and generated per run. The suite checks that `client_id`'s hash
-matches the leaf in `x5c`, not that the chain is publicly trusted, so no real access certificate is
-needed and none should be put here.
+The signing certificate is a leaf issued by the harness's own throwaway CA, kept between runs. The suite
+checks that `client_id`'s hash matches the leaf in `x5c`, not that the chain is publicly trusted, so no
+real access certificate is needed and none should be put here.

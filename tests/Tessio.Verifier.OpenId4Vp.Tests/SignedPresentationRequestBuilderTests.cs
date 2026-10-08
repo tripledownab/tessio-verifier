@@ -3,26 +3,20 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using Tessio.Verifier.Core.Mdoc.Tests;
 
 namespace Tessio.Verifier.OpenId4Vp.Tests;
 
 public sealed class SignedPresentationRequestBuilderTests : IDisposable
 {
-    private readonly ECDsa _ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-    private readonly X509Certificate2 _certificate;
-
-    public SignedPresentationRequestBuilderTests()
-    {
-        var request = new CertificateRequest("CN=verifier.example", _ecdsa, HashAlgorithmName.SHA256);
-        _certificate = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
-    }
+    // A leaf issued by a test root: the builder refuses a self-signed signer, as HAIP 1.0 section 5 does.
+    private readonly TestReaderCertificates _certificates = new();
 
     private SignedPresentationRequestBuilder Builder(
         Uri? requestUriBase = null, IReadOnlyList<X509Certificate2>? chain = null, TimeProvider? clock = null) => new(
         new PresentationRequestBuilderOptions
         {
-            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(_ecdsa), SecurityAlgorithms.EcdsaSha256),
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(_certificates.ReaderKey), SecurityAlgorithms.EcdsaSha256),
             RequestUriBase = requestUriBase,
             SigningCertificateChain = chain,
             Clock = clock,
@@ -48,7 +42,7 @@ public sealed class SignedPresentationRequestBuilderTests : IDisposable
         Assert.IsType<PresentationRequest.ByValue>(request);
 
         // The JAR must verify against the builder's public key and carry the right typ.
-        var publicKey = new ECDsaSecurityKey(ECDsa.Create(_ecdsa.ExportParameters(false)));
+        var publicKey = new ECDsaSecurityKey(ECDsa.Create(_certificates.ReaderKey.ExportParameters(false)));
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(request.SignedRequestObject,
             new TokenValidationParameters
             {
@@ -122,7 +116,7 @@ public sealed class SignedPresentationRequestBuilderTests : IDisposable
         var clock = new SteppingClock();
         var builder = Builder(
             byReference ? new Uri("https://verifier.example/verify/request") : null,
-            chain: [_certificate],
+            chain: [_certificates.Reader],
             clock: clock);
 
         var request = await builder.BuildAsync(Options());
@@ -142,11 +136,7 @@ public sealed class SignedPresentationRequestBuilderTests : IDisposable
         Assert.Equal(SteppingClock.Start.ToUnixTimeSeconds(), headerIat.GetInt64());
     }
 
-    public void Dispose()
-    {
-        _certificate.Dispose();
-        _ecdsa.Dispose();
-    }
+    public void Dispose() => _certificates.Dispose();
 
     /// <summary>Starts at a fixed instant and moves one second forward on every read.</summary>
     private sealed class SteppingClock : TimeProvider

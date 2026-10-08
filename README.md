@@ -20,7 +20,7 @@ If you verify those credentials from .NET, this library does the protocol and th
 
 ## What you get
 
-- OpenID4VP 1.0 verifier flow (cross-device / QR), **DCQL** queries, JAR-signed requests (RFC 9101)
+- OpenID4VP 1.0 verifier flow (cross-device / QR), **DCQL** queries, JAR-signed requests (RFC 9101) carrying your access certificate chain in `x5c`, checked for the usual mistakes before anything is signed: a root or self-signed signer in the chain, certificates out of order, a first certificate that does not hold the signing key (`SignedPresentationRequestBuilder`; [what is checked](docs/going-live.md#2-sign-your-requests))
 - **EU Age Verification profile** requests: unsigned, with the DCQL query in plain parameters and no request object, as that profile specifies (`AvPresentationRequestBuilder`)
 - **SD-JWT VC** verification: issuer signature (JWT VC Issuer Metadata and X.509), selective disclosure, key binding (KB-JWT), transaction data
 - **mdoc** (`mso_mdoc`) verification: ISO 18013-5/-7 mobile documents like the mDL, validated against the spec's own vectors and an independent implementation

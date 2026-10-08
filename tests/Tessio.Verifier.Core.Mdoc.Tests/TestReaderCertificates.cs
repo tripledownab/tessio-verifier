@@ -1,5 +1,5 @@
 // What belongs in this file: throwaway reader certificates for tests, a root and a reader certificate
-// it issued, and the helpers that mint more.
+// it issued, and the helpers that mint more. Linked into the OpenId4Vp tests as well, rather than copied.
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
@@ -11,7 +11,8 @@ internal sealed class TestReaderCertificates : IDisposable
     public TestReaderCertificates()
     {
         Root = CreateCa("CN=Test Reader Root", RootKey, issuer: null, issuerKey: null);
-        Reader = CreateLeaf("CN=Test Reader", ReaderKey, Root, RootKey);
+        // The DNS name the OpenID4VP tests' x509_san_dns client identifiers name.
+        Reader = CreateLeaf("CN=Test Reader", ReaderKey, Root, RootKey, dnsName: "verifier.example");
     }
 
     public ECDsa RootKey { get; } = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -47,11 +48,22 @@ internal sealed class TestReaderCertificates : IDisposable
         return issued.CopyWithPrivateKey(key);
     }
 
-    /// <summary>An end-entity certificate for <paramref name="key"/>, issued by <paramref name="issuer"/>.</summary>
-    public static X509Certificate2 CreateLeaf(string subject, ECDsa key, X509Certificate2 issuer, ECDsa issuerKey)
+    /// <summary>
+    /// An end-entity certificate for <paramref name="key"/>, issued by <paramref name="issuer"/>, with
+    /// <paramref name="dnsName"/> as a dNSName SAN when given.
+    /// </summary>
+    public static X509Certificate2 CreateLeaf(
+        string subject, ECDsa key, X509Certificate2 issuer, ECDsa issuerKey, string? dnsName = null)
     {
         var request = new CertificateRequest(subject, key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        if (dnsName is not null)
+        {
+            var san = new SubjectAlternativeNameBuilder();
+            san.AddDnsName(dnsName);
+            request.CertificateExtensions.Add(san.Build());
+        }
+
         return request.Create(
             issuer.SubjectName, X509SignatureGenerator.CreateForECDsa(issuerKey), DateTimeOffset.UtcNow.AddMinutes(-5),
             DateTimeOffset.UtcNow.AddDays(1), [2]);

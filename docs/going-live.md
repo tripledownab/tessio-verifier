@@ -152,14 +152,18 @@ Live wallets require JAR-signed request objects (RFC 9101). Replace the default 
 ```csharp
 using Tessio.Verifier.OpenId4Vp;
 
-var cert = ...; // your WRPAC or access certificate, e.g. from a store or Key Vault
+var cert = ...;          // your WRPAC or access certificate, e.g. from a store or Key Vault
+var intermediates = ...; // the CAs between it and the trust anchor, if any; never the anchor itself
 builder.Services.AddSingleton<IPresentationRequestBuilder>(new SignedPresentationRequestBuilder(
     new PresentationRequestBuilderOptions
     {
         SigningCredentials = new SigningCredentials(
             new ECDsaSecurityKey(cert.GetECDsaPrivateKey()!), SecurityAlgorithms.EcdsaSha256),
+        SigningCertificateChain = [cert, .. intermediates],
     }));
 ```
+
+`SigningCertificateChain` goes in the request object's `x5c` header, which is how the wallet gets your certificate: OpenID4VP 1.0 section 5.9.3 requires it for the `x509_san_dns` and `x509_hash` client identifier prefixes, HAIP 1.0 section 5 requires `x509_hash` for signed requests, and for a request sent by redirect ETSI TS 119 472-2 (OIDFVP-HAIP-REDIRECTS_RO-01) requires it outright. The builder checks the chain when it is created and throws an `ArgumentException` naming `options.SigningCertificateChain` if the chain is empty, holds a certificate that names itself as its issuer (a root, or a self-signed signing certificate), is out of order or starts with a CA, and, when the signing key is an `ECDsaSecurityKey`, if the first certificate does not hold its public half. Names are compared by their encoded bytes, so a self-signed certificate whose issuer is encoded differently from its subject is not caught, and with a remote signer only the public half you declare is compared, not the remote key itself. The option's documentation lists what is and is not checked. The builder reads the chain and credentials once: to rotate a key, create a new builder.
 
 Any `SigningCredentials` works. For a key that never leaves Azure Key Vault or an HSM, point IdentityModel's signing at the remote key with a custom `CryptoProviderFactory`:
 
@@ -196,10 +200,11 @@ builder.Services.AddSingleton<IPresentationRequestBuilder>(new SignedPresentatio
         {
             CryptoProviderFactory = new KeyVaultCryptoProviderFactory(client),
         },
+        SigningCertificateChain = [cert, .. intermediates], // the access certificate of that key, as above
     }));
 ```
 
-Set `options.ClientId` to your registered identifier with its client-identifier prefix, for example `x509_san_dns:verifier.example.com`. The prefix tells the wallet how to validate your request against your certificate.
+Set `options.ClientId` to your registered identifier with its client-identifier prefix, for example `x509_hash:` followed by the leaf's hash (`ClientIdentifier.X509Hash(cert)`), which HAIP 1.0 requires, or `x509_san_dns:verifier.example.com`. The prefix tells the wallet how to validate your request against your certificate.
 
 ## 3. Deliver the request by reference
 
