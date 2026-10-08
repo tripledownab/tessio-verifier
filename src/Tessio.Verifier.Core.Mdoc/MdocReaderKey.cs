@@ -16,12 +16,12 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// What is checked, in this order: the path is non-empty and holds no null entry, none of its
 /// certificates is self-issued, each names the next as its issuer, the reader certificate is not a
 /// CA, the key is on a curve with a COSE algorithm, and the reader certificate holds the key's public
-/// half. A path that breaks two rules is refused for the first. Names are compared by their encoded bytes, which is stricter than RFC
-/// 5280's name matching: a path whose names differ only in case, spacing or string type is refused
-/// as unlinked, and a root whose own subject and issuer are encoded differently is not recognised
-/// as self-issued. Nothing else is checked here, among others validity periods, revocation, the
-/// signatures along the path, key usage and extended key usage, and whether the intermediates are
-/// CAs: judging the path is the wallet's, against its own trust list.
+/// half. A path that breaks two rules is refused for the first. Names are compared by their encoded
+/// bytes, which is stricter than RFC 5280's name matching: a path whose names differ only in case,
+/// spacing or string type is refused as unlinked, and a root whose own subject and issuer are encoded
+/// differently is not recognised as self-issued. Nothing else is checked here, among others validity
+/// periods, revocation, the signatures along the path, key usage and extended key usage, and whether
+/// the intermediates are CAs: judging the path is the wallet's, against its own trust list.
 /// </para>
 /// <para>
 /// The caller keeps ownership of the key and the certificates, and must neither dispose them nor
@@ -79,51 +79,9 @@ public sealed class MdocReaderKey
     /// <summary>The checks the remarks list, in that order; returns the hash the key's curve selects.</summary>
     private static HashAlgorithmName Check(ECDsa key, X509Certificate2[] certificatePath)
     {
-        if (certificatePath.Length == 0)
-        {
-            throw new ArgumentException("The certificate path must hold at least the reader certificate.", nameof(certificatePath));
-        }
+        ReaderCertificatePath.Check(certificatePath, nameof(certificatePath), "x5chain");
 
-        if (certificatePath.Any(c => c is null))
-        {
-            throw new ArgumentException("The certificate path must not hold a null entry.", nameof(certificatePath));
-        }
-
-        // A self-issued certificate is nearly always the root. The rare one that is not, a CA's
-        // key-rollover link certificate (RFC 5280 section 6.1), is refused too: this library does not
-        // support a path through one. Anything above the reader certificate that is not self-issued
-        // may still be the anchor a wallet holds, which no certificate can say about itself; that one
-        // is the caller's to leave out.
-        var selfIssued = certificatePath.FirstOrDefault(c => SameEncoding(c.SubjectName, c.IssuerName));
-        if (selfIssued is not null)
-        {
-            throw new ArgumentException(
-                $"The certificate path holds a self-issued certificate ({selfIssued.Subject}), one naming itself as its "
-                + "issuer as a root does. A trust anchor must never travel in x5chain: pass the reader certificate and "
-                + "its intermediates only.",
-                nameof(certificatePath));
-        }
-
-        for (var i = 0; i + 1 < certificatePath.Length; i++)
-        {
-            if (!SameEncoding(certificatePath[i].IssuerName, certificatePath[i + 1].SubjectName))
-            {
-                throw new ArgumentException(
-                    $"Certificate {i} in the path ({certificatePath[i].Subject}) is not issued by the one after it "
-                    + $"({certificatePath[i + 1].Subject}). The path runs from the reader certificate up, each followed by its issuer.",
-                    nameof(certificatePath));
-            }
-        }
-
-        var (curveOid, keyInfo, leafKeyInfo, leafIsCa) = ReadReaderCertificate(key, certificatePath[0]);
-        if (leafIsCa)
-        {
-            throw new ArgumentException(
-                $"The reader certificate ({certificatePath[0].Subject}) is a CA certificate. readerAuth is signed with an "
-                + "end-entity access certificate, so the path is probably in the wrong order.",
-                nameof(certificatePath));
-        }
-
+        var (curveOid, keyInfo, leafKeyInfo) = ReadKeys(key, certificatePath[0]);
         if (curveOid is null || !HashByCurveOid.TryGetValue(curveOid, out var hash))
         {
             throw new ArgumentException(
@@ -152,28 +110,13 @@ public sealed class MdocReaderKey
     internal HashAlgorithmName HashAlgorithm { get; }
 
     /// <summary>
-    /// The key's curve and public key, the reader certificate's public key (null when it holds no EC
-    /// key), and whether the reader certificate says it is a CA.
+    /// The key's curve and public key, and the reader certificate's public key (null when it holds no EC
+    /// key).
     /// </summary>
-    private static (string? CurveOid, byte[] KeyInfo, byte[]? LeafKeyInfo, bool LeafIsCa) ReadReaderCertificate(
-        ECDsa key, X509Certificate2 leaf)
+    private static (string? CurveOid, byte[] KeyInfo, byte[]? LeafKeyInfo) ReadKeys(ECDsa key, X509Certificate2 leaf)
     {
-        var leafIsCa = leaf.Extensions.OfType<X509BasicConstraintsExtension>().Any(c => c.CertificateAuthority);
         var curveOid = key.ExportParameters(includePrivateParameters: false).Curve.Oid?.Value;
         using var leafKey = leaf.GetECDsaPublicKey();
-        return (curveOid, key.ExportSubjectPublicKeyInfo(), leafKey?.ExportSubjectPublicKeyInfo(), leafIsCa);
+        return (curveOid, key.ExportSubjectPublicKeyInfo(), leafKey?.ExportSubjectPublicKeyInfo());
     }
-
-    /// <summary>
-    /// Whether two names are encoded identically. This checks the caller's own configuration before
-    /// signing, not an adversary's input, and the wallet judges the path itself. Byte equality is what
-    /// a path issued the usual way meets, and it needs no Unicode tables, globalization mode or
-    /// platform name rendering to decide.
-    /// </summary>
-    // SPEC: RFC 5280 section 4.1.2.6 (a): "When the subject of the certificate is a CA, the subject
-    // field MUST be encoded in the same way as it is encoded in the issuer field (Section 4.1.2.4) in
-    // all certificates issued by the subject CA." Section 7.1's matching is looser (case, insignificant
-    // space), so a conforming path with names that differ only that way is refused here.
-    private static bool SameEncoding(X500DistinguishedName a, X500DistinguishedName b) =>
-        a.RawData.AsSpan().SequenceEqual(b.RawData);
 }

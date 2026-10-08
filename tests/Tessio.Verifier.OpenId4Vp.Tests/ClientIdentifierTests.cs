@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
+using Tessio.Verifier.Core.Mdoc.Tests;
 
 namespace Tessio.Verifier.OpenId4Vp.Tests;
 
@@ -17,18 +18,8 @@ namespace Tessio.Verifier.OpenId4Vp.Tests;
 /// </remarks>
 public sealed class ClientIdentifierTests : IDisposable
 {
-    private readonly ECDsa _key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-    private readonly X509Certificate2 _certificate;
-
-    public ClientIdentifierTests()
-    {
-        var request = new CertificateRequest("CN=verifier.example", _key, HashAlgorithmName.SHA256);
-        var san = new SubjectAlternativeNameBuilder();
-        san.AddDnsName("verifier.example");
-        request.CertificateExtensions.Add(san.Build());
-        _certificate = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
-    }
+    // A leaf issued by a test root: the builder refuses a self-signed signer, as HAIP 1.0 section 5 does.
+    private readonly TestReaderCertificates _certificates = new();
 
     /// <summary>Base64url by hand, so the test does not simply mirror the encoder the code under test uses.</summary>
     private static string Base64UrlIndependently(byte[] bytes) =>
@@ -40,13 +31,13 @@ public sealed class ClientIdentifierTests : IDisposable
         var builder = new SignedPresentationRequestBuilder(new PresentationRequestBuilderOptions
         {
             SigningCredentials = new SigningCredentials(
-                new ECDsaSecurityKey(_key), SecurityAlgorithms.EcdsaSha256),
-            SigningCertificateChain = [_certificate],
+                new ECDsaSecurityKey(_certificates.ReaderKey), SecurityAlgorithms.EcdsaSha256),
+            SigningCertificateChain = [_certificates.Reader],
         });
 
         var request = await builder.BuildAsync(new PresentationRequestOptions
         {
-            ClientId = ClientIdentifier.X509Hash(_certificate),
+            ClientId = ClientIdentifier.X509Hash(_certificates.Reader),
             Nonce = "nonce-123",
             DcqlQueryJson = """{"credentials":[{"id":"pid","format":"dc+sd-jwt","claims":[{"path":["age_over_18"]}]}]}""",
             ResponseUri = new Uri("https://verifier.example/verify/callback"),
@@ -64,7 +55,7 @@ public sealed class ClientIdentifierTests : IDisposable
     [Fact]
     public void X509Hash_is_base64url_of_a_sha256_digest_without_padding()
     {
-        var value = ClientIdentifier.X509Hash(_certificate)["x509_hash:".Length..];
+        var value = ClientIdentifier.X509Hash(_certificates.Reader)["x509_hash:".Length..];
 
         // 32 bytes base64url encoded is 43 characters once the padding is stripped.
         Assert.Equal(43, value.Length);
@@ -80,16 +71,12 @@ public sealed class ClientIdentifierTests : IDisposable
         using var other = new CertificateRequest("CN=other.example", otherKey, HashAlgorithmName.SHA256)
             .CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
 
-        Assert.NotEqual(ClientIdentifier.X509Hash(_certificate), ClientIdentifier.X509Hash(other));
+        Assert.NotEqual(ClientIdentifier.X509Hash(_certificates.Reader), ClientIdentifier.X509Hash(other));
     }
 
     [Fact]
     public void X509Hash_rejects_a_missing_certificate() =>
         Assert.Throws<ArgumentNullException>(() => ClientIdentifier.X509Hash(null!));
 
-    public void Dispose()
-    {
-        _key.Dispose();
-        _certificate.Dispose();
-    }
+    public void Dispose() => _certificates.Dispose();
 }

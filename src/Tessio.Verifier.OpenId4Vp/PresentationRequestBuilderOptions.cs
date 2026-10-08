@@ -13,11 +13,40 @@ public sealed class PresentationRequestBuilderOptions
     /// </summary>
     public required SigningCredentials SigningCredentials { get; set; }
 
-    /// <summary>Certificate chain to advertise in the JAR <c>x5c</c> header, leaf certificate first.</summary>
+    /// <summary>
+    /// Certificate chain to advertise in the JAR <c>x5c</c> header: the access certificate that holds the
+    /// signing key first, then any intermediates, never the trust anchor.
+    /// </summary>
     /// <remarks>
-    /// Required in practice for the <c>x509_san_dns</c> client_id scheme: the wallet matches the client_id
-    /// against this certificate's SAN and has no other way to obtain it, so a signed request without x5c
-    /// is rejected as a malformed JAR before any trust decision is reached.
+    /// OpenID4VP 1.0 section 5.9.3 requires x5c for the <c>x509_san_dns</c> and <c>x509_hash</c> client
+    /// identifier prefixes: the wallet matches the client identifier against the leaf it carries and has
+    /// no other way to obtain it. HAIP 1.0 section 5 requires <c>x509_hash</c> for signed requests, and
+    /// for a request sent by redirect ETSI TS 119 472-2 OIDFVP-HAIP-REDIRECTS_RO-01 requires x5c outright.
+    /// When null, requests carry no x5c, so they cannot use either x509 prefix. An empty list is refused
+    /// rather than read as null.
+    /// <para>
+    /// <see cref="SignedPresentationRequestBuilder"/> checks the chain once, when it is created, and
+    /// refuses it with an <see cref="ArgumentException"/> when: it holds a null entry; any certificate
+    /// in it names itself as its issuer (a root, or a self-signed signer); a certificate is not issued
+    /// by the one after it; or the first certificate is a CA. Names are compared by their encoded bytes.
+    /// So a path whose names differ only in case, spacing or string type is refused as unlinked, and a
+    /// self-signed certificate whose issuer is encoded differently from its subject is not recognised
+    /// as one; nor can an anchor that is not itself a root be recognised. When
+    /// <see cref="SigningCredentials"/> holds an <see cref="ECDsaSecurityKey"/>, the first certificate
+    /// must also hold its public half. That compares the public half declared in the key: with a
+    /// custom <see cref="CryptoProviderFactory"/> that signs elsewhere, it does not prove the remote key
+    /// is the same one. Any other <see cref="SecurityKey"/> type is not compared. Not checked at all:
+    /// validity periods, revocation, the signatures along the path, key usage and extended key usage,
+    /// and whether the intermediates are CAs. The wallet judges the path against its own trust list.
+    /// </para>
+    /// <para>
+    /// The builder reads this and <see cref="SigningCredentials"/> once, when it is created: it keeps
+    /// the chain as encoded bytes, so assigning a new chain or changing this list afterwards changes
+    /// nothing, and disposing the certificates afterwards is safe. It keeps the
+    /// <see cref="SigningCredentials"/> instance itself, so assigning new credentials afterwards changes
+    /// nothing, but changing that instance or its key afterwards does. To rotate a key, create a new
+    /// builder.
+    /// </para>
     /// <para>
     /// Kept separate from <see cref="SigningCredentials"/> rather than read off an
     /// <c>X509SecurityKey</c>, because Microsoft.IdentityModel has no ES256 signature provider for that

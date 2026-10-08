@@ -3,6 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using Tessio.Verifier.Core.Mdoc.Tests;
 
 namespace Tessio.Verifier.OpenId4Vp.Tests;
 
@@ -14,18 +15,8 @@ namespace Tessio.Verifier.OpenId4Vp.Tests;
 /// </summary>
 public sealed class SignedRequestX5cTests : IDisposable
 {
-    private readonly ECDsa _key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-    private readonly X509Certificate2 _certificate;
-
-    public SignedRequestX5cTests()
-    {
-        var request = new CertificateRequest("CN=verifier.example", _key, HashAlgorithmName.SHA256);
-        var san = new SubjectAlternativeNameBuilder();
-        san.AddDnsName("verifier.example");
-        request.CertificateExtensions.Add(san.Build());
-        _certificate = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
-    }
+    // A leaf issued by a test root: the builder refuses a self-signed signer, as HAIP 1.0 section 5 does.
+    private readonly TestReaderCertificates _certificates = new();
 
     private static PresentationRequestOptions Options() => new()
     {
@@ -48,8 +39,8 @@ public sealed class SignedRequestX5cTests : IDisposable
         var builder = new SignedPresentationRequestBuilder(new PresentationRequestBuilderOptions
         {
             SigningCredentials = new SigningCredentials(
-                new ECDsaSecurityKey(_key), SecurityAlgorithms.EcdsaSha256),
-            SigningCertificateChain = [_certificate],
+                new ECDsaSecurityKey(_certificates.ReaderKey), SecurityAlgorithms.EcdsaSha256),
+            SigningCertificateChain = [_certificates.Reader],
         });
 
         var request = await builder.BuildAsync(Options());
@@ -63,7 +54,7 @@ public sealed class SignedRequestX5cTests : IDisposable
         // SPEC: RFC 7515 4.1.6 says base64, not base64url, and the leaf certificate comes first.
         var der = Convert.FromBase64String(x5c[0].GetString()!);
         using var presented = X509CertificateLoader.LoadCertificate(der);
-        Assert.Equal(_certificate.Thumbprint, presented.Thumbprint);
+        Assert.Equal(_certificates.Reader.Thumbprint, presented.Thumbprint);
     }
 
     [Fact]
@@ -73,7 +64,7 @@ public sealed class SignedRequestX5cTests : IDisposable
         var builder = new SignedPresentationRequestBuilder(new PresentationRequestBuilderOptions
         {
             SigningCredentials = new SigningCredentials(
-                new ECDsaSecurityKey(_key), SecurityAlgorithms.EcdsaSha256),
+                new ECDsaSecurityKey(_certificates.ReaderKey), SecurityAlgorithms.EcdsaSha256),
         });
 
         var request = await builder.BuildAsync(Options());
@@ -81,9 +72,5 @@ public sealed class SignedRequestX5cTests : IDisposable
         Assert.False(Header(request.SignedRequestObject).TryGetProperty("x5c", out _));
     }
 
-    public void Dispose()
-    {
-        _key.Dispose();
-        _certificate.Dispose();
-    }
+    public void Dispose() => _certificates.Dispose();
 }

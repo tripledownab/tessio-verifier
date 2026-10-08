@@ -14,4 +14,9 @@
     <ProjectReference Include="..\..\src\Tessio.Verifier.OpenId4Vp\Tessio.Verifier.OpenId4Vp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- One fixture for every test of a reader certificate path, linked rather than copied. -->
+    <Compile Include="..\Tessio.Verifier.Core.Mdoc.Tests\TestReaderCertificates.cs" Link="TestReaderCertificates.cs" />
+  </ItemGroup>
+
 </Project>
