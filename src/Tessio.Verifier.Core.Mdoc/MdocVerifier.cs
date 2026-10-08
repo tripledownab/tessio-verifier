@@ -78,6 +78,15 @@ public sealed class MdocVerifier
             return Failure(MdocErrorCodes.StructureInvalid, $"The DeviceResponse status is {response.Status}, not OK (0).");
         }
 
+        if (response.Documents.Count == 0 && response.HasZkDocuments)
+        {
+            // Its own code, not the generic structure error below: an operator must be able to tell an
+            // answer this library cannot verify from a malformed one. The zkDocuments member itself is
+            // not parsed, so nothing here says it is well formed.
+            return Failure(MdocErrorCodes.ZkPresentationUnsupported,
+                "The DeviceResponse carries zero-knowledge presentations (zkDocuments) and no documents; zero-knowledge presentations are not verified.");
+        }
+
         if (response.Documents.Count != 1)
         {
             // SPEC: HAIP — one DeviceResponse per DCQL query; multi-document responses are a later milestone.

@@ -76,6 +76,7 @@ internal static class DeviceResponseParser
         string? version = null;
         long status = -1;
         List<ParsedDocument> documents = [];
+        var hasZkDocuments = false;
 
         reader.ReadStartMap();
         while (reader.PeekState() != CborReaderState.EndMap)
@@ -97,6 +98,14 @@ internal static class DeviceResponseParser
 
                     reader.ReadEndArray();
                     break;
+                case "zkDocuments":
+                    // SPEC: the member name follows the example of a zero-knowledge response in the age
+                    // verification technical specification 1.1.0, Annex A, A.11.
+                    // Counted, not read: a zero-knowledge presentation is not verified here, and the
+                    // verifier reports one by its own code instead of as a response with no documents.
+                    // Only a non-empty array counts, so an empty or non-array value stays what it was.
+                    hasZkDocuments = SkipCountingArrayItems(reader) > 0;
+                    break;
                 default:
                     reader.SkipValue();
                     break;
@@ -110,7 +119,34 @@ internal static class DeviceResponseParser
             throw new MdocProcessingException(MdocErrorCodes.StructureInvalid, "The DeviceResponse lacks version or status.");
         }
 
-        return new ParsedDeviceResponse { Version = version, Documents = documents, Status = status };
+        return new ParsedDeviceResponse
+        {
+            Version = version,
+            Documents = documents,
+            Status = status,
+            HasZkDocuments = hasZkDocuments,
+        };
+    }
+
+    /// <summary>Skips one value and returns how many items it held if it was an array, otherwise 0.</summary>
+    private static int SkipCountingArrayItems(CborReader reader)
+    {
+        if (reader.PeekState() != CborReaderState.StartArray)
+        {
+            reader.SkipValue();
+            return 0;
+        }
+
+        reader.ReadStartArray();
+        var items = 0;
+        while (reader.PeekState() != CborReaderState.EndArray)
+        {
+            reader.SkipValue();
+            items++;
+        }
+
+        reader.ReadEndArray();
+        return items;
     }
 
     private static ParsedDocument ReadDocument(CborReader reader)
