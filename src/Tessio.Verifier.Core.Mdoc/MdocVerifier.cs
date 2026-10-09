@@ -13,32 +13,58 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// Device authentication verifies the holder's signature over the OpenID4VP session transcript
 /// (Annex B.2.6.1), built from the context's client_id, nonce, encryption key thumbprint and
 /// response_uri. Required by default (<see cref="MdocVerifierOptions.RequireDeviceAuth"/>).
+/// <para>
+/// An MSO that carries a <c>status</c> element has its revocation checked, through a status list or an
+/// identifier list, unless <see cref="MdocVerifierOptions.CheckStatus"/> is off.
+/// </para>
 /// </remarks>
 public sealed class MdocVerifier
 {
     /// <summary>The OpenID4VP credential format identifier this verifier accepts.</summary>
     public const string Format = "mso_mdoc";
 
+    private static readonly HttpClient DefaultHttpClient = OutboundFetch.CreateClient();
+
     private readonly ITrustListResolver _trustListResolver;
     private readonly MdocVerifierOptions _options;
     private readonly TimeProvider _clock;
+    private readonly MsoRevocationChecker _revocation;
 
     /// <summary>Creates a verifier.</summary>
     /// <param name="trustListResolver">
     /// Trust seam deciding whether the Document Signer chain anchors on a trusted IACA root. The
-    /// issuer identifier passed to it is the Document Signer certificate subject.
+    /// issuer identifier passed to it is the Document Signer certificate subject. It is also asked about an
+    /// MSO revocation list's anchor, which it must place on the same anchor as the Document Signer, unless the
+    /// MSO reference names the certificate itself (see <see cref="MdocVerifierOptions.CheckStatus"/>).
     /// </param>
     /// <param name="options">Policy options; defaults match the SD-JWT verifier.</param>
     /// <param name="clock">Time source for the MSO validity window; system clock when null.</param>
+    /// <param name="httpClient">
+    /// HTTP client for MSO revocation lists. Every fetch, on any client, has a deadline and a size limit.
+    /// When null, a shared default also refuses non-public addresses and redirects, and ignores the process
+    /// proxy. A client supplied here gets none of those three, so it must enforce them itself.
+    /// </param>
     public MdocVerifier(
         ITrustListResolver trustListResolver,
         MdocVerifierOptions? options = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        HttpClient? httpClient = null)
     {
         ArgumentNullException.ThrowIfNull(trustListResolver);
         _trustListResolver = trustListResolver;
         _options = options ?? new MdocVerifierOptions();
         _clock = clock ?? TimeProvider.System;
+        _revocation = new MsoRevocationChecker(
+            httpClient ?? DefaultHttpClient, _trustListResolver, _clock, _options.ClockSkew, _options.StatusListCacheDuration);
+    }
+
+    /// <summary>Creates a verifier. Kept so code compiled against earlier versions still binds.</summary>
+    /// <param name="trustListResolver">See the four-parameter constructor.</param>
+    /// <param name="options">Policy options; defaults when null.</param>
+    /// <param name="clock">Time source; system clock when null.</param>
+    public MdocVerifier(ITrustListResolver trustListResolver, MdocVerifierOptions? options, TimeProvider? clock)
+        : this(trustListResolver, options, clock, httpClient: null)
+    {
     }
 
     /// <summary>Verifies one presented mdoc.</summary>
@@ -143,6 +169,15 @@ public sealed class MdocVerifier
                 Code = MdocErrorCodes.IssuerUntrusted,
                 Message = trust.Reason ?? "The Document Signer does not chain to a trusted IACA root.",
             });
+        }
+
+        // SPEC: draft-ietf-oauth-status-list-20 section 8.3, the status is evaluated only for a credential
+        // that is otherwise valid, and its list is not fetched for one that is not, the use case requiring nothing more. Untrusted counts as not
+        // valid: the uri is the credential's own, and an untrusted credential fails whatever its list says.
+        if (_options.CheckStatus && errors.Count == 0 && mso.StatusEncoded is { } status)
+        {
+            errors.AddRange(await _revocation.CheckAsync(
+                status, new MsoRevocationTrust.Credential(resolution.CertificateChain, trust), ct).ConfigureAwait(false));
         }
 
         var issuer = new IssuerInfo

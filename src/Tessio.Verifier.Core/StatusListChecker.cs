@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -35,9 +33,9 @@ internal sealed class StatusListChecker
     /// the cache useless the moment a Status Issuer served one list for several credential issuers:
     /// each one missed the other's entry and then overwrote it, so every check re-fetched.
     /// </remarks>
-    private sealed record CachedList(int Bits, byte[] List, DateTimeOffset Until);
+    private sealed record CachedList(int Bits, byte[] List);
 
-    private readonly ConcurrentDictionary<string, CachedList> _cache = new(StringComparer.Ordinal);
+    private readonly StatusListCache<CachedList> _cache = new();
     private readonly HttpClient _httpClient;
     private readonly IssuerKeyResolver _keyResolver;
     private readonly ITrustListResolver _trustListResolver;
@@ -120,9 +118,9 @@ internal sealed class StatusListChecker
             return [Error(ErrorCodes.StatusInvalid, $"The status list uri '{uri}' is not an HTTPS URI.")];
         }
 
-        if (_cache.TryGetValue(uri, out var cached) && cached.Until > _clock.GetUtcNow())
+        if (_cache.Get(uri, _clock.GetUtcNow()) is { } cached)
         {
-            return EvaluateIndex(cached.Bits, cached.List, idx);
+            return StatusListValues.Evaluate(cached.Bits, cached.List, idx);
         }
 
         string statusListJwt;
@@ -136,6 +134,9 @@ internal sealed class StatusListChecker
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException or UriFormatException)
         {
+            // The caller's own cancellation propagates, even when it lands while a fetch is already failing: it
+            // asks to stop, and is not an unreachable list.
+            ct.ThrowIfCancellationRequested();
             // Fail closed: an unreachable status list means the revocation state is unknown.
             return [Error(ErrorCodes.StatusUnresolvable, $"The status list at '{uri}' could not be retrieved: {e.Message}")];
         }
@@ -282,31 +283,30 @@ internal sealed class StatusListChecker
             || !statusListProp.TryGetProperty("bits", out var bitsProp)
             || !statusListProp.TryGetProperty("lst", out var lstProp)
             || !bitsProp.TryGetInt32(out var bits)
-            || bits is not (1 or 2 or 4 or 8)
+            || !StatusListValues.IsAllowedBits(bits)
             || lstProp.ValueKind != JsonValueKind.String)
         {
             return [Error(ErrorCodes.StatusInvalid, "The status list token carries no valid status_list claim.")];
         }
 
-        byte[] decompressed;
+        byte[] compressed;
         try
         {
-            using var compressed = new MemoryStream(Base64UrlEncoder.DecodeBytes(lstProp.GetString()!));
-            await using var zlib = new ZLibStream(compressed, CompressionMode.Decompress);
-            decompressed = await OutboundFetch.ReadBoundedAsync(
-                zlib, "decompressed status list", OutboundFetch.MaxDecompressedStatusListBytes, ct).ConfigureAwait(false);
+            compressed = Base64UrlEncoder.DecodeBytes(lstProp.GetString()!);
         }
-        catch (Exception e) when (e is InvalidDataException or FormatException)
+        catch (FormatException)
         {
             return [Error(ErrorCodes.StatusInvalid, "The status list bitstring could not be decompressed.")];
         }
-        catch (OutboundFetch.TooLargeException e)
+
+        var (decompressed, decompressFailure) = await StatusListValues.DecompressAsync(compressed, ct).ConfigureAwait(false);
+        if (decompressed is null)
         {
-            return [Error(ErrorCodes.StatusInvalid, e.Message)];
+            return [decompressFailure!];
         }
 
         CacheList(token, uri, bits, decompressed, expiresAt);
-        return EvaluateIndex(bits, decompressed, idx);
+        return StatusListValues.Evaluate(bits, decompressed, idx);
     }
 
     /// <summary>
@@ -317,58 +317,13 @@ internal sealed class StatusListChecker
     private void CacheList(
         JsonWebToken token, string uri, int bits, byte[] list, DateTimeOffset? expiresAt)
     {
-        var lifetime = _cacheDuration;
-        if (token.TryGetClaim("ttl", out var ttlClaim)
-            && long.TryParse(ttlClaim.Value, System.Globalization.CultureInfo.InvariantCulture, out var ttlSeconds)
-            && TimeSpan.FromSeconds(ttlSeconds) < lifetime)
-        {
-            lifetime = TimeSpan.FromSeconds(ttlSeconds);
-        }
-
+        long? ttlSeconds = token.TryGetClaim("ttl", out var ttlClaim)
+            && long.TryParse(ttlClaim.Value, System.Globalization.CultureInfo.InvariantCulture, out var ttl)
+                ? ttl
+                : null;
         var now = _clock.GetUtcNow();
-        var until = now + lifetime;
-        if (expiresAt is { } exp && exp < until)
-        {
-            until = exp;
-        }
-
-        if (until <= now)
-        {
-            return;
-        }
-
-        // Opportunistic eviction keeps the cache bounded to live lists (one entry per status uri).
-        foreach (var (key, entry) in _cache)
-        {
-            if (entry.Until <= now)
-            {
-                _cache.TryRemove(key, out _);
-            }
-        }
-
-        _cache[uri] = new CachedList(bits, list, until);
-    }
-
-    private static List<VerificationError> EvaluateIndex(int bits, byte[] list, long idx)
-    {
-        // SPEC: §4.1 — blocks are packed into bytes starting at the least significant bit.
-        var byteIndex = idx * bits / 8;
-        if (byteIndex >= list.Length)
-        {
-            return [Error(ErrorCodes.StatusInvalid, $"Status index {idx} is outside the status list.")];
-        }
-
-        var shift = (int)(idx * bits % 8);
-        var value = (list[byteIndex] >> shift) & ((1 << bits) - 1);
-
-        // SPEC: §7.1 — registered status values.
-        return value switch
-        {
-            0x00 => [],
-            0x01 => [Error(ErrorCodes.CredentialRevoked, "The issuer has revoked this credential.")],
-            0x02 => [Error(ErrorCodes.CredentialSuspended, "The issuer has suspended this credential.")],
-            _ => [Error(ErrorCodes.CredentialStatusUnknown, $"The credential carries unrecognized status value 0x{value:X2}.")],
-        };
+        var until = StatusListValues.CacheUntil(now, _cacheDuration, ttlSeconds, expiresAt);
+        _cache.Set(uri, new CachedList(bits, list), until, now);
     }
 
     private static VerificationError Error(string code, string message) => new() { Code = code, Message = message };

@@ -96,6 +96,63 @@ public class StatusListCacheTests
     }
 
     [Fact]
+    public async Task ATtlTooLargeForATimeSpan_LeavesTheCacheDurationInCharge()
+    {
+        // The token chooses its ttl. One past what a TimeSpan holds must neither throw out of verification
+        // nor lengthen the cache past the configured ceiling.
+        var builder = new TestCredentialBuilder { Status = (0, StatusUri) };
+        var (verifier, http) = VerifierFor(
+            builder, builder.BuildStatusListToken(StatusUri, bits: 1, statuses: [0], ttl: long.MaxValue),
+            new SdJwtVcVerifierOptions { StatusListCacheDuration = TimeSpan.Zero });
+        var credential = new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() };
+
+        Assert.True((await verifier.VerifyAsync(credential, Context(), CancellationToken.None)).IsValid);
+        Assert.True((await verifier.VerifyAsync(credential, Context(), CancellationToken.None)).IsValid);
+        Assert.Equal(2, StatusFetches(http));
+    }
+
+    [Fact]
+    public async Task ANegativeTtlTooLargeForATimeSpan_ForbidsCaching()
+    {
+        var builder = new TestCredentialBuilder { Status = (0, StatusUri) };
+        var (verifier, http) = VerifierFor(
+            builder, builder.BuildStatusListToken(StatusUri, bits: 1, statuses: [0], ttl: long.MinValue));
+        var credential = new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() };
+
+        Assert.True((await verifier.VerifyAsync(credential, Context(), CancellationToken.None)).IsValid);
+        Assert.True((await verifier.VerifyAsync(credential, Context(), CancellationToken.None)).IsValid);
+        Assert.Equal(2, StatusFetches(http));
+    }
+
+    [Fact]
+    public async Task ACacheDurationPastTheCalendarsEnd_Saturates()
+    {
+        var builder = new TestCredentialBuilder { Status = (0, StatusUri) };
+        var (verifier, http) = VerifierFor(
+            builder, builder.BuildStatusListToken(StatusUri, bits: 1, statuses: [0]),
+            new SdJwtVcVerifierOptions { StatusListCacheDuration = TimeSpan.MaxValue });
+        var credential = new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() };
+
+        Assert.True((await verifier.VerifyAsync(credential, Context(), CancellationToken.None)).IsValid);
+        Assert.True((await verifier.VerifyAsync(credential, Context(), CancellationToken.None)).IsValid);
+        Assert.Equal(1, StatusFetches(http));
+    }
+
+    [Fact]
+    public async Task ANegativeCacheDuration_MeansNoCaching()
+    {
+        var builder = new TestCredentialBuilder { Status = (0, StatusUri) };
+        var (verifier, http) = VerifierFor(
+            builder, builder.BuildStatusListToken(StatusUri, bits: 1, statuses: [0]),
+            new SdJwtVcVerifierOptions { StatusListCacheDuration = TimeSpan.MinValue });
+        var credential = new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() };
+
+        Assert.True((await verifier.VerifyAsync(credential, Context(), CancellationToken.None)).IsValid);
+        Assert.True((await verifier.VerifyAsync(credential, Context(), CancellationToken.None)).IsValid);
+        Assert.Equal(2, StatusFetches(http));
+    }
+
+    [Fact]
     public async Task FailedResolution_IsNotCached_AndStaysFailClosed()
     {
         // No mapping for the status uri: both verifications must attempt the fetch and fail closed.

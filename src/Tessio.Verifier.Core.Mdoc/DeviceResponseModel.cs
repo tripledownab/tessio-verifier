@@ -86,4 +86,7 @@ internal sealed record MobileSecurityObject
     public required DateTimeOffset ValidFrom { get; init; }
 
     public required DateTimeOffset ValidUntil { get; init; }
+
+    /// <summary>The encoded <c>status</c> element, when the MSO carries one (see <see cref="MsoStatus"/>).</summary>
+    public byte[]? StatusEncoded { get; init; }
 }
