@@ -44,4 +44,12 @@ public static class MdocErrorCodes
 
     /// <summary>The device signature over the session transcript does not verify.</summary>
     public const string DeviceAuthInvalid = "mdoc_device_auth_invalid";
+
+    /// <summary>
+    /// The response carries zero-knowledge presentations (a non-empty <c>zkDocuments</c>) and no
+    /// documents, and this library does not verify zero-knowledge presentations. The requests this
+    /// library builds never ask for one, so with those requests this code means a wallet answered with
+    /// something the request did not ask for.
+    /// </summary>
+    public const string ZkPresentationUnsupported = "mdoc_zk_presentation_unsupported";
 }

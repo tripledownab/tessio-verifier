@@ -12,6 +12,13 @@ internal sealed record ParsedDeviceResponse
 
     /// <summary>DeviceResponse status code; 0 is OK.</summary>
     public required long Status { get; init; }
+
+    /// <summary>
+    /// Whether the response carries a non-empty <c>zkDocuments</c> array: zero-knowledge presentations,
+    /// which this library does not verify. Recorded so a response made only of them can be reported as
+    /// what it is, rather than as an empty one.
+    /// </summary>
+    public bool HasZkDocuments { get; init; }
 }
 
 /// <summary>One document inside a DeviceResponse.</summary>
