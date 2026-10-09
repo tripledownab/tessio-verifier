@@ -41,6 +41,13 @@ internal static class OutboundFetch
     internal const long MaxStatusListTokenBytes = TokenValidationParameters.DefaultMaximumTokenSizeInBytes;
 
     /// <summary>
+    /// The largest MSO revocation list read. No token handler bounds a CWT, and the draft sets no limit
+    /// (-20 section 13.4 leaves size to the issuer, who may split a list), so this is ours: large enough for an
+    /// identifier list of well over a hundred thousand 16-byte identifiers, small enough to read in one go.
+    /// </summary>
+    internal const long MaxMsoRevocationListBytes = 4L << 20;
+
+    /// <summary>
     /// The largest decompressed status list, 2^29 1-bit entries. zlib inflates up to about 1000:1, so a
     /// token inside the limit above could otherwise expand to gigabytes.
     /// </summary>

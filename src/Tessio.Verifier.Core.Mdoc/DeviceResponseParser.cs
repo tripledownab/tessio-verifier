@@ -353,7 +353,7 @@ internal static class DeviceResponseParser
     {
         string? version = null, digestAlgorithm = null, docType = null;
         Dictionary<string, IReadOnlyDictionary<long, byte[]>> valueDigests = new(StringComparer.Ordinal);
-        byte[]? deviceKey = null;
+        byte[]? deviceKey = null, status = null;
         DateTimeOffset? signed = null, validFrom = null, validUntil = null;
 
         reader.ReadStartMap();
@@ -404,6 +404,10 @@ internal static class DeviceResponseParser
 
                     reader.ReadEndMap();
                     break;
+                case "status":
+                    // Kept encoded and read only if status is checked (MsoStatus).
+                    status = reader.ReadEncodedValue().ToArray();
+                    break;
                 case "validityInfo":
                     reader.ReadStartMap();
                     while (reader.PeekState() != CborReaderState.EndMap)
@@ -451,6 +455,7 @@ internal static class DeviceResponseParser
             Signed = signed.Value,
             ValidFrom = validFrom.Value,
             ValidUntil = validUntil.Value,
+            StatusEncoded = status,
         };
     }
 

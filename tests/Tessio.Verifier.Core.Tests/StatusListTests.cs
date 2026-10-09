@@ -406,4 +406,35 @@ public class StatusListTests
         Assert.True(result.IsValid);
         Assert.DoesNotContain(StatusUri, http.Requested);
     }
+
+    [Fact]
+    public async Task TheCallersCancellationDuringTheFetch_Propagates()
+    {
+        using var builder = CredentialWithStatus(idx: 0);
+        var fake = new FakeHttpHandler().Map(
+            "https://issuer.example/.well-known/jwt-vc-issuer",
+            $$"""{"issuer":"{{builder.Issuer}}","jwks":{{builder.BuildJwksJson()}}}""");
+        using var cancelled = new CancellationTokenSource();
+        var verifier = new SdJwtVcVerifier(
+            new FakeTrustListResolver(), options: null,
+            new HttpClient(new CancelsAt(StatusUri, cancelled) { InnerHandler = fake }));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => verifier.VerifyAsync(
+            new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() }, Context(), cancelled.Token));
+    }
+
+    /// <summary>Cancels the caller's token when <paramref name="url"/> is requested, and reports it.</summary>
+    private sealed class CancelsAt(string url, CancellationTokenSource source) : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (request.RequestUri!.ToString() == url)
+            {
+                source.Cancel();
+                ct.ThrowIfCancellationRequested();
+            }
+
+            return base.SendAsync(request, ct);
+        }
+    }
 }

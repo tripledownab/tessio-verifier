@@ -16,19 +16,48 @@ internal sealed class MdocTestBuilder : IDisposable
     public const string DefaultDocType = "org.iso.18013.5.1.mDL";
     public const string DefaultNamespace = "org.iso.18013.5.1";
 
-    private readonly ECDsa _iacaKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    private readonly ECDsa _iacaKey;
+    private readonly bool _ownsIaca;
     private readonly ECDsa _dsKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly ECDsa _deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
-    public MdocTestBuilder()
+    /// <param name="iacaSubject">
+    /// The IACA's name. Two builders trusted side by side get distinct names, so nothing about which issuer a
+    /// chain reaches depends on how a platform breaks a tie between same-named ones.
+    /// </param>
+    public MdocTestBuilder(string iacaSubject = "CN=Test IACA Root")
     {
-        var iacaReq = new CertificateRequest("CN=Test IACA Root", _iacaKey, HashAlgorithmName.SHA256);
+        _iacaKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        _ownsIaca = true;
+        var iacaReq = new CertificateRequest(iacaSubject, _iacaKey, HashAlgorithmName.SHA256);
         iacaReq.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        iacaReq.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(iacaReq.PublicKey, false));
         IacaCertificate = iacaReq.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(5));
+        DsCertificate = IssueDocumentSigner();
+    }
 
+    /// <summary>
+    /// A builder whose Document Signer is issued by <paramref name="issuer"/>, a CA the caller owns and
+    /// disposes; it may itself sit under another root.
+    /// </summary>
+    public MdocTestBuilder(X509Certificate2 issuer, ECDsa issuerKey)
+    {
+        _iacaKey = issuerKey;
+        IacaCertificate = issuer;
+        DsCertificate = IssueDocumentSigner();
+    }
+
+    private X509Certificate2 IssueDocumentSigner()
+    {
         var dsReq = new CertificateRequest("CN=Test Document Signer", _dsKey, HashAlgorithmName.SHA256);
-        DsCertificate = dsReq.Create(
-            IacaCertificate, DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1),
+        if (IacaCertificate.Extensions.OfType<X509SubjectKeyIdentifierExtension>().Any())
+        {
+            dsReq.CertificateExtensions.Add(X509AuthorityKeyIdentifierExtension.CreateFromCertificate(IacaCertificate, true, false));
+        }
+
+        // By key rather than by certificate, so an issuer handed in without its private key attached works too.
+        return dsReq.Create(
+            IacaCertificate.SubjectName, X509SignatureGenerator.CreateForECDsa(_iacaKey), DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1),
             Guid.NewGuid().ToByteArray());
     }
 
@@ -37,6 +66,18 @@ internal sealed class MdocTestBuilder : IDisposable
     public X509Certificate2 DsCertificate { get; }
 
     public ECDsa DeviceKey => _deviceKey;
+
+    /// <summary>The key that issued <see cref="DsCertificate"/>, for issuing MSO revocation list signers.</summary>
+    public ECDsa IacaKey => _iacaKey;
+
+    /// <summary>A certificate appended to the MSO's x5chain, as a presenter could add to the unprotected header.</summary>
+    public X509Certificate2? ExtraX5ChainCertificate { get; set; }
+
+    /// <summary>Put only the Document Signer in the MSO's x5chain, not the certificate that issued it.</summary>
+    public bool X5ChainWithoutIssuer { get; set; }
+
+    /// <summary>An encoded MSO <c>status</c> element to sign into the MSO, or null for none.</summary>
+    public byte[]? MsoStatus { get; set; }
 
     public string DocType { get; set; } = DefaultDocType;
 
@@ -202,7 +243,7 @@ internal sealed class MdocTestBuilder : IDisposable
     private byte[] SignMso(List<byte[]> digests)
     {
         var mso = new CborWriter(CborConformanceMode.Lax);
-        mso.WriteStartMap(6);
+        mso.WriteStartMap(MsoStatus is null ? 6 : 7);
         mso.WriteTextString("version");
         mso.WriteTextString("1.0");
         mso.WriteTextString("digestAlgorithm");
@@ -235,6 +276,12 @@ internal sealed class MdocTestBuilder : IDisposable
         mso.WriteTextString("validUntil");
         WriteTDate(mso, ValidUntil);
         mso.WriteEndMap();
+        if (MsoStatus is not null)
+        {
+            mso.WriteTextString("status");
+            mso.WriteEncodedValue(MsoStatus);
+        }
+
         mso.WriteEndMap();
 
         // MobileSecurityObjectBytes = #6.24(bstr .cbor MSO), signed as the COSE_Sign1 payload.
@@ -250,10 +297,30 @@ internal sealed class MdocTestBuilder : IDisposable
 
     private byte[] EncodeChain()
     {
+        List<byte[]> chain = [DsCertificate.RawData];
+        if (!X5ChainWithoutIssuer)
+        {
+            chain.Add(IacaCertificate.RawData);
+        }
+
+        if (ExtraX5ChainCertificate is { } extra)
+        {
+            chain.Add(extra.RawData);
+        }
+
         var w = new CborWriter(CborConformanceMode.Lax);
-        w.WriteStartArray(2);
-        w.WriteByteString(DsCertificate.RawData);
-        w.WriteByteString(IacaCertificate.RawData);
+        if (chain.Count == 1)
+        {
+            w.WriteByteString(chain[0]);
+            return w.Encode();
+        }
+
+        w.WriteStartArray(chain.Count);
+        foreach (var certificate in chain)
+        {
+            w.WriteByteString(certificate);
+        }
+
         w.WriteEndArray();
         return w.Encode();
     }
@@ -276,9 +343,13 @@ internal sealed class MdocTestBuilder : IDisposable
 
     public void Dispose()
     {
-        IacaCertificate.Dispose();
         DsCertificate.Dispose();
-        _iacaKey.Dispose();
+        if (_ownsIaca)
+        {
+            IacaCertificate.Dispose();
+            _iacaKey.Dispose();
+        }
+
         _dsKey.Dispose();
         _deviceKey.Dispose();
     }

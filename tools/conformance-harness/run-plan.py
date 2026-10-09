@@ -75,6 +75,21 @@ EXPECTED = {
     "oid4vp-1final-verifier-invalid-kb-jwt-aud": REJECT,
     "oid4vp-1final-verifier-kb-jwt-iat-in-past": REJECT,
     "oid4vp-1final-verifier-kb-jwt-iat-in-future": REJECT,
+    # Revocation, as the hosted OpenID Foundation suite's own module summaries describe these modules; they are
+    # not in the suite's public source yet. A credential its list marks revoked, one whose identifier is on an
+    # identifier list (mdoc), and one that carries no status at all, which must be accepted because status is
+    # optional.
+    "oid4vp-1final-verifier-present-revoked-credential": REJECT,
+    "oid4vp-1final-verifier-present-credential-on-identifier-list": REJECT,
+    "oid4vp-1final-verifier-present-credential-without-status": ACCEPT,
+}
+
+# The code a rejection must carry, where any rejection would not do. A revoked credential refused because
+# its list could not be fetched or trusted is a rejection for the wrong reason: it says nothing about
+# whether the revocation itself was read.
+EXPECTED_CODE = {
+    "oid4vp-1final-verifier-present-revoked-credential": "credential_revoked",
+    "oid4vp-1final-verifier-present-credential-on-identifier-list": "credential_revoked",
 }
 
 MODULE_VARIANT = {"client_id_prefix": "x509_hash", "request_method": "request_uri_signed", "vp_profile": "haip"}
@@ -427,6 +442,8 @@ def check(outcome):
         return f"expected accept, got {[e['code'] for e in result['errors']]}"
     if expectation is REJECT and result["isValid"]:
         return "expected reject, the presentation was accepted"
+    if (code := EXPECTED_CODE.get(outcome["module"])) and code not in [e["code"] for e in result["errors"]]:
+        return f"expected {code}, got {[e['code'] for e in result['errors']]}"
     if expectation is ACCEPT and not result["disclosedClaims"]:
         # The failure this check exists for: ask for a claim the suite's credential does not carry and it
         # sends a valid presentation disclosing nothing. The module still verifies and the evidence page
