@@ -92,6 +92,12 @@ EXPECTED_CODE = {
     "oid4vp-1final-verifier-present-credential-on-identifier-list": "credential_revoked",
 }
 
+# No module tests trust or key resolution, so one of these on any module means our configuration is wrong. A
+# negative module still rejects under a wrong anchor, usually with its own code beside this one, so without the
+# check it reads as a pass on a configuration that would refuse every good credential. The same list as
+# configCodes in Pages.cs, which warns on the evidence page.
+TRUST_CODES = ("issuer_untrusted", "issuer_trust_unresolvable", "issuer_key_unresolvable")
+
 MODULE_VARIANT = {"client_id_prefix": "x509_hash", "request_method": "request_uri_signed", "vp_profile": "haip"}
 
 # Both ends are deliberately self-signed. The suite generates its own certificate and the harness signs
@@ -442,6 +448,9 @@ def check(outcome):
         return f"expected accept, got {[e['code'] for e in result['errors']]}"
     if expectation is REJECT and result["isValid"]:
         return "expected reject, the presentation was accepted"
+    if expectation is REJECT and (trust := [e["code"] for e in result["errors"] if e["code"] in TRUST_CODES]):
+        return (f"rejected on trust or key configuration ({trust}), not on the defect under test; see "
+                "Suite:TrustAnchors and the plan's signing key")
     if (code := EXPECTED_CODE.get(outcome["module"])) and code not in [e["code"] for e in result["errors"]]:
         return f"expected {code}, got {[e['code'] for e in result['errors']]}"
     if expectation is ACCEPT and not result["disclosedClaims"]:

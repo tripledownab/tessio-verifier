@@ -151,23 +151,35 @@ resolved from issuer metadata. When the key arrives in an `x5c` or `x5chain` hea
 proves nothing (anyone can put a name in a self-signed certificate), so the chain must anchor on a
 certificate you configure, and **with no anchors configured every such credential is rejected**.
 
-That failure is nastier than it sounds. The four positive modules fail outright, and the eight negative
-modules *appear to pass* while actually rejecting for the wrong reason: the credential was refused over
-trust configuration before the tampering under test could matter. The evidence page prints a warning
-when a rejection carries an untrusted issuer, precisely so this does not reach a screenshot.
+That failure is nastier than it sounds. The positive modules fail outright, but the negative modules
+*still reject*, usually with their own error code beside `issuer_untrusted`, so they look like passes on
+a configuration that would refuse every good credential. `run-plan.py` fails any module whose result
+carries a trust or key-resolution code, and the evidence page prints a warning on the same codes, so this
+does not reach a screenshot.
 
 - **`mso_mdoc`**: anchors are mandatory, because mdoc trust is X.509 only (IACA roots). The harness
-  refuses to start without them rather than producing worthless results. The OIDF suite signs every
-  mdoc with a fixed, self-signed multipaz test certificate that is both Document Signer and IACA
-  (subject `CN=certification.openid.net, O=OpenID Foundation`). Obtain it from the response's
-  `x5chain`, or copy the PEM constant from the suite source
-  (`src/main/kotlin/com/android/identity/testapp/TestAppUtils.kt`), save it as `suite-mdoc-iaca.pem`
-  outside the repository (see "Where key material lives") and list its path in
-  `Suite:TrustAnchors`. It rolls roughly annually
-  (this one expires 2027-08-03); re-extract it when the positive modules begin rejecting on trust.
-- **`dc+sd-jwt`**: depends on how the suite signs. Start with none, and if the modules reject with an
-  untrusted issuer, export the suite's issuer certificate and list its path in `Suite:TrustAnchors`.
-  PEM or DER both load.
+  refuses to start without them rather than producing worthless results. The suite publishes the IACA
+  root its mdocs chain to at `/mdoc-iaca-root.pem` on its own host, for example
+  `https://localhost.emobix.co.uk:8443/mdoc-iaca-root.pem` for a local suite (subject
+  `CN=certification.openid.net, O=OpenID Foundation`). Download it, save it outside the repository
+  (see "Where key material lives") and list its path in `Suite:TrustAnchors`. Pin the published root
+  rather than a certificate copied out of the suite's source or a response's `x5chain`: the suite
+  re-mints its Document Signer under that root on a rotation, so the root is the only stable thing to
+  pin. Check when it expires with `openssl x509 -in <file> -noout -enddate`.
+- **`dc+sd-jwt`**: the suite signs the credential with the key you paste into the plan's
+  `credential.signing_jwk`, and sends that JWK's `x5c` as the credential's `x5c` header. Make it a leaf
+  issued by a CA of your own, not a self-signed certificate: HAIP 1.0 Final §6.1.1 requires "The X.509
+  certificate of the trust anchor MUST NOT be included in the `x5c` JOSE header of the SD-JWT VC". So
+  1. mint a CA (`basicConstraints` `CA:TRUE`, key usage `keyCertSign`), and from it an end-entity
+     leaf (`CA:FALSE`, key usage `digitalSignature`);
+  2. put the leaf's private key and public coordinates in the JWK, and **only the leaf** in its `x5c`
+     (a JWK with no `x5c` is accepted by the suite, which then sends no `x5c` header at all);
+  3. list the **CA's** path in `Suite:TrustAnchors`.
+
+  A subjectAltName on the leaf naming the suite's host (`DNS:localhost.emobix.co.uk` locally) lets
+  the credential's `iss` stand as the issuer name; without one, the leaf's subject names the issuer.
+  Keep the CA's private key with the rest of the key material, since a new leaf needs it.
+  PEM or DER anchors both load.
 
 ## The order to do it in
 
@@ -178,7 +190,8 @@ in a single pass:
    certificate; the endpoint being wrong does not matter yet.
 2. **Copy the PEM** from the landing page at <https://localhost:5099>.
 3. **In the suite**, create the test plan: `oid4vp-1final-verifier-haip-test-plan`, choose
-   `credential_format`, paste the PEM into `client.request_object_trust_anchor_pem`.
+   `credential_format`, paste the PEM into `client.request_object_trust_anchor_pem`. For `sd_jwt_vc`,
+   also paste the issuer leaf's JWK into `credential.signing_jwk` (see "Trust anchors" above).
 4. **Copy the suite's authorization endpoint and issuer** out of the created plan into
    `appsettings.Local.json`.
 5. **Restart the harness.** The certificate persists, so the PEM you pasted in step 3 stays valid.

@@ -65,14 +65,14 @@ internal sealed record HarnessSettings
 
         // mdoc trust is X.509 only: the issuer signature is carried by an x5chain and
         // StaticTrustListResolver rejects every x5c credential when no anchors are configured. Without
-        // this check the whole plan would reject, the four positive modules would fail, and the eight
-        // negative modules would appear to pass while actually rejecting for the wrong reason.
+        // this check the whole plan would reject: the positive modules would fail, and the negative ones
+        // would still reject, looking like passes on a configuration that refuses every good credential.
         if (isMdoc && anchors.Count == 0)
         {
             throw new InvalidOperationException(
                 "Request:CredentialFormat is 'mso_mdoc', which needs Suite:TrustAnchors: mdoc trust is "
-                + "X.509 only, so an identifier-only trust list rejects every credential. Export the "
-                + "suite's issuer certificate and list its path.");
+                + "X.509 only, so an identifier-only trust list rejects every credential. Download the "
+                + "suite's IACA root from /mdoc-iaca-root.pem on its host and list its path.");
         }
 
         return new HarnessSettings
