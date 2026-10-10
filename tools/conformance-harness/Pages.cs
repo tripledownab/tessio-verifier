@@ -1,4 +1,5 @@
 using Tessio.Verifier.AspNetCore;
+using Tessio.Verifier.Core;
 
 namespace Tessio.Verifier.ConformanceHarness;
 
@@ -157,14 +158,16 @@ internal static class Pages
         // Keyed off the error code, not Issuer.Trusted: a failed issuer signature also leaves Trusted
         // false (trust cannot be established over a signature that does not verify), and on the
         // invalid-credential-signature module that IS the behaviour under test, not a misconfiguration.
-        // Only issuer_untrusted, and the issuer-resolution codes, mean the credential was refused
-        // before the tampering could matter.
-        string[] configCodes = ["issuer_untrusted", "issuer_key_unresolvable", "issuer_certificate_mismatch"];
+        // No module tests trust or key resolution, so any of these means our configuration is wrong, even
+        // when the module's own code sits beside it. run-plan.py's TRUST_CODES is the same list.
+        string[] configCodes =
+            [ErrorCodes.IssuerUntrusted, ErrorCodes.IssuerTrustUnresolvable, ErrorCodes.IssuerKeyUnresolvable];
         var trustNote = result is { IsValid: false } && result.Errors.Any(e => configCodes.Contains(e.Code))
             ? """
-              <p class="warn"><strong>The issuer was not trusted.</strong> On a negative module this is
-              probably the wrong rejection: the credential was refused before the tampering under test
-              could matter. Check <code>Suite:Issuer</code> and <code>Suite:TrustAnchors</code>.</p>
+              <p class="warn"><strong>The issuer was not trusted or its key not resolved.</strong> No module
+              tests either, so this is our configuration, not the tampering under test, even if that
+              tampering is reported too. Check <code>Suite:Issuer</code>, <code>Suite:TrustAnchors</code>
+              and the plan's signing key.</p>
               """
             : "";
 
