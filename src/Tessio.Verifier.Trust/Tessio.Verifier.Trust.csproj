@@ -15,6 +15,8 @@
     <!-- For MessageText, so a failure message leaving Core is made one line by the same rule as a trust
          reason leaving this package. -->
     <InternalsVisibleTo Include="Tessio.Verifier.Core" />
+    <!-- And for the verifier pipeline's own log lines, which carry the same kind of values. -->
+    <InternalsVisibleTo Include="Tessio.Verifier.AspNetCore" />
     <InternalsVisibleTo Include="Tessio.Verifier.Trust.Tests" />
   </ItemGroup>
 
