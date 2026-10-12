@@ -439,11 +439,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
     private static VerificationResult Invalid(VerificationError error, IssuerInfo? issuer = null) =>
         Invalid([error], issuer);
 
-    private static VerificationResult Invalid(IReadOnlyList<VerificationError> errors, IssuerInfo? issuer = null) => new()
-    {
-        IsValid = false,
-        DisclosedClaims = new Dictionary<string, object>(),
-        Issuer = issuer ?? new IssuerInfo { Identifier = "unknown", Trusted = false, KeyResolutionMethod = "none" },
-        Errors = errors,
-    };
+    private static VerificationResult Invalid(IReadOnlyList<VerificationError> errors, IssuerInfo? issuer = null) =>
+        VerificationResult.Invalid(
+            errors, issuer ?? new IssuerInfo { Identifier = "unknown", Trusted = false, KeyResolutionMethod = "none" });
 }
