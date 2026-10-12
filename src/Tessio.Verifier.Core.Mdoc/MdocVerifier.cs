@@ -197,14 +197,7 @@ public sealed class MdocVerifier
         // issuer is known and the type is not.
         if (errors.Count > 0)
         {
-            return new VerificationResult
-            {
-                IsValid = false,
-                DisclosedClaims = new Dictionary<string, object>(StringComparer.Ordinal),
-                Issuer = issuer,
-                Errors = errors,
-                CredentialType = document.DocType,
-            };
+            return VerificationResult.Invalid(errors, issuer) with { CredentialType = document.DocType };
         }
 
         return new VerificationResult
@@ -263,11 +256,7 @@ public sealed class MdocVerifier
         return claims;
     }
 
-    private static VerificationResult Failure(string code, string message) => new()
-    {
-        IsValid = false,
-        DisclosedClaims = new Dictionary<string, object>(StringComparer.Ordinal),
-        Issuer = new IssuerInfo { Identifier = "unknown", Trusted = false, KeyResolutionMethod = "x5c" },
-        Errors = [new VerificationError { Code = code, Message = message }],
-    };
+    private static VerificationResult Failure(string code, string message) => VerificationResult.Invalid(
+        new VerificationError { Code = code, Message = message },
+        new IssuerInfo { Identifier = "unknown", Trusted = false, KeyResolutionMethod = "x5c" });
 }

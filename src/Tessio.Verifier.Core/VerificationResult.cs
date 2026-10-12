@@ -1,3 +1,5 @@
+using Tessio.Verifier.Trust;
+
 namespace Tessio.Verifier.Core;
 
 /// <summary>
@@ -76,6 +78,18 @@ public sealed record VerificationResult
     /// A failing result carrying every accumulated error and, optionally, the resolved issuer. Falls back
     /// to <see cref="IssuerInfo.Unknown"/> when no issuer was reached.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every message is made one line here, because messages quote what the presenter sent and a caller
+    /// may log them as they stand: each character that could break the line becomes U+FFFD. Every
+    /// failing result this library builds goes through here, and a test holds the source to that, so no
+    /// failure path can return a message that skipped it. The one other place that sets a result's
+    /// errors, the session view, replaces every message with one fixed sentence.
+    /// </para>
+    /// <para>
+    /// A caller passing its own messages here gets them made one line too.
+    /// </para>
+    /// </remarks>
     public static VerificationResult Invalid(IReadOnlyList<VerificationError> errors, IssuerInfo? issuer = null)
     {
         ArgumentNullException.ThrowIfNull(errors);
@@ -84,7 +98,7 @@ public sealed record VerificationResult
             IsValid = false,
             DisclosedClaims = new Dictionary<string, object>(StringComparer.Ordinal),
             Issuer = issuer ?? IssuerInfo.Unknown,
-            Errors = errors,
+            Errors = [.. errors.Select(e => e with { Message = MessageText.OneLine(e.Message) })],
         };
     }
 }

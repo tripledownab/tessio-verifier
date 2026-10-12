@@ -445,6 +445,7 @@ public sealed class StaticTrustListResolver : ITrustListResolver
             TrustListSource = _source,
             TrustAnchorSubject = anchor?.Subject,
             TrustAnchorThumbprint = anchor?.Thumbprint,
-            Reason = reason,
+            // A reason quotes the presented chain's certificate names, which the presenter chose.
+            Reason = MessageText.OneLine(reason),
         });
 }

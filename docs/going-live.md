@@ -289,7 +289,7 @@ and becomes a `VerificationResult.Errors[].Message` instead:
 | `TrustListSource` | which list produced the verdict, **on a refusal as well as a pass**. A rejected presentation is the one a relying party has most reason to question, and "not trusted" without naming the list that was asked answers nothing. If your resolver consults several lists and none matched, null is the honest answer: no single list produced that refusal |
 | `TrustAnchorSubject` | the anchor that vouched for the key, for a human reading a record. Null wherever no certificate was involved, which is the identifier route, and null on a refusal unless you know which configured anchor was matched and rejected |
 | `TrustAnchorThumbprint` | that anchor's SHA-256 over its DER, uppercase hex, from `GetCertHashString(HashAlgorithmName.SHA256)`. This is the identity; a subject is not, because distinguished names are not unique |
-| `Reason` | why, when the verdict is false |
+| `Reason` | why, when the verdict is false. It may quote what the presenter sent, such as certificate names; the library makes it one line on its way into a result, each character that could break a log line becoming U+FFFD, as it does every failure message in a result |
 
 **Two things to weigh before you populate them.** `source` is a label, not a location: the built-in
 `TrustListLoader` passes the path or URL you hand it straight through, so the string can be a server

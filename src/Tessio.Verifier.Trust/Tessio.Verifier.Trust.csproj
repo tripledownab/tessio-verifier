@@ -11,4 +11,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- For MessageText, so a failure message leaving Core is made one line by the same rule as a trust
+         reason leaving this package. -->
+    <InternalsVisibleTo Include="Tessio.Verifier.Core" />
+    <InternalsVisibleTo Include="Tessio.Verifier.Trust.Tests" />
+  </ItemGroup>
+
 </Project>
