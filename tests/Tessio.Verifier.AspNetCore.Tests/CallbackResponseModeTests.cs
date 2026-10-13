@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Tessio.Verifier.OpenId4Vp;
+using Tessio.Verifier.OpenId4Vp.Tests;
 
 namespace Tessio.Verifier.AspNetCore.Tests;
 
@@ -91,6 +92,35 @@ public sealed class CallbackResponseModeTests : IAsyncDisposable
 
         // The mode is enforced, not only validity: a presentation that would verify is still not an answer
         // to a request that asked for encryption, because the request said how it wanted to be answered.
+        Assert.Equal(CallbackOutcome.ResponseInvalid, result.Outcome);
+        Assert.Equal(VerificationSessionStatus.Pending,
+            (await _provider.GetRequiredService<InMemorySessionStore>().GetAsync(session.SessionId))!.Status);
+    }
+
+    /// <summary>
+    /// ECDH-ES is anonymous: anyone can encrypt any payload to the key a request publishes. A payload that
+    /// is encrypted correctly and is not well formed JSON is a malformed response and is answered as one: no
+    /// exception leaves the callback.
+    /// </summary>
+    [Fact]
+    public async Task AnEncryptedPayloadThatIsNotJson_IsRefused_AndTheSessionStaysOpen()
+    {
+        var session = await PendingEncryptedSessionAsync();
+        var jwkJson = RequestParameters.TryGetEncryptionJwkJson(session.Request);
+        Assert.NotNull(jwkJson);
+        var jwe = WalletEncryption.EcdhEsTo(new Microsoft.IdentityModel.Tokens.JsonWebKey(jwkJson), "{ this is not json");
+
+        // The refusal must come from the payload, not from a key that never resolved: both answer ResponseInvalid.
+        Assert.NotNull(_provider.GetRequiredService<ResponseEncryptionKeyStore>()
+            .Get(new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(jwe).Kid));
+
+        var result = await _provider.GetRequiredService<WalletCallbackProcessor>().ProcessAsync(new WalletResponseData
+        {
+            ContentType = "application/x-www-form-urlencoded",
+            Form = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { ["response"] = [jwe] },
+            Body = ReadOnlyMemory<byte>.Empty,
+        }, CancellationToken.None);
+
         Assert.Equal(CallbackOutcome.ResponseInvalid, result.Outcome);
         Assert.Equal(VerificationSessionStatus.Pending,
             (await _provider.GetRequiredService<InMemorySessionStore>().GetAsync(session.SessionId))!.Status);
