@@ -384,8 +384,8 @@ the JSON these endpoints serve, not on the object.
 
 **Values a result carries as data are the presenter's own.** `IssuerInfo.Identifier`, an `iss` or the
 subject of a presented certificate, and `VerificationResult.CredentialType` are kept exactly as presented,
-because you store and compare them. Failure messages, trust reasons and this library's own log lines are
-made one line, each character that could break a log line becoming U+FFFD; these two values are not, so do
+because you store and compare them. Failure messages, trust reasons, the messages of the exceptions the
+library throws and its own log lines are made one line, each character that could break a log line becoming U+FFFD; these two values are not, so do
 the same before writing them to a plain-text log.
 
 ## 5. Share sessions across instances

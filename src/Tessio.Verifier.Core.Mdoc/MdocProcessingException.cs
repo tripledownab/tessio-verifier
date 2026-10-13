@@ -1,3 +1,5 @@
+using Tessio.Verifier.Trust;
+
 namespace Tessio.Verifier.Core.Mdoc;
 
 /// <summary>
@@ -7,7 +9,11 @@ namespace Tessio.Verifier.Core.Mdoc;
 public sealed class MdocProcessingException : Exception
 {
     /// <summary>Creates the exception.</summary>
-    public MdocProcessingException(string code, string message) : base(message) => Code = code;
+    /// <remarks>
+    /// The message is made one line by the library's one rule for messages it hands a caller, because it can
+    /// quote values from the presented mdoc and a caller may log it as it stands.
+    /// </remarks>
+    public MdocProcessingException(string code, string message) : base(MessageText.OneLine(message)) => Code = code;
 
     /// <summary>Stable error code (see <see cref="MdocErrorCodes"/>).</summary>
     public string Code { get; }
