@@ -54,6 +54,25 @@ public class WalletResponseParserTests
         Assert.Equal(SampleSdJwt, Assert.Single(credentials).RawValue);
     }
 
+    [Theory]
+    [InlineData("\"\\uD800\"")]
+    [InlineData("{\"q\":[\"\\uDC00\"]}")]
+    [InlineData("{\"\\uD800\":[\"a\"]}")]
+    public async Task DirectPost_APresentationThatIsNotValidText_IsRefusedAsAMalformedResponse(string vpToken)
+    {
+        await Assert.ThrowsAsync<WalletResponseException>(() =>
+            new WalletResponseParser().ParseAsync(FormResponse(("vp_token", vpToken))));
+    }
+
+    /// <summary>A host building the form itself can hand over a string that is not valid UTF-16 at all.</summary>
+    [Fact]
+    public async Task DirectPost_AVpTokenThatIsNotValidUtf16_IsRefusedAsAMalformedResponse()
+    {
+        var unpaired = new string([(char)0xD800]);
+        await Assert.ThrowsAsync<WalletResponseException>(() =>
+            new WalletResponseParser().ParseAsync(FormResponse(("vp_token", "[\"" + unpaired + "\"]"))));
+    }
+
     [Fact]
     public async Task DirectPostJwt_EncryptedResponse_IsDecryptedAndParsed()
     {

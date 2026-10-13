@@ -29,6 +29,10 @@ public sealed class WalletResponseParser : IPresentationResponseParser
     /// over <see cref="ParseAsync"/> when hosting the wallet callback: for <c>direct_post.jwt</c>
     /// the state travels inside the encrypted JWT.
     /// </summary>
+    /// <exception cref="WalletResponseException">
+    /// The response is malformed in any part its sender controls, or cannot be decrypted with the configured
+    /// key. A caller that answers this exception as an invalid response has answered every such response.
+    /// </exception>
     public async Task<ParsedWalletResponse> ParseDetailedAsync(
         WalletResponseData response, CancellationToken ct = default)
     {
@@ -132,18 +136,19 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         if (!result.IsValid)
         {
             throw new WalletResponseException(
-                "The direct_post.jwt response could not be decrypted with the configured key.",
+                "The direct_post.jwt response could not be decrypted with the configured key, or its content is not a readable JWT.",
                 result.Exception);
         }
 
-        if (!result.Claims.TryGetValue("vp_token", out var vpToken))
+        // Read by the same ExtractResponseClaims as the ECDH-ES route, from the decrypted token's own payload,
+        // so the response parameters are read one way whichever key decrypted them. The handler's typed
+        // claims would be a second reading of the same JSON, free to disagree with the first.
+        if (result.SecurityToken is not JsonWebToken { InnerToken: { } inner })
         {
-            throw new WalletResponseException("The decrypted wallet response carries no vp_token claim.");
+            throw new WalletResponseException("The direct_post.jwt response decrypted to no token.");
         }
 
-        var state = result.Claims.TryGetValue("state", out var stateValue) ? stateValue as string : null;
-        var vpTokenJson = vpToken as string ?? JsonSerializer.Serialize(vpToken);
-        return (vpTokenJson, state);
+        return ExtractResponseClaims(Base64UrlEncoder.Decode(inner.EncodedPayload));
     }
 
     /// <summary>
@@ -170,7 +175,28 @@ public sealed class WalletResponseParser : IPresentationResponseParser
 
     private static (string VpTokenJson, string? State) ExtractResponseClaims(string payloadJson)
     {
-        using var document = JsonDocument.Parse(payloadJson);
+        // A decrypted payload is untrusted input (see NormalizeDecryptedPayload), so a payload that only
+        // looks like JSON is a malformed response, answered like every other, not an exception that
+        // escapes the parser.
+        JsonDocument parsed;
+        try
+        {
+            parsed = JsonDocument.Parse(payloadJson);
+        }
+        catch (JsonException e)
+        {
+            throw new WalletResponseException("The decrypted wallet response is not well formed JSON.", e);
+        }
+
+        using var document = parsed;
+        // The response parameters are members of an object, and the reads below need one. Every route that
+        // reaches here delivers an object today; checked here so these reads do not depend on that.
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new WalletResponseException("The decrypted wallet response is not a JSON object.");
+        }
+
+        RequireReadableText(document.RootElement);
         if (!document.RootElement.TryGetProperty("vp_token", out var vpToken))
         {
             throw new WalletResponseException("The decrypted wallet response carries no vp_token claim.");
@@ -191,12 +217,18 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         try
         {
             using var document = JsonDocument.Parse(vpTokenJson);
+            RequireReadableText(document.RootElement);
             root = document.RootElement.Clone();
         }
         catch (JsonException)
         {
             // A bare compact serialization (not JSON) is a single presentation string.
             return [MakeCredential(vpTokenJson)];
+        }
+        catch (ArgumentException e)
+        {
+            // A string that is not valid UTF-16, which a host's own form reading can hand over.
+            throw new WalletResponseException("The vp_token in the wallet response is not valid text.", e);
         }
 
         // SPEC: OpenID4VP 1.0 §8.1 — vp_token is a JSON object mapping each DCQL Credential Query id
@@ -243,6 +275,50 @@ public sealed class WalletResponseParser : IPresentationResponseParser
                 break;
             default:
                 throw new WalletResponseException($"Unsupported presentation value of kind {element.ValueKind} in vp_token.");
+        }
+    }
+
+    /// <summary>
+    /// Refuses a parsed response holding a name or string that is not text. Well formed JSON can carry an
+    /// escaped lone UTF-16 surrogate: it parses, and only the read that unescapes it fails, whichever read
+    /// that is. Reading every name and string once, here, straight after parsing, makes that a malformed
+    /// response, and leaves no later read of the document able to fail on it.
+    /// </summary>
+    // Recursion is bounded: JsonDocument refuses nesting past its maximum depth when parsing.
+    private static void RequireReadableText(JsonElement element)
+    {
+        try
+        {
+            ReadAllText(element);
+        }
+        catch (InvalidOperationException e)
+        {
+            throw new WalletResponseException("The wallet response holds a name or string that is not valid text.", e);
+        }
+
+        static void ReadAllText(JsonElement element)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in element.EnumerateObject())
+                    {
+                        _ = property.Name;
+                        ReadAllText(property.Value);
+                    }
+
+                    break;
+                case JsonValueKind.Array:
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        ReadAllText(item);
+                    }
+
+                    break;
+                case JsonValueKind.String:
+                    _ = element.GetString();
+                    break;
+            }
         }
     }
 

@@ -19,4 +19,8 @@
     <ProjectReference Include="..\..\src\Tessio.Verifier.AspNetCore\Tessio.Verifier.AspNetCore.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Tessio.Verifier.OpenId4Vp.Tests\WalletEncryption.cs" Link="WalletEncryption.cs" />
+  </ItemGroup>
+
 </Project>

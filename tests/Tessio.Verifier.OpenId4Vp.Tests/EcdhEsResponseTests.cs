@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -56,6 +57,44 @@ public sealed class EcdhEsResponseTests : IDisposable
             },
             Claims = JsonSerializer.Deserialize<Dictionary<string, object>>(payloadJson)!,
         });
+    }
+
+    /// <summary>
+    /// Wallet side ECDH-ES (Direct Key Agreement) with A128GCM, what HAIP wallets send, built by hand:
+    /// IdentityModel's sender does not do direct ECDH-ES, and its AES-GCM runs only on Windows.
+    /// <paramref name="tagBytes"/> lets a test send a tag of another length than RFC 7518 §5.3 allows.
+    /// </summary>
+    private string SealDirectAesGcm(string plaintext, int tagBytes)
+    {
+        using var ephemeral = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var ep = ephemeral.ExportParameters(false);
+        var header = Base64UrlEncoder.Encode(JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["alg"] = SecurityAlgorithms.EcdhEs,
+            ["enc"] = SecurityAlgorithms.Aes128Gcm,
+            ["epk"] = new Dictionary<string, string>
+            {
+                ["kty"] = "EC",
+                ["crv"] = "P-256",
+                ["x"] = Base64UrlEncoder.Encode(ep.Q.X!),
+                ["y"] = Base64UrlEncoder.Encode(ep.Q.Y!),
+            },
+        }));
+        var agreement = new EcdhKeyExchangeProvider(
+            new ECDsaSecurityKey(ephemeral), VerifierPublicJwk(), SecurityAlgorithms.EcdhEs, SecurityAlgorithms.Aes128Gcm)
+        {
+            KeyDataLen = 128,
+        };
+        var cek = ((SymmetricSecurityKey)agreement.GenerateKdf()).Key;
+
+        var iv = RandomNumberGenerator.GetBytes(12);
+        var clear = Encoding.UTF8.GetBytes(plaintext);
+        var ciphertext = new byte[clear.Length];
+        var tag = new byte[tagBytes];
+        using var gcm = new AesGcm(cek, tagBytes);
+        gcm.Encrypt(iv, clear, ciphertext, tag, Encoding.ASCII.GetBytes(header));
+        return string.Join('.', header, string.Empty, Base64UrlEncoder.Encode(iv),
+            Base64UrlEncoder.Encode(ciphertext), Base64UrlEncoder.Encode(tag));
     }
 
     private static WalletResponseData ResponseForm(string jwe) => new()
@@ -126,6 +165,54 @@ public sealed class EcdhEsResponseTests : IDisposable
 
         var e = await Assert.ThrowsAsync<WalletResponseException>(() => parser.ParseDetailedAsync(ResponseForm(jwe)));
         Assert.Contains("epk", e.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EncryptedResponse_DirectAesGcm_DecryptsAndParses()
+    {
+        var parser = new WalletResponseParser(new WalletResponseParserOptions
+        {
+            ResponseDecryptionKey = new ECDsaSecurityKey(_verifierEc),
+        });
+
+        var parsed = await parser.ParseDetailedAsync(ResponseForm(SealDirectAesGcm(Payload(), tagBytes: 16)));
+
+        Assert.Equal("state-ecdh", parsed.State);
+    }
+
+    /// <summary>SPEC: RFC 7518 §5.3: the tag "MUST be 128 bits"; a shorter one is refused, not accepted.</summary>
+    [Theory]
+    [InlineData(12)]
+    [InlineData(15)]
+    public async Task EncryptedResponse_AesGcmTagShorterThan128Bits_IsRefused(int tagBytes)
+    {
+        var parser = new WalletResponseParser(new WalletResponseParserOptions
+        {
+            ResponseDecryptionKey = new ECDsaSecurityKey(_verifierEc),
+        });
+
+        var e = await Assert.ThrowsAsync<WalletResponseException>(
+            () => parser.ParseDetailedAsync(ResponseForm(SealDirectAesGcm(Payload(), tagBytes))));
+        Assert.Contains("128-bit", e.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A key store disposes a session's key when the session expires, which can fall between the lookup
+    /// and the decryption. The response is refused, as one for an expired key would be.
+    /// </summary>
+    [Fact]
+    public async Task EncryptedResponse_KeyDisposedBeforeUse_IsRefused()
+    {
+        var jwe = WalletEncryptResponse(VerifierPublicJwk(), Payload());
+        var disposed = ECDsa.Create(_verifierEc.ExportParameters(includePrivateParameters: true));
+        disposed.Dispose();
+
+        var parser = new WalletResponseParser(new WalletResponseParserOptions
+        {
+            ResponseDecryptionKeyResolver = _ => new ECDsaSecurityKey(disposed),
+        });
+
+        await Assert.ThrowsAsync<WalletResponseException>(() => parser.ParseDetailedAsync(ResponseForm(jwe)));
     }
 
     public void Dispose() => _verifierEc.Dispose();

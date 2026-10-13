@@ -38,8 +38,9 @@ internal static class EcdhEsJweDecryptor
     // encryption key and the JWE Encrypted Key segment is empty. HAIP 1.0 §5 requires verifiers to
     // advertise exactly this, so supporting only the +AxxxKW variants would mean advertising a key
     // agreement we cannot complete.
+    // The header is untrusted, so alg can be an explicit JSON null; that is simply not an alg handled here.
     public static bool CanHandle(JsonWebToken jwe) =>
-        KeyWrapAlgorithmByAlg.ContainsKey(jwe.Alg) || jwe.Alg == SecurityAlgorithms.EcdhEs;
+        jwe.Alg is { } alg && (KeyWrapAlgorithmByAlg.ContainsKey(alg) || alg == SecurityAlgorithms.EcdhEs);
 
     /// <summary>Decrypts the JWE and returns the plaintext payload (UTF-8 JSON).</summary>
     public static string Decrypt(JsonWebToken jwe, SecurityKey decryptionKey)
@@ -61,6 +62,13 @@ internal static class EcdhEsJweDecryptor
         if (!jwe.TryGetHeaderValue<JsonElement>(JwtHeaderParameterNames.Epk, out var epkElement))
         {
             throw new WalletResponseException("The ECDH-ES response carries no epk header; the sender's ephemeral key is required.");
+        }
+
+        // SPEC: RFC 7517 §4: a JWK is a JSON object. Anything else, null included, is refused here
+        // rather than handed to the JWK parser.
+        if (epkElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new WalletResponseException("The ECDH-ES epk header is not a JWK object.");
         }
 
         JsonWebKey ephemeralPublicKey;
@@ -122,8 +130,11 @@ internal static class EcdhEsJweDecryptor
 
             return Encoding.UTF8.GetString(plaintext);
         }
+        // ObjectDisposedException: the resolver handed back a key its owner has since disposed, as a key
+        // store does when the session expires between lookup and use. That response is refused like any
+        // other for an expired key, not thrown.
         catch (Exception e) when (e is SecurityTokenException or ArgumentException or FormatException
-                                      or NotSupportedException or CryptographicException)
+                                      or NotSupportedException or CryptographicException or ObjectDisposedException)
         {
             throw new WalletResponseException("The ECDH-ES response could not be decrypted with the configured key.", e);
         }
@@ -145,6 +156,10 @@ internal static class EcdhEsJweDecryptor
         _ => throw new WalletResponseException($"Unsupported content encryption '{enc}' for ECDH-ES direct key agreement."),
     };
 
+    // SPEC: RFC 7518 §5.3: "The requested size of the Authentication Tag output MUST be 128 bits,
+    // regardless of the key size."
+    private const int GcmTagBytes = 16;
+
     // SPEC: RFC 7518 §5.3 — AES-GCM content encryption, 96-bit IV and 128-bit authentication tag.
     private static readonly HashSet<string> AesGcmContentEncryption =
         new(StringComparer.Ordinal) { SecurityAlgorithms.Aes128Gcm, "A192GCM", SecurityAlgorithms.Aes256Gcm };
@@ -161,8 +176,15 @@ internal static class EcdhEsJweDecryptor
     /// </remarks>
     private static byte[] DecryptAesGcm(byte[] cek, byte[] iv, byte[] ciphertext, byte[] tag, byte[] aad)
     {
+        // The platform primitive accepts any tag length it supports, so the sender's choice would decide
+        // how much integrity the response gets. The specification fixes it instead.
+        if (tag.Length != GcmTagBytes)
+        {
+            throw new WalletResponseException("An AES-GCM response must carry a 128-bit authentication tag.");
+        }
+
         var plaintext = new byte[ciphertext.Length];
-        using var gcm = new System.Security.Cryptography.AesGcm(cek, tag.Length);
+        using var gcm = new System.Security.Cryptography.AesGcm(cek, GcmTagBytes);
         gcm.Decrypt(iv, ciphertext, tag, plaintext, aad);
         return plaintext;
     }
