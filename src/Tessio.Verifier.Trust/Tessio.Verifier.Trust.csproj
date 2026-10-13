@@ -17,6 +17,8 @@
     <InternalsVisibleTo Include="Tessio.Verifier.Core" />
     <!-- And for the verifier pipeline's own log lines, which carry the same kind of values. -->
     <InternalsVisibleTo Include="Tessio.Verifier.AspNetCore" />
+    <!-- And for WalletResponseException, whose message can quote what a wallet response's sender wrote. -->
+    <InternalsVisibleTo Include="Tessio.Verifier.OpenId4Vp" />
     <InternalsVisibleTo Include="Tessio.Verifier.Trust.Tests" />
   </ItemGroup>
 

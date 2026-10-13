@@ -15,7 +15,8 @@ namespace Tessio.Verifier.Trust;
 /// </para>
 /// <para>
 /// Applied where a message LEAVES the library, not where it is written:
-/// <c>VerificationResult.Invalid</c> for failures, and the trust resolver's refusal for reasons. Each
+/// <c>VerificationResult.Invalid</c> for failures, the trust resolver's refusal for reasons, and
+/// <c>WalletResponseException</c>'s constructors for a wallet response that could not be parsed. Each
 /// message site quoting its own values would leave the next new site free to forget, and there are many.
 /// </para>
 /// <para>
