@@ -17,6 +17,11 @@
     <InternalsVisibleTo Include="Tessio.Verifier.Core" />
     <!-- And for the verifier pipeline's own log lines, which carry the same kind of values. -->
     <InternalsVisibleTo Include="Tessio.Verifier.AspNetCore" />
+    <!-- And for the public exceptions, whose messages can quote what a presentation's sender wrote:
+         WalletResponseException here, MdocProcessingException below. -->
+    <InternalsVisibleTo Include="Tessio.Verifier.OpenId4Vp" />
+    <!-- And for MdocProcessingException, whose message can quote values from a presented mdoc. -->
+    <InternalsVisibleTo Include="Tessio.Verifier.Core.Mdoc" />
     <InternalsVisibleTo Include="Tessio.Verifier.Trust.Tests" />
   </ItemGroup>
 
