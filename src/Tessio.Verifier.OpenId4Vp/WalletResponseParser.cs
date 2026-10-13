@@ -100,6 +100,10 @@ public sealed class WalletResponseParser : IPresentationResponseParser
                 "The direct_post.jwt response is not encrypted. OpenID4VP 1.0 §8.3 requires an unsigned, encrypted JWT (a JWE).");
         }
 
+        // Before any key is looked up: these rules hold whatever the key, and a response that breaks them
+        // should not cost a key store lookup.
+        JweHeaderRules.Enforce(jwe);
+
         // Keys are ephemeral per authorization request, so the resolver picks the session's key by the
         // kid the wallet echoes from our client_metadata. The fixed key remains for single-key callers.
         var decryptionKey = _options.ResponseDecryptionKeyResolver is { } resolve
