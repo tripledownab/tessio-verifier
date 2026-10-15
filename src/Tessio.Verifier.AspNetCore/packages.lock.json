@@ -4,9 +4,9 @@
     "net10.0": {
       "QRCoder": {
         "type": "Direct",
-        "requested": "[1.8.0, )",
-        "resolved": "1.8.0",
-        "contentHash": "RuvX3PEXU6pbY/I5ItAk800jm62r+YnoPLgyS2WTgwxkOnGkOfU9ORiipHUF0LkLyqM8rlroUCA319JjRYfRFQ==",
+        "requested": "[1.8.1, )",
+        "resolved": "1.8.1",
+        "contentHash": "aGfRFpU/IPexAtEOEXCNxC3fMCAqgn6kqALRvXt6LxVAW0VolSDGHiyrY+o2CJgTITOsMpsrsDi7svMJaJ9Vfg==",
         "dependencies": {
           "System.Drawing.Common": "6.0.0"
         }
@@ -61,29 +61,29 @@
       },
       "System.Security.Cryptography.Cose": {
         "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "HwChs+Vs0sd76fUR4MH1inZZHn4E6GDtstEP8TwNHqA51GQnoC9agOXfLqOM7TNR+02MUN7YY/4hweGeM47xFQ=="
+        "resolved": "10.0.13",
+        "contentHash": "Gug+ET4M6zFZQnTBCSx6+GsrajfQ5jlL+xt+QIH18skyfCYjjg45JuQsafclNxuX0591eY0wayFzPwUjfxlplw=="
       },
       "tessio.verifier.core": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Trust": "[0.15.0, )"
+          "Tessio.Verifier.Trust": "[0.20.5, )"
         }
       },
       "tessio.verifier.core.mdoc": {
         "type": "Project",
         "dependencies": {
-          "System.Security.Cryptography.Cose": "[10.0.12, )",
-          "Tessio.Verifier.Core": "[0.15.0, )"
+          "System.Security.Cryptography.Cose": "[10.0.13, )",
+          "Tessio.Verifier.Core": "[0.20.5, )"
         }
       },
       "tessio.verifier.openid4vp": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Core": "[0.15.0, )",
-          "Tessio.Verifier.Trust": "[0.15.0, )"
+          "Tessio.Verifier.Core": "[0.20.5, )",
+          "Tessio.Verifier.Trust": "[0.20.5, )"
         }
       },
       "tessio.verifier.trust": {
@@ -93,19 +93,19 @@
     "net8.0": {
       "QRCoder": {
         "type": "Direct",
-        "requested": "[1.8.0, )",
-        "resolved": "1.8.0",
-        "contentHash": "RuvX3PEXU6pbY/I5ItAk800jm62r+YnoPLgyS2WTgwxkOnGkOfU9ORiipHUF0LkLyqM8rlroUCA319JjRYfRFQ==",
+        "requested": "[1.8.1, )",
+        "resolved": "1.8.1",
+        "contentHash": "aGfRFpU/IPexAtEOEXCNxC3fMCAqgn6kqALRvXt6LxVAW0VolSDGHiyrY+o2CJgTITOsMpsrsDi7svMJaJ9Vfg==",
         "dependencies": {
           "System.Drawing.Common": "6.0.0"
         }
       },
       "Microsoft.Bcl.Cryptography": {
         "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "gRMy9aW3sAZxKGQwfIh5i/sB7gqCLnhRowjyuCYnZEqM3LyZ+SUi9MlMc4pq3a+ddUflo86yp7vJ9lOy3u0xBw==",
+        "resolved": "10.0.13",
+        "contentHash": "6H3QqvjxTgCt4gxVVCJVjo35Zh/gzjw7NXidIx0ghZrgYYMUja/7JJ4g39ynE/OH5YBBbUhlmirGR/AuYpNIuA==",
         "dependencies": {
-          "System.Formats.Asn1": "10.0.12"
+          "System.Formats.Asn1": "10.0.13"
         }
       },
       "Microsoft.IdentityModel.Abstractions": {
@@ -153,44 +153,44 @@
       },
       "System.Formats.Asn1": {
         "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "Xu4MyfkDjUTxqFk+vhUXdoICN8uG9X6rL1qRb0HXcIkV6YEVzxuFkXKiBG+/ikoB9CO1w8zFdXJPY036I08fnQ=="
+        "resolved": "10.0.13",
+        "contentHash": "uwKFGyJaUQ8xsf+wddv512+UIU1O4reOveom3y0gpQr86P1ReAKcQa/UdOZtg1etTIHgb01/grXp00tgeGBxqA=="
       },
       "System.Formats.Cbor": {
         "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "CGIkyGIf3UWBFmYJrFJ7FIxQ++3h5yDcDXwyQ0sOH4+5EJK04XMVU+hyy1Q8mTUsWLXz6/ydq1ln9SPutxFVoQ=="
+        "resolved": "10.0.13",
+        "contentHash": "WdxppUxfamltxOsieYg3gJCJW+lB/udiWrya4UCUg0DjTr/w07E4XoivqS35xoM5kVfMyyXEkRgPBRb24H+fWA=="
       },
       "System.Security.Cryptography.Cose": {
         "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "HwChs+Vs0sd76fUR4MH1inZZHn4E6GDtstEP8TwNHqA51GQnoC9agOXfLqOM7TNR+02MUN7YY/4hweGeM47xFQ==",
+        "resolved": "10.0.13",
+        "contentHash": "Gug+ET4M6zFZQnTBCSx6+GsrajfQ5jlL+xt+QIH18skyfCYjjg45JuQsafclNxuX0591eY0wayFzPwUjfxlplw==",
         "dependencies": {
-          "Microsoft.Bcl.Cryptography": "10.0.12",
-          "System.Formats.Cbor": "10.0.12"
+          "Microsoft.Bcl.Cryptography": "10.0.13",
+          "System.Formats.Cbor": "10.0.13"
         }
       },
       "tessio.verifier.core": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Trust": "[0.15.0, )"
+          "Tessio.Verifier.Trust": "[0.20.5, )"
         }
       },
       "tessio.verifier.core.mdoc": {
         "type": "Project",
         "dependencies": {
-          "System.Formats.Cbor": "[10.0.12, )",
-          "System.Security.Cryptography.Cose": "[10.0.12, )",
-          "Tessio.Verifier.Core": "[0.15.0, )"
+          "System.Formats.Cbor": "[10.0.13, )",
+          "System.Security.Cryptography.Cose": "[10.0.13, )",
+          "Tessio.Verifier.Core": "[0.20.5, )"
         }
       },
       "tessio.verifier.openid4vp": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Core": "[0.15.0, )",
-          "Tessio.Verifier.Trust": "[0.15.0, )"
+          "Tessio.Verifier.Core": "[0.20.5, )",
+          "Tessio.Verifier.Trust": "[0.20.5, )"
         }
       },
       "tessio.verifier.trust": {

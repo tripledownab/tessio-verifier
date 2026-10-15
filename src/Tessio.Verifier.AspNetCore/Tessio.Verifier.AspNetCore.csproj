@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <!-- QR rendering for the built-in start page (SVG renderer, cross-platform). MIT, no transitive deps. -->
-    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="QRCoder" Version="1.8.1" />
   </ItemGroup>
 
   <ItemGroup>
