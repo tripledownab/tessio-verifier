@@ -5,7 +5,10 @@ Thanks for your interest. This page covers what you need to build, test and land
 ## Development setup
 
 - .NET 10 SDK (`global.json` pins the exact build SDK; the net 10 SDK builds both target frameworks). The solution multitargets net8.0 (LTS floor, broad reach) and net10.0 (current LTS).
-- Any editor. No other tooling is required.
+- Any editor.
+- Docker, for the zero knowledge package only: `tools/build-libmdoc.sh` builds the native library it loads
+  (Linux x64). Without it the rest of the solution builds and tests as before, but
+  `tests/Tessio.Verifier.Core.Mdoc.Zk.Tests` fails on Linux x64 and that package cannot be packed.
 
 ```bash
 dotnet build Tessio.Verifier.sln

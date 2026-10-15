@@ -46,10 +46,26 @@ public static class MdocErrorCodes
     public const string DeviceAuthInvalid = "mdoc_device_auth_invalid";
 
     /// <summary>
-    /// The response carries zero-knowledge presentations (a non-empty <c>zkDocuments</c>) and no
-    /// documents, and this library does not verify zero-knowledge presentations. The requests this
-    /// library builds never ask for one, so with those requests this code means a wallet answered with
-    /// something the request did not ask for.
+    /// The response carries zero knowledge presentations (a nonempty <c>zkDocuments</c>) and no documents,
+    /// and no <see cref="MdocVerifierOptions.ZkProofVerifier"/> is set to check them. The requests this library
+    /// builds never ask for one, so with those requests this code means a wallet answered with something the
+    /// request did not ask for.
     /// </summary>
     public const string ZkPresentationUnsupported = "mdoc_zk_presentation_unsupported";
+
+    /// <summary>
+    /// A zero knowledge presentation names a proof system or circuit the configured
+    /// <see cref="IZkProofVerifier"/> does not accept.
+    /// </summary>
+    public const string ZkCircuitNotAccepted = "mdoc_zk_circuit_not_accepted";
+
+    /// <summary>
+    /// A zero knowledge presentation's timestamp lies outside <see cref="MdocVerifierOptions.ClockSkew"/> of
+    /// the verifier's clock. The proof shows the credential was valid at that timestamp, so a timestamp far
+    /// from now would prove validity at a time the wallet chose.
+    /// </summary>
+    public const string ZkTimestampOutOfRange = "mdoc_zk_timestamp_out_of_range";
+
+    /// <summary>A zero knowledge presentation's proof does not verify.</summary>
+    public const string ZkProofInvalid = "mdoc_zk_proof_invalid";
 }

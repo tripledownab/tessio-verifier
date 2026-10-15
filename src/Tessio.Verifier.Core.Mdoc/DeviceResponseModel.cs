@@ -14,11 +14,14 @@ internal sealed record ParsedDeviceResponse
     public required long Status { get; init; }
 
     /// <summary>
-    /// Whether the response carries a non-empty <c>zkDocuments</c> array: zero-knowledge presentations,
-    /// which this library does not verify. Recorded so a response made only of them can be reported as
-    /// what it is, rather than as an empty one.
+    /// The entries of a <c>zkDocuments</c> array, each kept as its encoded CBOR. They are read only when a
+    /// zero knowledge presentation is verified, so a malformed entry cannot fail a response that is verified
+    /// from its plain documents.
     /// </summary>
-    public bool HasZkDocuments { get; init; }
+    public IReadOnlyList<ReadOnlyMemory<byte>> ZkDocuments { get; init; } = [];
+
+    /// <summary>Whether the response carries at least one zero knowledge presentation.</summary>
+    public bool HasZkDocuments => ZkDocuments.Count > 0;
 }
 
 /// <summary>One document inside a DeviceResponse.</summary>

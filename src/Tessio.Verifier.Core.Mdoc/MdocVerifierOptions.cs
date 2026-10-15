@@ -45,4 +45,14 @@ public sealed class MdocVerifierOptions
     /// </summary>
     // SPEC: draft-ietf-oauth-status-list-20 section 8.3 step 4d and section 13.7.
     public TimeSpan StatusListCacheDuration { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Checks the proofs of zero knowledge presentations. Off by default: without one, a response made only of
+    /// zero knowledge presentations fails with <see cref="MdocErrorCodes.ZkPresentationUnsupported"/>. With one,
+    /// such a presentation is verified. Its timestamp must then lie within <see cref="ClockSkew"/> of the
+    /// verifier's clock, because the proof establishes the credential's validity at that timestamp.
+    /// </summary>
+    // SPEC: age verification technical specification 1.1.0, section 4.4: a relying party SHALL implement the
+    // zero knowledge proof verification of Annex A, A.8.
+    public IZkProofVerifier? ZkProofVerifier { get; set; }
 }

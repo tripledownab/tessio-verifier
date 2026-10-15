@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tessio.Verifier.Core.Mdoc.Zk\Tessio.Verifier.Core.Mdoc.Zk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Tessio.Verifier.Core.Mdoc.Tests\AvZkVectors.cs" Link="AvZkVectors.cs" />
+    <Compile Include="..\Tessio.Verifier.Core.Mdoc.Tests\AvZkResponses.cs" Link="AvZkResponses.cs" />
+    <Compile Include="..\Tessio.Verifier.Core.Mdoc.Tests\WrappedHex.cs" Link="WrappedHex.cs" />
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

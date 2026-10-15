@@ -77,6 +77,7 @@ Run it, open the page, start a verification, and DEMO mode returns a verified `a
 | --- | --- |
 | `Tessio.Verifier.Core` | Credential verification (SD-JWT VC, disclosures, KB-JWT). No web dependencies. |
 | `Tessio.Verifier.Core.Mdoc` | mdoc verification (ISO 18013-5/-7: MSO, digests, device auth). |
+| `Tessio.Verifier.Core.Mdoc.Zk` | Zero knowledge age proofs for mdoc: Longfellow proofs as the EU age verification profile uses them. Linux x64; set a `LongfellowProofVerifier` as `MdocVerifierOptions.ZkProofVerifier`. |
 | `Tessio.Verifier.OpenId4Vp` | OpenID4VP protocol layer (request build, JAR, response parsing, `Dcql` query builders). |
 | `Tessio.Verifier.AspNetCore` | DI, endpoints, session management, the multi-tenant verification seam, demo/mock/test modes. |
 | `Tessio.Verifier.Trust` | `ITrustListResolver` interface + a basic implementation. |

@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tessio.Verifier.Core.Mdoc.Tests" />
+    <InternalsVisibleTo Include="Tessio.Verifier.Core.Mdoc.Zk" />
   </ItemGroup>
 
 </Project>

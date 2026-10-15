@@ -93,3 +93,6 @@ __pycache__/
 # so committing one adds nothing, and a committed CSR is a file someone can submit without checking
 # whose values it carries or whether it names a SAN at all.
 *.csr
+
+# libmdoc.so is built by tools/build-libmdoc.sh, never committed.
+src/Tessio.Verifier.Core.Mdoc.Zk/runtimes/

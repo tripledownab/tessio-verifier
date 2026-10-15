@@ -1,0 +1,11 @@
+{
+  global:
+    run_mdoc_verifier;
+    find_zk_spec;
+    circuit_id;
+    extern "C++" {
+      "proofs::set_log_level(proofs::LogLevel)";
+    };
+  local:
+    *;
+};

@@ -29,6 +29,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{BB0B5E83
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessio.Verifier.Core.Mdoc.Tests", "tests\Tessio.Verifier.Core.Mdoc.Tests\Tessio.Verifier.Core.Mdoc.Tests.csproj", "{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessio.Verifier.Core.Mdoc.Zk", "src\Tessio.Verifier.Core.Mdoc.Zk\Tessio.Verifier.Core.Mdoc.Zk.csproj", "{2CC8F5F7-E75F-4689-9796-B51B85BD54B3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessio.Verifier.Core.Mdoc.Zk.Tests", "tests\Tessio.Verifier.Core.Mdoc.Zk.Tests\Tessio.Verifier.Core.Mdoc.Zk.Tests.csproj", "{A1394D6A-78AE-4926-A0E5-D614865C6BDB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -82,8 +86,18 @@ Global
 		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2CC8F5F7-E75F-4689-9796-B51B85BD54B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2CC8F5F7-E75F-4689-9796-B51B85BD54B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2CC8F5F7-E75F-4689-9796-B51B85BD54B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2CC8F5F7-E75F-4689-9796-B51B85BD54B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1394D6A-78AE-4926-A0E5-D614865C6BDB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1394D6A-78AE-4926-A0E5-D614865C6BDB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1394D6A-78AE-4926-A0E5-D614865C6BDB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1394D6A-78AE-4926-A0E5-D614865C6BDB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{2CC8F5F7-E75F-4689-9796-B51B85BD54B3} = {2D1B570B-8A7F-405D-98D1-83DD686C2C0F}
+		{A1394D6A-78AE-4926-A0E5-D614865C6BDB} = {BB0B5E83-6DF5-4388-8F76-CC553C351520}
 		{E8C66210-2E5B-4991-AB7D-FC24C23FA55C} = {2D1B570B-8A7F-405D-98D1-83DD686C2C0F}
 		{5DD6EC83-2CB9-4DDE-82D8-A042F6A6EECB} = {BB0B5E83-6DF5-4388-8F76-CC553C351520}
 	EndGlobalSection
