@@ -6,13 +6,16 @@ using Tessio.Verifier.Trust;
 namespace Tessio.Verifier.Core.Mdoc.Zk.Tests;
 
 /// <summary>
-/// What belongs here: the real proof check, through Longfellow's library, against the zero knowledge example of
-/// the age verification technical specification 1.1.0, Annex A, A.11. Each tampered case changes one input the
-/// proof is bound to and must fail.
+/// What belongs here: the real proof check, through Longfellow's library, for each carried circuit. Version 6 is
+/// checked against the zero knowledge example of the age verification technical specification 1.1.0, Annex A,
+/// A.11; version 7 against a proof made from Longfellow's own example mdoc. A case that changes one input the
+/// proof binds must fail. A test pins that the proof does not bind the namespace. A case giving an input the library
+/// cannot hold must be refused before the library runs.
 /// </summary>
 /// <remarks>
-/// Needs libmdoc.so, which tools/build-libmdoc.sh builds. The proof bytes are the example's, in
-/// Fixtures/av-annex-a-a11-proof.bin. A proof check takes over a second, so the cases share one verifier.
+/// Needs libmdoc.so, which tools/build-libmdoc.sh builds. The A.11 proof is in Fixtures/av-annex-a-a11-proof.bin;
+/// the version 7 proof is in Fixtures/longfellow-mdoc-tests-15-v7-proof.bin, made by Fixtures/make-v7-proof.cc.
+/// Loading a verifier checks both circuits, so the cases share one.
 /// </remarks>
 public sealed class LongfellowProofVerifierTests : IClassFixture<LongfellowProofVerifierTests.VerifierFixture>
 {
@@ -80,6 +83,76 @@ public sealed class LongfellowProofVerifierTests : IClassFixture<LongfellowProof
     public async Task The_request_built_here_verifies_so_the_tampered_cases_fail_for_their_change()
     {
         Assert.True(await _zk.VerifyAsync(Request()));
+    }
+
+    [LinuxX64Fact]
+    public async Task A_genuine_v7_proof_verifies()
+    {
+        Assert.True(await _zk.VerifyAsync(V7Request()));
+    }
+
+    [LinuxX64Fact]
+    public async Task A_v7_proof_with_one_byte_changed_fails()
+    {
+        var request = V7Request();
+        var tampered = request.Proof.ToArray();
+        tampered[tampered.Length / 2] ^= 1;
+
+        Assert.False(await _zk.VerifyAsync(request with { Proof = tampered }));
+    }
+
+    [LinuxX64Fact]
+    public async Task A_v7_proof_for_another_timestamp_fails()
+    {
+        Assert.False(await _zk.VerifyAsync(V7Request() with { Timestamp = "2026-01-15T09:00:01Z" }));
+    }
+
+    [LinuxX64Fact]
+    public async Task A_v7_proof_for_another_value_fails()
+    {
+        var request = V7Request();
+
+        Assert.False(await _zk.VerifyAsync(request with { Disclosures = [request.Disclosures[0] with { EncodedValue = new byte[] { 0xf4 } }] }));
+    }
+
+    [LinuxX64Fact]
+    public async Task A_v7_proof_for_another_docType_fails()
+    {
+        Assert.False(await _zk.VerifyAsync(V7Request() with { DocType = "org.iso.18013.5.1.mDL" }));
+    }
+
+    [LinuxX64Fact]
+    public async Task A_v7_proof_for_another_session_transcript_fails()
+    {
+        var request = V7Request();
+        var transcript = request.SessionTranscript.ToArray();
+        transcript[^1] ^= 1;
+
+        Assert.False(await _zk.VerifyAsync(request with { SessionTranscript = transcript }));
+    }
+
+    [LinuxX64Theory]
+    [InlineData(6)]
+    [InlineData(7)]
+    public async Task A_proof_checked_against_another_element_identifier_fails(int version)
+    {
+        var request = version == 6 ? Request() : V7Request();
+        var claimed = request.Disclosures[0] with { ElementIdentifier = "age_over_21" };
+
+        Assert.False(await _zk.VerifyAsync(request with { Disclosures = [claimed] }));
+    }
+
+    [LinuxX64Theory]
+    [InlineData(6)]
+    [InlineData(7)]
+    public async Task A_proof_checked_against_another_issuer_key_fails(int version)
+    {
+        // The issuer key is what makes a proof mean that this issuer signed the mdoc. Each request gets the other
+        // example's key, a valid P-256 point that did not sign this proof's mdoc.
+        var request = version == 6 ? Request() with { IssuerKeyX = V7Request().IssuerKeyX, IssuerKeyY = V7Request().IssuerKeyY }
+            : V7Request() with { IssuerKeyX = AvZkVectors.IssuerKeyX, IssuerKeyY = AvZkVectors.IssuerKeyY };
+
+        Assert.False(await _zk.VerifyAsync(request));
     }
 
     [LinuxX64Fact]
@@ -201,6 +274,24 @@ public sealed class LongfellowProofVerifierTests : IClassFixture<LongfellowProof
         IssuerKeyY = AvZkVectors.IssuerKeyY,
         Disclosures = [new ZkDisclosure(AvZkVectors.DocType, "age_over_18", new byte[] { 0xf5 })],
         Proof = Proof,
+    };
+
+    // A v7 proof made from Longfellow's own EU age verification example, mdoc_tests[15] in its mdoc_examples.h,
+    // by Fixtures/make-v7-proof.cc. The inputs are that example's.
+    private static ZkProofRequest V7Request() => new()
+    {
+        ZkSystemId = "longfellow-libzk-v1_7_1_4151_4096_" + V7OneAttribute,
+        CircuitHash = V7OneAttribute,
+        DocType = "eu.europa.ec.av.1",
+        Timestamp = "2026-01-15T09:00:00Z",
+        SessionTranscript = Convert.FromHexString(
+            "83f6f6847142726f7773657248616e646f766572763158200102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+            + "5835a363636174016474797065016764657461696c73a1676261736555726c77687474703a2f2f72656c79696e6770617274792e636f6d"
+            + "58202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40"),
+        IssuerKeyX = Convert.FromHexString("b4682ec20e06e8df840b5dd32959798ab20c544d4da50109ff4684d06fd261fc"),
+        IssuerKeyY = Convert.FromHexString("f6f8e9a811911329a5f653fcec5990092c91a65bc1695d291cd51de9c94e7db7"),
+        Disclosures = [new ZkDisclosure("eu.europa.ec.av.1", "age_over_18", new byte[] { 0xf5 })],
+        Proof = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "longfellow-mdoc-tests-15-v7-proof.bin")),
     };
 
     /// <summary>One verifier for the class: loading it checks both circuits, which is not free.</summary>
