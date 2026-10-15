@@ -6,12 +6,12 @@ using Tessio.Verifier.Trust;
 namespace Tessio.Verifier.Core.Mdoc.Tests;
 
 /// <summary>
-/// What belongs here: how a DeviceResponse carrying zero-knowledge presentations (<c>zkDocuments</c>) is
-/// reported. This library does not verify them; the point is that such a response gets its own code
-/// rather than passing for a malformed one.
+/// What belongs here: how a DeviceResponse carrying zero knowledge presentations (<c>zkDocuments</c>) is
+/// reported when no proof verifier is set. The point is that such a response gets its own code rather than
+/// passing for a malformed one. ZkVerificationTests covers verifying them.
 /// </summary>
 /// <remarks>
-/// The response shape follows the age verification profile's example of a zero-knowledge response
+/// The response shape follows the age verification profile's example of a zero knowledge response
 /// (AV technical specification 1.1.0, Annex A, A.11): <c>version</c>, a <c>zkDocuments</c> array whose
 /// entries hold a <c>proof</c> and a tag-24 <c>documentData</c>, and <c>status</c>, with no
 /// <c>documents</c> member. The proof bytes here are placeholders, because nothing reads them.
@@ -49,7 +49,7 @@ public sealed class ZkPresentationTests : IDisposable
     [Fact]
     public async Task A_response_with_no_documents_and_no_zero_knowledge_presentation_stays_a_structure_error()
     {
-        // The control: the new code must name zero-knowledge presentations only, not every empty response.
+        // The control: the new code must name zero knowledge presentations only, not every empty response.
         var result = await Verifier().VerifyAsync(Mdoc(Response(includeZk: false)), Context());
 
         Assert.False(result.IsValid);
@@ -59,7 +59,7 @@ public sealed class ZkPresentationTests : IDisposable
     [Fact]
     public async Task A_plain_document_beside_a_zero_knowledge_presentation_is_still_verified()
     {
-        // A wallet that sends both answers what we can verify; the zero-knowledge part is ignored.
+        // A wallet that sends both answers what we can verify; the zero knowledge part is ignored.
         var result = await Verifier().VerifyAsync(Mdoc(WithZkDocuments(_builder.Build())), Context());
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));

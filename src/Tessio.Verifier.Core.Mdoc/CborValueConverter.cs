@@ -10,8 +10,22 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// </summary>
 internal static class CborValueConverter
 {
-    public static object? Read(CborReader reader)
+    /// <summary>
+    /// How deeply arrays and maps may nest in one value. Recursion is bounded so that a hostile value cannot
+    /// overflow the stack; mdoc element values nest a few levels at most.
+    /// </summary>
+    internal const int MaxDepth = 32;
+
+    public static object? Read(CborReader reader) => Read(reader, 0);
+
+    private static object? Read(CborReader reader, int depth)
     {
+        if (depth > MaxDepth)
+        {
+            // InvalidOperationException is what CborFailure.IsMalformed maps to a structure error.
+            throw new InvalidOperationException($"A CBOR value nests deeper than {MaxDepth} levels.");
+        }
+
         while (reader.PeekState() == CborReaderState.Tag)
         {
             reader.ReadTag(); // tdate/full-date and similar: expose the tagged content directly.
@@ -41,7 +55,7 @@ internal static class CborValueConverter
                 reader.ReadStartArray();
                 while (reader.PeekState() != CborReaderState.EndArray)
                 {
-                    list.Add(Read(reader));
+                    list.Add(Read(reader, depth + 1));
                 }
 
                 reader.ReadEndArray();
@@ -58,7 +72,7 @@ internal static class CborValueConverter
                     var key = reader.PeekState() == CborReaderState.TextString
                         ? reader.ReadTextString()
                         : reader.ReadInt64().ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    map[key] = Read(reader);
+                    map[key] = Read(reader, depth + 1);
                 }
 
                 reader.ReadEndMap();

@@ -76,7 +76,7 @@ internal static class DeviceResponseParser
         string? version = null;
         long status = -1;
         List<ParsedDocument> documents = [];
-        var hasZkDocuments = false;
+        List<ReadOnlyMemory<byte>> zkDocuments = [];
 
         reader.ReadStartMap();
         while (reader.PeekState() != CborReaderState.EndMap)
@@ -99,12 +99,11 @@ internal static class DeviceResponseParser
                     reader.ReadEndArray();
                     break;
                 case "zkDocuments":
-                    // SPEC: the member name follows the example of a zero-knowledge response in the age
+                    // SPEC: the member name follows the example of a zero knowledge response in the age
                     // verification technical specification 1.1.0, Annex A, A.11.
-                    // Counted, not read: a zero-knowledge presentation is not verified here, and the
-                    // verifier reports one by its own code instead of as a response with no documents.
-                    // Only a non-empty array counts, so an empty or non-array value stays what it was.
-                    hasZkDocuments = SkipCountingArrayItems(reader) > 0;
+                    // Kept encoded, not read: ZkDocumentParser reads an entry only when one is verified.
+                    // Only an array's items are kept; any other value is skipped, as before.
+                    ReadEncodedArrayItems(reader, zkDocuments);
                     break;
                 default:
                     reader.SkipValue();
@@ -124,29 +123,26 @@ internal static class DeviceResponseParser
             Version = version,
             Documents = documents,
             Status = status,
-            HasZkDocuments = hasZkDocuments,
+            ZkDocuments = zkDocuments,
         };
     }
 
-    /// <summary>Skips one value and returns how many items it held if it was an array, otherwise 0.</summary>
-    private static int SkipCountingArrayItems(CborReader reader)
+    /// <summary>Adds each item of an array value to <paramref name="items"/> as encoded CBOR; skips any other value.</summary>
+    private static void ReadEncodedArrayItems(CborReader reader, List<ReadOnlyMemory<byte>> items)
     {
         if (reader.PeekState() != CborReaderState.StartArray)
         {
             reader.SkipValue();
-            return 0;
+            return;
         }
 
         reader.ReadStartArray();
-        var items = 0;
         while (reader.PeekState() != CborReaderState.EndArray)
         {
-            reader.SkipValue();
-            items++;
+            items.Add(reader.ReadEncodedValue());
         }
 
         reader.ReadEndArray();
-        return items;
     }
 
     private static ParsedDocument ReadDocument(CborReader reader)

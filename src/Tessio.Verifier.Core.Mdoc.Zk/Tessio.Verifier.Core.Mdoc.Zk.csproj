@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Zero knowledge age proof verification for Tessio.Verifier.Core.Mdoc: checks Longfellow (longfellow-libzk-v1) proofs of ISO 18013-5 mdoc presentations, as the EU age verification profile defines them, through Google's Longfellow ZK library. Linux x64.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tessio.Verifier.Core.Mdoc\Tessio.Verifier.Core.Mdoc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Named by zkSystemId, so the resource name says which circuit it is. -->
+    <EmbeddedResource Include="Circuits\*" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Built by tools/build-libmdoc.sh; packed so a consumer's runtime finds it, copied so tests do. -->
+    <None Include="runtimes\linux-x64\native\libmdoc.so" Pack="true" PackagePath="runtimes/linux-x64/native/" CopyToOutputDirectory="PreserveNewest" Link="libmdoc.so" Condition="Exists('runtimes\linux-x64\native\libmdoc.so')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Apache-2.0 section 4: the licence and the upstream copyright travel with the redistributed library. -->
+    <None Include="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSES\Apache-2.0.txt" Pack="true" PackagePath="LICENSE-Apache-2.0.txt" Link="LICENSE-Apache-2.0.txt" />
+  </ItemGroup>
+
+  <!-- A package without the native library would install and then fail at the first proof, so packing refuses.
+       Not on Windows, where libmdoc cannot be built and from which nothing is published (release.yml is Linux). -->
+  <Target Name="RequireLibmdocForPack" BeforeTargets="GenerateNuspec" Condition="'$(OS)' != 'Windows_NT'">
+    <Error Condition="!Exists('runtimes\linux-x64\native\libmdoc.so')"
+           Text="libmdoc.so is missing; run tools/build-libmdoc.sh before packing." />
+  </Target>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tessio.Verifier.Core.Mdoc.Zk.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -18,7 +18,7 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// identifier list, unless <see cref="MdocVerifierOptions.CheckStatus"/> is off.
 /// </para>
 /// </remarks>
-public sealed class MdocVerifier
+public sealed partial class MdocVerifier
 {
     /// <summary>The OpenID4VP credential format identifier this verifier accepts.</summary>
     public const string Format = "mso_mdoc";
@@ -107,10 +107,12 @@ public sealed class MdocVerifier
         if (response.Documents.Count == 0 && response.HasZkDocuments)
         {
             // Its own code, not the generic structure error below: an operator must be able to tell an
-            // answer this library cannot verify from a malformed one. The zkDocuments member itself is
-            // not parsed, so nothing here says it is well formed.
-            return Failure(MdocErrorCodes.ZkPresentationUnsupported,
-                "The DeviceResponse carries zero-knowledge presentations (zkDocuments) and no documents; zero-knowledge presentations are not verified.");
+            // answer this verifier is not set up to check from a malformed one. Without a proof verifier the
+            // zkDocuments entries are not parsed, so nothing here says they are well formed.
+            return _options.ZkProofVerifier is { } zk
+                ? await VerifyZkAsync(response, context, zk, ct).ConfigureAwait(false)
+                : Failure(MdocErrorCodes.ZkPresentationUnsupported,
+                    "The DeviceResponse carries zero knowledge presentations (zkDocuments) and no documents; zero knowledge presentations are not verified.");
         }
 
         if (response.Documents.Count != 1)
@@ -180,17 +182,7 @@ public sealed class MdocVerifier
                 status, new MsoRevocationTrust.Credential(resolution.CertificateChain, trust), ct).ConfigureAwait(false));
         }
 
-        var issuer = new IssuerInfo
-        {
-            Identifier = resolution.Issuer,
-            Trusted = trust.Trusted,
-            KeyResolutionMethod = "x5c",
-            // Carried through on BOTH verdicts, not only the passing one. A refused presentation is the
-            // one someone comes back to ask about, and the list that refused it is the answer.
-            TrustListSource = trust.TrustListSource,
-            TrustAnchorSubject = trust.TrustAnchorSubject,
-            TrustAnchorThumbprint = trust.TrustAnchorThumbprint,
-        };
+        var issuer = IssuerOf(resolution.Issuer, trust);
 
         // CredentialType on both branches. For mdoc it is the docType, which the document declares and
         // parsing has already established here, so unlike the SD-JWT VC path there is no case where an
@@ -237,6 +229,18 @@ public sealed class MdocVerifier
             context.ClientId, context.Nonce, context.EncryptionKeyThumbprint, context.ResponseUri);
         return DeviceAuthVerifier.Verify(document, mso, sessionTranscript);
     }
+
+    // The trust details are carried through on BOTH verdicts, not only the passing one. A refused
+    // presentation is the one someone comes back to ask about, and the list that refused it is the answer.
+    private static IssuerInfo IssuerOf(string identifier, IssuerTrustStatus trust) => new()
+    {
+        Identifier = identifier,
+        Trusted = trust.Trusted,
+        KeyResolutionMethod = "x5c",
+        TrustListSource = trust.TrustListSource,
+        TrustAnchorSubject = trust.TrustAnchorSubject,
+        TrustAnchorThumbprint = trust.TrustAnchorThumbprint,
+    };
 
     /// <summary>Disclosed claims keyed by namespace, each value a map of element name to value.</summary>
     private static Dictionary<string, object> BuildClaims(ParsedDocument document)
