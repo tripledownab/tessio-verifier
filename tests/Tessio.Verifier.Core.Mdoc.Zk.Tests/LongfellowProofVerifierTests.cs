@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.IdentityModel.Tokens;
 using Tessio.Verifier.Core.Mdoc.Tests;
@@ -226,6 +227,19 @@ public sealed class LongfellowProofVerifierTests : IClassFixture<LongfellowProof
     }
 
     [LinuxX64Fact]
+    public async Task A_proof_the_library_cannot_parse_is_refused_and_writes_nothing_to_standard_error()
+    {
+        // A wallet chooses the proof bytes. Longfellow logs a proof it cannot parse straight to standard error,
+        // outside the host's logger, unless its logging is off; the verifier turns it off.
+        var verified = true;
+        var written = await StandardError.CaptureAsync(async () =>
+            verified = await _zk.VerifyAsync(Request() with { Proof = RandomNumberGenerator.GetBytes(Request().Proof.Length) }));
+
+        Assert.False(verified);
+        Assert.Equal("", written);
+    }
+
+    [LinuxX64Fact]
     public async Task The_proof_does_not_bind_the_namespace()
     {
         // Longfellow v0.9 uses the namespace only to check that all disclosures share one (sameNamespace in
@@ -288,7 +302,7 @@ public sealed class LongfellowProofVerifierTests : IClassFixture<LongfellowProof
         var signer = X509CertificateLoader.LoadCertificate(AvZkVectors.DocumentSignerCertificate);
         var verifier = new MdocVerifier(
             new StaticTrustListResolver([signer.Subject], source: "av-example", trustAnchors: [signer], clock: new Fixed(Now)),
-            new MdocVerifierOptions { ZkProofVerifier = _zk },
+            new MdocVerifierOptions { ZkProofVerifier = _zk, CheckStatus = false },
             new Fixed(Now));
         return verifier.VerifyAsync(
             new PresentedCredential { Format = MdocVerifier.Format, RawValue = Base64UrlEncoder.Encode(response) },

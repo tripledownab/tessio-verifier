@@ -25,7 +25,10 @@ namespace Tessio.Verifier.Core.Mdoc.Zk;
 /// cancellation token passed to <see cref="MdocVerifier.VerifyAsync"/>. Size the limit to the memory available.
 /// </para>
 /// <para>
-/// Constructing one sets Longfellow's process wide log level to errors only; it logs every proof otherwise.
+/// Constructing one turns Longfellow's own logging off for the whole process. Longfellow writes straight to
+/// standard error, outside any logger the host configures. At its default level it writes a line for every
+/// proof; even at errors only it writes one for a proof it cannot parse, which a wallet can send. A failed
+/// check is reported by the false <see cref="VerifyAsync"/> returns.
 /// </para>
 /// </remarks>
 public sealed class LongfellowProofVerifier : IZkProofVerifier, IDisposable
@@ -41,7 +44,7 @@ public sealed class LongfellowProofVerifier : IZkProofVerifier, IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxConcurrentProofs, 1);
         _gate = new SemaphoreSlim(maxConcurrentProofs, maxConcurrentProofs);
-        LongfellowNative.SetLogLevel(LongfellowNative.LogLevelError);
+        LongfellowNative.SetLogLevel(LongfellowNative.LogLevelSilent);
         _circuits = LoadCircuits(CarriedCircuits());
         SystemIds = [.. _circuits.Values.Select(c => c.SystemId).Order(StringComparer.Ordinal)];
     }

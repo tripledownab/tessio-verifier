@@ -301,6 +301,17 @@ public sealed class ZkVerificationTests : IDisposable
     }
 
     [Fact]
+    public async Task A_verifier_that_checks_status_refuses_a_proof_whose_status_it_cannot_check()
+    {
+        var zk = new StandInProofVerifier();
+
+        var result = await Verify(AvZkResponses.Build(), zk, checkStatus: true);
+
+        Assert.Equal(ErrorCodes.CredentialStatusUnknown, Assert.Single(result.Errors).Code);
+        Assert.Empty(zk.Requests);
+    }
+
+    [Fact]
     public async Task A_presentation_without_its_certificate_chain_is_a_structure_error()
     {
         var result = await Verify(AvZkResponses.Build(new() { Chain = null }), new StandInProofVerifier());
@@ -315,11 +326,12 @@ public sealed class ZkVerificationTests : IDisposable
         DateTimeOffset? now = null,
         ITrustListResolver? trust = null,
         bool omitTranscript = false,
-        bool openId4VpInputs = false)
+        bool openId4VpInputs = false,
+        bool checkStatus = false)
     {
         var verifier = new MdocVerifier(
             trust ?? new StaticTrustListResolver([_signer.Subject], source: "av-example", trustAnchors: [_signer], clock: new Fixed(Now)),
-            new MdocVerifierOptions { ZkProofVerifier = zk },
+            new MdocVerifierOptions { ZkProofVerifier = zk, CheckStatus = checkStatus },
             new Fixed(now ?? Now));
         var context = new MdocVerificationContext
         {

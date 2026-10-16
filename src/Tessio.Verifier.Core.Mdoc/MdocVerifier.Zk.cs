@@ -18,6 +18,15 @@ public sealed partial class MdocVerifier
     private async Task<VerificationResult> VerifyZkAsync(
         ParsedDeviceResponse response, MdocVerificationContext context, IZkProofVerifier zk, CancellationToken ct)
     {
+        // A proof discloses no MSO, so it carries no status reference and its credential's revocation cannot be
+        // checked. A verifier asked to check status refuses a proof rather than accept one with its status
+        // unknown. A.8 lists what a proof shows; status is not among them.
+        if (_options.CheckStatus)
+        {
+            return Failure(ErrorCodes.CredentialStatusUnknown,
+                "A zero knowledge proof carries no MSO, so its revocation status cannot be checked. This verifier checks status (MdocVerifierOptions.CheckStatus).");
+        }
+
         if (response.ZkDocuments.Count != 1)
         {
             return Failure(MdocErrorCodes.StructureInvalid,
