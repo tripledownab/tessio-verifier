@@ -52,6 +52,13 @@ public sealed class MdocVerifierOptions
     /// such a presentation is verified. Its timestamp must then lie within <see cref="ClockSkew"/> of the
     /// verifier's clock, because the proof establishes the credential's validity at that timestamp.
     /// </summary>
+    /// <remarks>
+    /// Set <see cref="CheckStatus"/> to false beside it. A proof discloses no MSO, so its revocation status
+    /// cannot be checked. While <see cref="CheckStatus"/> is true every zero knowledge presentation fails with
+    /// <see cref="ErrorCodes.CredentialStatusUnknown"/>. That is stricter than for a plain presentation, which
+    /// passes when its MSO names no status list: a proof cannot show whether its MSO names one. The age
+    /// verification profile puts revocation out of scope (Annex A, A.3).
+    /// </remarks>
     // SPEC: age verification technical specification 1.1.0, section 4.4: a relying party SHALL implement the
     // zero knowledge proof verification of Annex A, A.8.
     public IZkProofVerifier? ZkProofVerifier { get; set; }

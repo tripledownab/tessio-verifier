@@ -47,8 +47,11 @@ internal static unsafe partial class LongfellowNative
     [LibraryImport(Library, EntryPoint = "circuit_id")]
     internal static partial int CircuitId(byte* id, byte* circuit, nuint circuitLength, ZkSpec* spec);
 
-    /// <summary>proofs::LogLevel ERROR in lib/util/log.h.</summary>
-    internal const int LogLevelError = 1;
+    /// <summary>
+    /// Below proofs::LogLevel ERROR (1) in lib/util/log.h. The library prints a line when its level is at most
+    /// the one set (lib/util/log.cc), so this prints none.
+    /// </summary>
+    internal const int LogLevelSilent = 0;
 
     /// <summary>proofs::set_log_level in lib/util/log.h, a C++ function, so bound by its mangled name.</summary>
     [LibraryImport(Library, EntryPoint = "_ZN6proofs13set_log_levelENS_8LogLevelE")]

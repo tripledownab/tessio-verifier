@@ -25,7 +25,9 @@ public sealed class ZkRequest
     /// <param name="systemIds">
     /// The <c>zkSystemId</c> of each circuit the wallet may prove with, for example
     /// <c>longfellow-libzk-v1_6_1_4096_2945_137e…</c>. Offer only circuits the verifier accepts; with the zero
-    /// knowledge package that is <c>LongfellowProofVerifier.SystemIds</c>. Annex A, A.8 puts one system in scope,
+    /// knowledge package that is <c>LongfellowProofVerifier.SystemIds</c>. Offer one only where the answer is
+    /// checked by an <see cref="MdocVerifier"/> whose <see cref="MdocVerifierOptions.CheckStatus"/> is false: one
+    /// that checks status refuses every proof. Annex A, A.8 puts one system in scope,
     /// <c>longfellow-libzk-v1</c>. Each identifier must name it in the form the A.11 example and the Longfellow
     /// wallet libraries use, with a lowercase hash, because the circuit parameters written beside it are read from it.
     /// </param>
