@@ -18,8 +18,11 @@ dotnet test Tessio.Verifier.sln
 The build treats warnings as errors with analyzers on. If it builds clean locally, CI will agree.
 
 Every project under `src/` commits a `packages.lock.json`, and CI restores in locked mode. After changing
-a package reference, run `dotnet restore` and commit the updated lock file with it, or CI fails with
-`NU1004`.
+a package reference, run `dotnet restore` and commit the updated lock files with it, or CI fails with
+`NU1004`. Do not edit a lock file by hand: CI also compares every lock file with a fresh resolution
+(`tools/check-lock-files.py`), which catches a stale transitive entry the locked restore lets through. A
+NuGet update from Dependabot has its lock files regenerated for it
+(`.github/workflows/dependabot-lock-files.yml`).
 
 ## Ground rules
 

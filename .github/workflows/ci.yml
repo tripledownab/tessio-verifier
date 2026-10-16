@@ -68,6 +68,15 @@ jobs:
       - name: Restore
         run: dotnet restore Tessio.Verifier.sln --locked-mode
 
+      # The locked restore above can miss a TRANSITIVE package left at an old version in a lock file, so
+      # resolve afresh and compare (tools/check-lock-files.py says why, and what it skips). Resolution
+      # does not depend on the platform, so the Linux leg is enough.
+      - name: Lock files match a fresh resolution
+        if: runner.os == 'Linux'
+        run: |
+          dotnet restore Tessio.Verifier.sln --force-evaluate
+          python3 tools/check-lock-files.py
+
       - name: Build
         run: dotnet build Tessio.Verifier.sln --no-restore --configuration Release
 
