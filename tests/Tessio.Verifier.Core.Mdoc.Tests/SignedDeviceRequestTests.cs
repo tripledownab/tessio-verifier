@@ -121,7 +121,7 @@ public sealed class SignedDeviceRequestTests : IDisposable
 
         var deviceRequest = DeviceRequestBuilder.BuildSigned(
             PidDocType, PidDocType, ["family_name"], intentToRetain: false, [0xf6],
-            new MdocReaderKey(leafKey, [leaf, intermediate]), registrationCertificate: null);
+            new MdocReaderKey(leafKey, [leaf, intermediate]), registrationCertificate: null, zkRequest: null);
 
         var (_, encodedReaderAuth) = DeviceRequestReader.ReadSingleDocRequest(deviceRequest);
         var x5chain = DeviceRequestReader.ReadX5Chain(CoseMessage.DecodeSign1(encodedReaderAuth!));
@@ -139,7 +139,7 @@ public sealed class SignedDeviceRequestTests : IDisposable
 
         var deviceRequest = DeviceRequestBuilder.BuildSigned(
             PidDocType, PidDocType, ["family_name"], intentToRetain: false, [0xf6],
-            new MdocReaderKey(key, [leaf]), registrationCertificate: null);
+            new MdocReaderKey(key, [leaf]), registrationCertificate: null, zkRequest: null);
 
         var (_, encodedReaderAuth) = DeviceRequestReader.ReadSingleDocRequest(deviceRequest);
         Assert.Equal(Es384, CoseMessage.DecodeSign1(encodedReaderAuth!).ProtectedHeaders[CoseHeaderLabel.Algorithm].GetValueAsInt32());
@@ -153,7 +153,7 @@ public sealed class SignedDeviceRequestTests : IDisposable
 
         var deviceRequest = DeviceRequestBuilder.BuildSigned(
             PidDocType, PidDocType, ["family_name"], intentToRetain: false, [0xf6],
-            new MdocReaderKey(key, [leaf]), registrationCertificate: null);
+            new MdocReaderKey(key, [leaf]), registrationCertificate: null, zkRequest: null);
 
         var (_, encodedReaderAuth) = DeviceRequestReader.ReadSingleDocRequest(deviceRequest);
         Assert.Equal(Es512, CoseMessage.DecodeSign1(encodedReaderAuth!).ProtectedHeaders[CoseHeaderLabel.Algorithm].GetValueAsInt32());
@@ -164,7 +164,7 @@ public sealed class SignedDeviceRequestTests : IDisposable
     {
         Assert.Throws<ArgumentNullException>(() => DeviceRequestBuilder.BuildSigned(
             PidDocType, PidDocType, ["family_name"], intentToRetain: false, null!,
-            new MdocReaderKey(_certificates.ReaderKey, [_certificates.Reader]), registrationCertificate: null));
+            new MdocReaderKey(_certificates.ReaderKey, [_certificates.Reader]), registrationCertificate: null, zkRequest: null));
     }
 
     private static byte[] UnsignedDeviceRequest() =>

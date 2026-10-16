@@ -15,9 +15,6 @@ namespace Tessio.Verifier.Core.Mdoc;
 // under the namespace the presentation states.
 public sealed partial class MdocVerifier
 {
-    /// <summary>The proof system name Longfellow proofs carry in a <c>zkSystemId</c> and its library expects.</summary>
-    internal const string LongfellowSystem = "longfellow-libzk-v1";
-
     private async Task<VerificationResult> VerifyZkAsync(
         ParsedDeviceResponse response, MdocVerificationContext context, IZkProofVerifier zk, CancellationToken ct)
     {
@@ -28,7 +25,7 @@ public sealed partial class MdocVerifier
         }
 
         var document = ZkDocumentParser.Parse(response.ZkDocuments[0]);
-        if (CircuitHashOf(document.ZkSystemId) is not { } circuitHash || !zk.AcceptsCircuit(circuitHash))
+        if (LongfellowSystemId.Parse(document.ZkSystemId)?.CircuitHash is not { } circuitHash || !zk.AcceptsCircuit(circuitHash))
         {
             return Failure(MdocErrorCodes.ZkCircuitNotAccepted,
                 $"The zero knowledge presentation names '{document.ZkSystemId}', which is not an accepted circuit.");
@@ -108,22 +105,6 @@ public sealed partial class MdocVerifier
         var elements = items.ToDictionary(i => i.ElementIdentifier, i => i.Value, StringComparer.Ordinal);
         return VerificationResult.Valid(new Dictionary<string, object>(StringComparer.Ordinal) { [nameSpace] = elements }, issuer)
             with { CredentialType = document.DocType };
-    }
-
-    /// <summary>
-    /// The circuit hash of a Longfellow <c>zkSystemId</c> in lowercase hex, or null when it names another system.
-    /// Hex is case insensitive, so an uppercase hash names the same circuit.
-    /// </summary>
-    // SPEC: Annex A, A.11 example: longfellow-libzk-v1_{version}_{attributes}_{block_enc_hash}_{block_enc_sig}_{hash}.
-    private static string? CircuitHashOf(string zkSystemId)
-    {
-        if (!zkSystemId.StartsWith(LongfellowSystem + "_", StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var hash = zkSystemId[(zkSystemId.LastIndexOf('_') + 1)..];
-        return hash.Length == 64 && hash.All(char.IsAsciiHexDigit) ? hash.ToLowerInvariant() : null;
     }
 
     private sealed record Signer(string Subject, byte[] X, byte[] Y);

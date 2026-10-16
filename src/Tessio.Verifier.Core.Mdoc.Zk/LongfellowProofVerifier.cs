@@ -43,10 +43,17 @@ public sealed class LongfellowProofVerifier : IZkProofVerifier, IDisposable
         _gate = new SemaphoreSlim(maxConcurrentProofs, maxConcurrentProofs);
         LongfellowNative.SetLogLevel(LongfellowNative.LogLevelError);
         _circuits = LoadCircuits(CarriedCircuits());
+        SystemIds = [.. _circuits.Values.Select(c => c.SystemId).Order(StringComparer.Ordinal)];
     }
 
     /// <inheritdoc />
     public bool AcceptsCircuit(string circuitHash) => _circuits.ContainsKey(circuitHash);
+
+    /// <summary>
+    /// The <c>zkSystemId</c> of every circuit this verifier accepts, in ordinal order: what to pass to
+    /// <see cref="ZkRequest(IEnumerable{string})"/> so a wallet only proves with a circuit that can be checked here.
+    /// </summary>
+    public IReadOnlyList<string> SystemIds { get; }
 
     /// <inheritdoc />
     public async Task<bool> VerifyAsync(ZkProofRequest request, CancellationToken ct = default)
@@ -71,8 +78,8 @@ public sealed class LongfellowProofVerifier : IZkProofVerifier, IDisposable
     /// <inheritdoc />
     public void Dispose() => _gate.Dispose();
 
-    /// <summary>A carried circuit, the library's static spec for it and how many disclosures it proves.</summary>
-    internal sealed record Circuit(byte[] Bytes, nint Spec, int Attributes);
+    /// <summary>A carried circuit, its <c>zkSystemId</c>, the library's static spec for it and how many disclosures it proves.</summary>
+    internal sealed record Circuit(string SystemId, byte[] Bytes, nint Spec, int Attributes);
 
     private const int TranscriptFraming = 64;
 
@@ -142,36 +149,51 @@ public sealed class LongfellowProofVerifier : IZkProofVerifier, IDisposable
     {
         var assembly = typeof(LongfellowProofVerifier).Assembly;
         return assembly.GetManifestResourceNames()
-            .Where(n => n.StartsWith(MdocVerifier.LongfellowSystem + "_", StringComparison.Ordinal))
+            .Where(n => n.StartsWith(LongfellowSystemId.System + "_", StringComparison.Ordinal))
             .Select(n => (n, Read(assembly, n)));
     }
 
-    /// <summary>Indexes circuits by hash, refusing any the library does not know or whose bytes do not match.</summary>
+    /// <summary>
+    /// Indexes circuits by hash. Any one of these refuses a circuit: a name that is not a <c>zkSystemId</c> in its
+    /// one spelling, parameters in the name that differ from the library's spec for the hash, bytes that do not
+    /// match the hash. The name is what a request offers, so it must say what the library will check.
+    /// </summary>
     internal static unsafe Dictionary<string, Circuit> LoadCircuits(IEnumerable<(string Name, byte[] Bytes)> sources)
     {
         Dictionary<string, Circuit> circuits = new(StringComparer.Ordinal);
         foreach (var (name, bytes) in sources)
         {
-            var hash = name[(name.LastIndexOf('_') + 1)..];
-            var spec = LongfellowNative.FindZkSpec(MdocVerifier.LongfellowSystem, hash);
+            if (LongfellowSystemId.Parse(name) is not { IsCanonical: true } id)
+            {
+                throw new InvalidOperationException($"The carried circuit {name} is not named by a zkSystemId in its one spelling.");
+            }
+
+            var hash = id.CircuitHash;
+            var spec = LongfellowNative.FindZkSpec(LongfellowSystemId.System, hash);
             if (spec is null)
             {
                 throw new InvalidOperationException($"The Longfellow library has no spec for the carried circuit {name}.");
             }
 
-            var id = new byte[32];
-            fixed (byte* idPtr = id)
+            if ((nuint)id.Version != spec->Version || (nuint)id.NumAttributes != spec->NumAttributes
+                || (nuint)id.BlockEncHash != spec->BlockEncHash || (nuint)id.BlockEncSig != spec->BlockEncSig)
+            {
+                throw new InvalidOperationException($"The carried circuit {name} names parameters its library spec does not have.");
+            }
+
+            var circuitId = new byte[32];
+            fixed (byte* idPtr = circuitId)
             fixed (byte* circuitPtr = bytes)
             {
                 // A failed circuit_id leaves the id zero, which the comparison refuses as well.
                 _ = LongfellowNative.CircuitId(idPtr, circuitPtr, (nuint)bytes.Length, spec);
-                if (!string.Equals(Convert.ToHexString(id).ToLowerInvariant(), hash, StringComparison.Ordinal))
+                if (!string.Equals(Convert.ToHexString(circuitId).ToLowerInvariant(), hash, StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException($"The carried circuit {name} does not match its hash.");
                 }
             }
 
-            circuits[hash] = new Circuit(bytes, (nint)spec, checked((int)spec->NumAttributes));
+            circuits[hash] = new Circuit(name, bytes, (nint)spec, checked((int)spec->NumAttributes));
         }
 
         return circuits;

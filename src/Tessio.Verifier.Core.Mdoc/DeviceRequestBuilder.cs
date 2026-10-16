@@ -6,13 +6,14 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// Builds the ISO/IEC 18013-5 <c>DeviceRequest</c> that travels over the W3C Digital Credentials
 /// API (ISO/IEC 18013-7 Annex C): one docRequest, the itemsRequest tag-24 wrapped so its bytes
 /// stay stable under the digest that binds the session. <see cref="Build"/> is unsigned; a signed
-/// request comes from <see cref="Iso18013AnnexC.CreateSignedRequest"/>.
+/// request comes from <see cref="Iso18013AnnexC.CreateSignedRequest(string, string, IReadOnlyList{string}, string, MdocReaderKey, byte[])"/>.
 /// </summary>
 // SPEC (shape): the published Annex C request examples:
 //   DeviceRequest = {"version": "1.0", "docRequests": [{"itemsRequest": 24(<< ItemsRequest >>)}]}
 //   ItemsRequest  = {"docType": tstr, "nameSpaces": {tstr: {tstr: bool}}}
 // The bool on each element is IntentToRetain, not a requested value. A signed docRequest adds
-// "readerAuth" beside "itemsRequest", as the ISO/IEC 18013-5 Annex D.4.1.1 example does.
+// "readerAuth" beside "itemsRequest", as the ISO/IEC 18013-5 Annex D.4.1.1 example does. A request for a zero
+// knowledge proof adds "zkRequest" to the ItemsRequest's "requestInfo"; see ZkRequest for its shape.
 public static class DeviceRequestBuilder
 {
     // The version the published Annex C examples carry.
@@ -30,6 +31,10 @@ public static class DeviceRequestBuilder
     // move when a new edition replaces the current one.
     private const string RegistrationCertificateKey = "euWrprc";
 
+    // The requestInfo member that asks for a zero knowledge proof, as the AV technical specification 1.1.0,
+    // Annex A, A.11 example carries it. ZkRequest owns its value.
+    private const string ZkRequestKey = "zkRequest";
+
     /// <summary>Builds an unsigned single-document request for the named elements.</summary>
     /// <param name="docType">The requested document type, e.g. <c>eu.europa.ec.av.1</c>.</param>
     /// <param name="nameSpace">The namespace the elements live in.</param>
@@ -41,7 +46,13 @@ public static class DeviceRequestBuilder
     /// </param>
     public static byte[] Build(
         string docType, string nameSpace, IReadOnlyList<string> elementIdentifiers, bool intentToRetain) =>
-        EncodeDeviceRequest(EncodeItemsRequest(docType, nameSpace, elementIdentifiers, intentToRetain, null), null);
+        BuildUnsigned(docType, nameSpace, elementIdentifiers, intentToRetain, zkRequest: null);
+
+    /// <summary>As <see cref="Build"/>, optionally asking for a zero knowledge proof.</summary>
+    // Internal: zero knowledge proofs travel over the Digital Credentials API only, whose way in is Iso18013AnnexC.
+    internal static byte[] BuildUnsigned(
+        string docType, string nameSpace, IReadOnlyList<string> elementIdentifiers, bool intentToRetain, ZkRequest? zkRequest) =>
+        EncodeDeviceRequest(EncodeItemsRequest(docType, nameSpace, elementIdentifiers, intentToRetain, null, zkRequest), null);
 
     /// <summary>
     /// Builds a single-document request signed with <c>readerAuth</c> over
@@ -59,8 +70,9 @@ public static class DeviceRequestBuilder
     /// <param name="reader">The reader key and certificate path to sign with.</param>
     /// <param name="registrationCertificate">
     /// The registration certificate to carry under <c>euWrprc</c>, or null; see
-    /// <see cref="Iso18013AnnexC.CreateSignedRequest"/>.
+    /// <see cref="Iso18013AnnexC.CreateSignedRequest(string, string, IReadOnlyList{string}, string, MdocReaderKey, byte[])"/>.
     /// </param>
+    /// <param name="zkRequest">The zero knowledge proof to ask for, or null.</param>
     // Internal until a transport other than the Digital Credentials API needs it. The one public way in
     // builds the transcript from the request's own EncryptionInfo, so the two can never disagree.
     internal static byte[] BuildSigned(
@@ -70,7 +82,8 @@ public static class DeviceRequestBuilder
         bool intentToRetain,
         byte[] sessionTranscript,
         MdocReaderKey reader,
-        byte[]? registrationCertificate)
+        byte[]? registrationCertificate,
+        ZkRequest? zkRequest)
     {
         ArgumentNullException.ThrowIfNull(sessionTranscript);
         ArgumentNullException.ThrowIfNull(reader);
@@ -80,7 +93,8 @@ public static class DeviceRequestBuilder
                 "An empty registration certificate is not one. Pass null when there is none.", nameof(registrationCertificate));
         }
 
-        var itemsRequestBytes = EncodeItemsRequest(docType, nameSpace, elementIdentifiers, intentToRetain, registrationCertificate);
+        var itemsRequestBytes = EncodeItemsRequest(
+            docType, nameSpace, elementIdentifiers, intentToRetain, registrationCertificate, zkRequest);
         return EncodeDeviceRequest(itemsRequestBytes, ReaderAuthentication.Sign(reader, sessionTranscript, itemsRequestBytes));
     }
 
@@ -90,7 +104,8 @@ public static class DeviceRequestBuilder
         string nameSpace,
         IReadOnlyList<string> elementIdentifiers,
         bool intentToRetain,
-        byte[]? registrationCertificate)
+        byte[]? registrationCertificate,
+        ZkRequest? zkRequest)
     {
         ArgumentException.ThrowIfNullOrEmpty(docType);
         ArgumentException.ThrowIfNullOrEmpty(nameSpace);
@@ -105,8 +120,11 @@ public static class DeviceRequestBuilder
             throw new ArgumentException("Element identifiers must be distinct.", nameof(elementIdentifiers));
         }
 
+        var encodedZkRequest = zkRequest?.Encode(elementIdentifiers.Count, nameof(zkRequest));
+
         var items = new CborWriter(CborConformanceMode.Lax);
-        items.WriteStartMap(registrationCertificate is null ? 2 : 3);
+        var requestInfoMembers = (registrationCertificate is null ? 0 : 1) + (encodedZkRequest is null ? 0 : 1);
+        items.WriteStartMap(requestInfoMembers == 0 ? 2 : 3);
         items.WriteTextString("docType");
         items.WriteTextString(docType);
         items.WriteTextString("nameSpaces");
@@ -121,12 +139,22 @@ public static class DeviceRequestBuilder
 
         items.WriteEndMap();
         items.WriteEndMap();
-        if (registrationCertificate is not null)
+        if (requestInfoMembers > 0)
         {
             items.WriteTextString("requestInfo");
-            items.WriteStartMap(1);
-            items.WriteTextString(RegistrationCertificateKey);
-            items.WriteByteString(registrationCertificate);
+            items.WriteStartMap(requestInfoMembers);
+            if (registrationCertificate is not null)
+            {
+                items.WriteTextString(RegistrationCertificateKey);
+                items.WriteByteString(registrationCertificate);
+            }
+
+            if (encodedZkRequest is not null)
+            {
+                items.WriteTextString(ZkRequestKey);
+                items.WriteEncodedValue(encodedZkRequest);
+            }
+
             items.WriteEndMap();
         }
 

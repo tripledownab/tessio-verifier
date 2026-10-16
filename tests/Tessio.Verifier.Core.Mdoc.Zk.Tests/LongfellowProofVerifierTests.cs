@@ -186,11 +186,43 @@ public sealed class LongfellowProofVerifierTests : IClassFixture<LongfellowProof
     public void A_valid_circuit_carried_under_another_circuits_name_stops_the_verifier_loading()
     {
         // circuit_id succeeds on these bytes; only the comparison with the name's hash catches the swap.
-        var circuits = LongfellowProofVerifier.CarriedCircuits().ToList();
-        var v6 = circuits.Single(c => c.Name.EndsWith(AvZkVectors.CircuitHash, StringComparison.Ordinal));
-        var v7 = circuits.Single(c => c.Name.EndsWith(V7OneAttribute, StringComparison.Ordinal));
+        var v6 = Carried(AvZkVectors.CircuitHash);
+        var v7 = Carried(V7OneAttribute);
 
         Assert.Throws<InvalidOperationException>(() => LongfellowProofVerifier.LoadCircuits([(v7.Name, v6.Bytes)]));
+    }
+
+    [LinuxX64Fact]
+    public void The_system_ids_offered_are_the_carried_circuits()
+    {
+        Assert.Equal(
+            LongfellowProofVerifier.CarriedCircuits().Select(c => c.Name).Order(StringComparer.Ordinal),
+            _zk.SystemIds);
+        Assert.All(_zk.SystemIds, id => Assert.True(_zk.AcceptsCircuit(id[^64..])));
+    }
+
+    [LinuxX64Theory]
+    [InlineData("longfellow-libzk-v1_7_1_4096_2945_")]
+    [InlineData("longfellow-libzk-v1_6_2_4096_2945_")]
+    [InlineData("longfellow-libzk-v1_6_1_4095_2945_")]
+    [InlineData("longfellow-libzk-v1_6_1_4096_2946_")]
+    public void A_circuit_named_with_parameters_its_library_spec_does_not_have_stops_the_verifier_loading(string prefix)
+    {
+        // A request offers the name, so a name that misstates the circuit would ask the wallet for the wrong thing.
+        var v6 = Carried(AvZkVectors.CircuitHash);
+
+        Assert.Throws<InvalidOperationException>(
+            () => LongfellowProofVerifier.LoadCircuits([(prefix + AvZkVectors.CircuitHash, v6.Bytes)]));
+    }
+
+    [LinuxX64Fact]
+    public void A_circuit_named_with_an_uppercase_hash_stops_the_verifier_loading()
+    {
+        // SystemIds hands the name to ZkRequest, which offers only the lowercase spelling.
+        var v6 = Carried(AvZkVectors.CircuitHash);
+
+        Assert.Throws<InvalidOperationException>(
+            () => LongfellowProofVerifier.LoadCircuits([(v6.Name[..^64] + AvZkVectors.CircuitHash.ToUpperInvariant(), v6.Bytes)]));
     }
 
     [LinuxX64Fact]
@@ -293,6 +325,9 @@ public sealed class LongfellowProofVerifierTests : IClassFixture<LongfellowProof
         Disclosures = [new ZkDisclosure("eu.europa.ec.av.1", "age_over_18", new byte[] { 0xf5 })],
         Proof = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "longfellow-mdoc-tests-15-v7-proof.bin")),
     };
+
+    private static (string Name, byte[] Bytes) Carried(string circuitHash) =>
+        LongfellowProofVerifier.CarriedCircuits().Single(c => c.Name.EndsWith(circuitHash, StringComparison.Ordinal));
 
     /// <summary>One verifier for the class: loading it checks both circuits, which is not free.</summary>
     public sealed class VerifierFixture : IDisposable

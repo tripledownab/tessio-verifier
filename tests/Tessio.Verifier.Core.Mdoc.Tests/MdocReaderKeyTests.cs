@@ -157,7 +157,7 @@ public sealed class MdocReaderKeyTests : IDisposable
         path.Add(_certificates.Root);
 
         var deviceRequest = DeviceRequestBuilder.BuildSigned(
-            PidDocType, PidDocType, ["family_name"], intentToRetain: false, [0xf6], reader, registrationCertificate: null);
+            PidDocType, PidDocType, ["family_name"], intentToRetain: false, [0xf6], reader, registrationCertificate: null, zkRequest: null);
 
         var (_, encodedReaderAuth) = DeviceRequestReader.ReadSingleDocRequest(deviceRequest);
         Assert.Equal(
