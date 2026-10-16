@@ -69,6 +69,9 @@ public sealed class ZkVerificationTests : IDisposable
     [InlineData("longfellow-libzk-v1_7_1_4151_4096_8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121")]
     [InlineData("another-zk-system_6_1_4096_2945_137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6")]
     [InlineData("longfellow-libzk-v1")]
+    [InlineData("longfellow-libzk-v1_06_1_4096_2945_137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6")]
+    [InlineData("longfellow-libzk-v1_6_1_4096_2945_x_137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6")]
+    [InlineData("longfellow-libzk-v1_6_1_4096_2945999999_137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6")]
     public async Task A_circuit_or_system_the_proof_verifier_does_not_accept_is_refused_before_the_proof(string zkSystemId)
     {
         var zk = new StandInProofVerifier();

@@ -21,17 +21,37 @@ public static class Iso18013AnnexC
     /// amends nor voids it. Its ISO/IEC 18013-7-API-01 has Annex C presentations comply "as further
     /// profiled in clauses 5.3 and 5.4", although its clause 5.1 calls clause 5.3 specific to the
     /// non-API mechanism. Read either way, a signed request meets it: for an EUDI Wallet, use
-    /// <see cref="CreateSignedRequest"/>.
+    /// <see cref="CreateSignedRequest(string, string, IReadOnlyList{string}, string, MdocReaderKey, byte[])"/>.
     /// </remarks>
     public static Iso18013AnnexCRequest CreateRequest(
         string docType, string nameSpace, IReadOnlyList<string> elementIdentifiers) =>
+        CreateUnsigned(docType, nameSpace, elementIdentifiers, zkRequest: null);
+
+    /// <summary>
+    /// As <see cref="CreateRequest(string, string, IReadOnlyList{string})"/>, also asking the wallet for a zero
+    /// knowledge proof of the elements.
+    /// </summary>
+    /// <param name="docType">The requested document type.</param>
+    /// <param name="nameSpace">The namespace the elements live in.</param>
+    /// <param name="elementIdentifiers">The elements to request or to have proved.</param>
+    /// <param name="zkRequest">The circuits to offer and whether a proof is required.</param>
+    /// <exception cref="ArgumentException">No circuit <paramref name="zkRequest"/> offers proves as many elements as are requested.</exception>
+    public static Iso18013AnnexCRequest CreateRequest(
+        string docType, string nameSpace, IReadOnlyList<string> elementIdentifiers, ZkRequest zkRequest)
+    {
+        ArgumentNullException.ThrowIfNull(zkRequest);
+        return CreateUnsigned(docType, nameSpace, elementIdentifiers, zkRequest);
+    }
+
+    private static Iso18013AnnexCRequest CreateUnsigned(
+        string docType, string nameSpace, IReadOnlyList<string> elementIdentifiers, ZkRequest? zkRequest) =>
         // This seam never retains disclosed elements, so IntentToRetain is always false here.
         // DeviceRequestBuilder exposes the flag for callers that do retain.
-        Create(_ => DeviceRequestBuilder.Build(docType, nameSpace, elementIdentifiers, intentToRetain: false));
+        Create(_ => DeviceRequestBuilder.BuildUnsigned(docType, nameSpace, elementIdentifiers, intentToRetain: false, zkRequest));
 
     /// <summary>
     /// Builds the request pair with the docRequest signed by <paramref name="reader"/>, so the wallet
-    /// can authenticate the reader. Otherwise as <see cref="CreateRequest"/>.
+    /// can authenticate the reader. Otherwise as <see cref="CreateRequest(string, string, IReadOnlyList{string})"/>.
     /// </summary>
     /// <remarks>
     /// The signature covers the session transcript, which commits to this request's EncryptionInfo
@@ -66,7 +86,47 @@ public static class Iso18013AnnexC
         IReadOnlyList<string> elementIdentifiers,
         string origin,
         MdocReaderKey reader,
-        byte[]? registrationCertificate)
+        byte[]? registrationCertificate) =>
+        CreateSigned(docType, nameSpace, elementIdentifiers, origin, reader, registrationCertificate, zkRequest: null);
+
+    /// <summary>
+    /// As <see cref="CreateSignedRequest(string, string, IReadOnlyList{string}, string, MdocReaderKey, byte[])"/>,
+    /// also asking the wallet for a zero knowledge proof of the elements. The <c>zkRequest</c> sits inside the
+    /// bytes readerAuth signs.
+    /// </summary>
+    /// <param name="docType">The requested document type.</param>
+    /// <param name="nameSpace">The namespace the elements live in.</param>
+    /// <param name="elementIdentifiers">The elements to request or to have proved.</param>
+    /// <param name="origin">
+    /// The origin of the page that will make the browser call; see the overload without <paramref name="zkRequest"/>.
+    /// </param>
+    /// <param name="reader">The reader key and certificate path to sign with.</param>
+    /// <param name="registrationCertificate">
+    /// The registration certificate, or null; see the overload without <paramref name="zkRequest"/>.
+    /// </param>
+    /// <param name="zkRequest">The circuits to offer and whether a proof is required.</param>
+    /// <exception cref="ArgumentException">No circuit <paramref name="zkRequest"/> offers proves as many elements as are requested.</exception>
+    public static Iso18013AnnexCRequest CreateSignedRequest(
+        string docType,
+        string nameSpace,
+        IReadOnlyList<string> elementIdentifiers,
+        string origin,
+        MdocReaderKey reader,
+        byte[]? registrationCertificate,
+        ZkRequest zkRequest)
+    {
+        ArgumentNullException.ThrowIfNull(zkRequest);
+        return CreateSigned(docType, nameSpace, elementIdentifiers, origin, reader, registrationCertificate, zkRequest);
+    }
+
+    private static Iso18013AnnexCRequest CreateSigned(
+        string docType,
+        string nameSpace,
+        IReadOnlyList<string> elementIdentifiers,
+        string origin,
+        MdocReaderKey reader,
+        byte[]? registrationCertificate,
+        ZkRequest? zkRequest)
     {
         BrowserOrigin.RequireSerialized(origin);
         return Create(encryptionInfo => DeviceRequestBuilder.BuildSigned(
@@ -76,7 +136,8 @@ public static class Iso18013AnnexC
             intentToRetain: false,
             BuildSessionTranscript(encryptionInfo, origin),
             reader,
-            registrationCertificate));
+            registrationCertificate,
+            zkRequest));
     }
 
     /// <summary>
