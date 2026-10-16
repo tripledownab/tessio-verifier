@@ -1,0 +1,80 @@
+# Regenerates the lock files on a Dependabot NuGet pull request, so the update arrives ready to merge.
+#
+# WHY IT EXISTS. Dependabot's edits to packages.lock.json dropped one target framework's half of the file,
+# so its NuGet updates failed ci's locked restore with NU1004 and sat red until someone redid them by hand.
+# This takes Dependabot's version change, restores with both target frameworks as ci does, and commits the
+# lock files it produces to the pull request's own branch.
+#
+# ONLY WHEN A PACKAGE CHANGED. The regeneration also rewrites the version ranges this repository's own
+# projects require of each other, which move with every release and resolve nothing. Committing only those
+# would move the src tree, and the release gate would then want both conformance plans run again, for no
+# package change at all. So tools/check-lock-files.py decides: if it finds no package difference, the
+# workflow discards the regeneration and commits nothing. An update that touches only tests/ never does.
+#
+# WHY IT STARTS ci ITSELF. A push made with GITHUB_TOKEN starts no workflow run, except a dispatched one,
+# so the commit below would otherwise leave the pull request showing the failed run from before it. The
+# dispatched run includes ci's Windows leg.
+#
+# AFTER IT COMMITS, Dependabot stops rebasing the pull request, because someone else has committed to it.
+# Comment `@dependabot recreate` for a fresh one; this workflow then runs on that too.
+#
+# WHO IT RUNS FOR. Dependabot's own NuGet branches in this repository, and nothing else: the job checks
+# the actor and the branch, and a pull request from a fork never matches. The token is raised to write
+# only for this job, as GitHub allows for Dependabot runs.
+name: dependabot-lock-files
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  regenerate:
+    if: >-
+      github.actor == 'dependabot[bot]' &&
+      startsWith(github.head_ref, 'dependabot/nuget/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the regenerated lock files to the pull request's branch
+      actions: write  # dispatch ci on that branch afterwards
+    steps:
+      # No token left in .git/config while dotnet restore evaluates the branch's build files; the push
+      # below passes it explicitly.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+
+      - name: Set up .NET (8 + 10, as ci does)
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+          global-json-file: global.json
+
+      - name: Regenerate the lock files
+        run: dotnet restore Tessio.Verifier.sln --force-evaluate
+
+      - name: Commit them, and start ci on the result
+        env:
+          BRANCH: ${{ github.head_ref }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set +e; python3 tools/check-lock-files.py; status=$?; set -e
+          if [ "$status" -eq 0 ]; then
+            echo "No package differs from what NuGet resolves, so nothing is committed."
+            git checkout -- '*packages.lock.json'
+            exit 0
+          fi
+          # 1 is a stale lock file, the case this workflow is for. Anything else is a check that could not
+          # tell, and committing on that would commit blind.
+          [ "$status" -eq 1 ] || exit "$status"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(deps): regenerate the lock files" -- '*packages.lock.json'
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:$BRANCH"
+          gh workflow run ci.yml --ref "$BRANCH"
