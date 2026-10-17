@@ -22,6 +22,17 @@ internal sealed record LongfellowSystemId(
             CultureInfo.InvariantCulture, $"{System}_{Version}_{NumAttributes}_{BlockEncHash}_{BlockEncSig}_{CircuitHash}");
 
     /// <summary>
+    /// The circuit hash a presented <c>zkSystemId</c> names in lowercase. Null when it names none. Two spellings name
+    /// a circuit: this form and the bare circuit hash. The bare hash is what Longfellow's documentation recommends
+    /// a reader set as the identifier ("zkSystemId: &lt;any value, we recommend using circuit_hash to avoid
+    /// confusion&gt;", docs/content/en/docs/zk-system-spec.md at the commit the zero knowledge package pins).
+    /// </summary>
+    internal static string? CircuitHashNamedBy(string? zkSystemId) =>
+        Parse(zkSystemId)?.CircuitHash ?? (IsHash(zkSystemId) ? zkSystemId!.ToLowerInvariant() : null);
+
+    private static bool IsHash(string? text) => text is { Length: 64 } && text.All(char.IsAsciiHexDigit);
+
+    /// <summary>
     /// Reads <paramref name="zkSystemId"/>, or returns null when it is null, names another system or is not of this form.
     /// Hex is case insensitive, so an uppercase hash names the same circuit and comes back lowercase.
     /// </summary>
@@ -36,7 +47,7 @@ internal sealed record LongfellowSystemId(
         if (parts.Length != 6 || parts[0] != System
             || Number(parts[1]) is not { } version || Number(parts[2]) is not { } attributes
             || Number(parts[3]) is not { } blockEncHash || Number(parts[4]) is not { } blockEncSig
-            || parts[5].Length != 64 || !parts[5].All(char.IsAsciiHexDigit))
+            || !IsHash(parts[5]))
         {
             return null;
         }

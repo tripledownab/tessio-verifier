@@ -34,10 +34,16 @@ public sealed partial class MdocVerifier
         }
 
         var document = ZkDocumentParser.Parse(response.ZkDocuments[0]);
-        if (LongfellowSystemId.Parse(document.ZkSystemId)?.CircuitHash is not { } circuitHash || !zk.AcceptsCircuit(circuitHash))
+        if (LongfellowSystemId.CircuitHashNamedBy(document.ZkSystemId) is not { } circuitHash || !zk.AcceptsCircuit(circuitHash))
         {
             return Failure(MdocErrorCodes.ZkCircuitNotAccepted,
                 $"The zero knowledge presentation names '{document.ZkSystemId}', which is not an accepted circuit.");
+        }
+
+        if (context.ZkRequest is { } offered && !offered.Offers(circuitHash))
+        {
+            return Failure(MdocErrorCodes.ZkCircuitNotAccepted,
+                $"The zero knowledge presentation names '{document.ZkSystemId}', a circuit the request did not offer.");
         }
 
         if (context.ExpectedDocType is { } expected && !string.Equals(document.DocType, expected, StringComparison.Ordinal))
