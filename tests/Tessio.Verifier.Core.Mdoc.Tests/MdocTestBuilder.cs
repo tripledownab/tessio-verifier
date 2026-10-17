@@ -236,6 +236,8 @@ internal sealed class MdocTestBuilder : IDisposable
             case int i: w.WriteInt64(i); break;
             case long l: w.WriteInt64(l); break;
             case byte[] bytes: w.WriteByteString(bytes); break;
+            // A value the claim writes for itself, for shapes the cases above cannot express.
+            case Action<CborWriter> write: write(w); break;
             default: throw new NotSupportedException($"Unsupported test claim type {value.GetType()}.");
         }
     }
