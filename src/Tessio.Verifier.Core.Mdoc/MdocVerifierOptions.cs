@@ -58,6 +58,8 @@ public sealed class MdocVerifierOptions
     /// <see cref="ErrorCodes.CredentialStatusUnknown"/>. That is stricter than for a plain presentation, which
     /// passes when its MSO names no status list: a proof cannot show whether its MSO names one. The age
     /// verification profile puts revocation out of scope (Annex A, A.3).
+    /// To refuse a proof made with a circuit the request did not offer, set
+    /// <see cref="MdocVerificationContext.ZkRequest"/> when verifying the answer.
     /// </remarks>
     // SPEC: age verification technical specification 1.1.0, section 4.4: a relying party SHALL implement the
     // zero knowledge proof verification of Annex A, A.8.

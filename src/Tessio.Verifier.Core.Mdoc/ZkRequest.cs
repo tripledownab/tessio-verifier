@@ -10,7 +10,9 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// <remarks>
 /// Pass one to <see cref="Iso18013AnnexC.CreateRequest(string, string, IReadOnlyList{string}, ZkRequest)"/> or
 /// <see cref="Iso18013AnnexC.CreateSignedRequest(string, string, IReadOnlyList{string}, string, MdocReaderKey, byte[], ZkRequest)"/>.
-/// The age verification profile carries zero knowledge proofs over the Digital Credentials API only (technical
+/// Keep it with the request and set the same one as <see cref="MdocVerificationContext.ZkRequest"/> when
+/// verifying the answer, so a proof made with a circuit it did not offer is refused. The age verification profile
+/// carries zero knowledge proofs over the Digital Credentials API only (technical
 /// specification 1.1.0, Annex A, A.6), so no other transport takes one.
 /// </remarks>
 // SPEC: Annex A, A.8 has the request "follow the ZkSystemSpec mechanism defined in ISO/IEC 18013-5 (Second
@@ -67,6 +69,9 @@ public sealed class ZkRequest
 
     // The offered circuits in the order given, read once when constructed.
     private readonly ImmutableArray<LongfellowSystemId> _specs;
+
+    /// <summary>Whether this request offered the circuit of <paramref name="circuitHash"/> (lowercase hex).</summary>
+    internal bool Offers(string circuitHash) => _specs.Any(s => s.CircuitHash == circuitHash);
 
     /// <summary>
     /// <c>zkRequired</c>: whether the wallet must answer with a proof. Leave it false, the default, for the age

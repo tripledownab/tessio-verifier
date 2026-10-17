@@ -72,11 +72,54 @@ public sealed class ZkVerificationTests : IDisposable
     [InlineData("longfellow-libzk-v1_06_1_4096_2945_137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6")]
     [InlineData("longfellow-libzk-v1_6_1_4096_2945_x_137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6")]
     [InlineData("longfellow-libzk-v1_6_1_4096_2945999999_137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6")]
+    [InlineData("137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c")]
+    [InlineData("137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6x")]
     public async Task A_circuit_or_system_the_proof_verifier_does_not_accept_is_refused_before_the_proof(string zkSystemId)
     {
         var zk = new StandInProofVerifier();
 
         var result = await Verify(AvZkResponses.Build(new() { ZkSystemId = zkSystemId }), zk);
+
+        Assert.Equal(MdocErrorCodes.ZkCircuitNotAccepted, Assert.Single(result.Errors).Code);
+        Assert.Empty(zk.Requests);
+    }
+
+    [Theory]
+    [InlineData(AvZkVectors.CircuitHash)]
+    [InlineData("137E5A75CE72735A37C8A72DA1A8A0A5DF8D13365C2AE3D2C2BD6A0E7197C7C6")]
+    public async Task A_bare_circuit_hash_names_its_circuit(string zkSystemId)
+    {
+        // Longfellow's documentation recommends the bare hash as the zkSystemId a reader sets.
+        var zk = new StandInProofVerifier();
+
+        var result = await Verify(AvZkResponses.Build(new() { ZkSystemId = zkSystemId }), zk);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(AvZkVectors.CircuitHash, Assert.Single(zk.Requests).CircuitHash);
+    }
+
+    [Theory]
+    [InlineData(AvZkVectors.ZkSystemId)]
+    [InlineData(AvZkVectors.CircuitHash)]
+    public async Task A_presentation_naming_a_circuit_the_request_offered_is_checked(string zkSystemId)
+    {
+        var zk = new StandInProofVerifier();
+
+        var result = await Verify(AvZkResponses.Build(new() { ZkSystemId = zkSystemId }), zk, zkRequest: new ZkRequest([AvZkVectors.ZkSystemId]));
+
+        Assert.True(result.IsValid);
+        Assert.Single(zk.Requests);
+    }
+
+    [Fact]
+    public async Task A_presentation_naming_a_circuit_the_request_did_not_offer_is_refused_before_the_proof()
+    {
+        // The proof verifier accepts this circuit; the request offered only another one.
+        var zk = new StandInProofVerifier();
+        var offeredV7Only = new ZkRequest(
+            ["longfellow-libzk-v1_7_1_4151_4096_8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121"]);
+
+        var result = await Verify(AvZkResponses.Build(), zk, zkRequest: offeredV7Only);
 
         Assert.Equal(MdocErrorCodes.ZkCircuitNotAccepted, Assert.Single(result.Errors).Code);
         Assert.Empty(zk.Requests);
@@ -327,7 +370,8 @@ public sealed class ZkVerificationTests : IDisposable
         ITrustListResolver? trust = null,
         bool omitTranscript = false,
         bool openId4VpInputs = false,
-        bool checkStatus = false)
+        bool checkStatus = false,
+        ZkRequest? zkRequest = null)
     {
         var verifier = new MdocVerifier(
             trust ?? new StaticTrustListResolver([_signer.Subject], source: "av-example", trustAnchors: [_signer], clock: new Fixed(Now)),
@@ -340,6 +384,7 @@ public sealed class ZkVerificationTests : IDisposable
             ClientId = openId4VpInputs ? "x509_san_dns:verifier.example" : null,
             Nonce = openId4VpInputs ? "nonce" : null,
             ResponseUri = openId4VpInputs ? "https://verifier.example/response" : null,
+            ZkRequest = zkRequest,
         };
         return verifier.VerifyAsync(new PresentedCredential { Format = MdocVerifier.Format, RawValue = Base64UrlEncoder.Encode(response) }, context);
     }

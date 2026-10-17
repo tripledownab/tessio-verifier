@@ -27,7 +27,10 @@ public interface IZkProofVerifier
 /// <summary>The inputs a zero knowledge proof of an mdoc is checked against.</summary>
 public sealed record ZkProofRequest
 {
-    /// <summary>The <c>zkSystemId</c> the presentation names.</summary>
+    /// <summary>
+    /// The <c>zkSystemId</c> the presentation names, exactly as sent: the Longfellow form or a bare circuit hash.
+    /// Read the circuit from <see cref="CircuitHash"/>, not by parsing this.
+    /// </summary>
     public required string ZkSystemId { get; init; }
 
     /// <summary>The circuit hash taken from <see cref="ZkSystemId"/>, lowercase hex.</summary>
