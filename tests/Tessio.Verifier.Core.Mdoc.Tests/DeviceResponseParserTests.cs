@@ -1,3 +1,4 @@
+using System.Formats.Cbor;
 
 namespace Tessio.Verifier.Core.Mdoc.Tests;
 
@@ -134,6 +135,26 @@ public sealed class DeviceResponseParserTests : IDisposable
         var ex = Assert.Throws<MdocProcessingException>(
             () => DeviceResponseParser.Parse(Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode([0xFF, 0x00, 0x01])));
         Assert.Equal(MdocErrorCodes.StructureInvalid, ex.Code);
+    }
+
+    [Fact]
+    public void ElementValueNestedPastTheLimit_ThrowsStructureInvalid()
+    {
+        // The same cap the zero knowledge path has (ZkVerificationTests), here on a plain presentation's
+        // issuerSigned element values.
+        _builder.Claims["deep"] = (Action<CborWriter>)(w => CborNesting.Write(w, CborValueConverter.MaxDepth + 1));
+
+        var ex = Assert.Throws<MdocProcessingException>(() => DeviceResponseParser.Parse(_builder.BuildBase64Url()));
+        Assert.Equal(MdocErrorCodes.StructureInvalid, ex.Code);
+    }
+
+    [Fact]
+    public void ElementValueNestedToTheLimit_Parses()
+    {
+        _builder.Claims["deep"] = (Action<CborWriter>)(w => CborNesting.Write(w, CborValueConverter.MaxDepth));
+
+        var items = DeviceResponseParser.Parse(_builder.BuildBase64Url()).Documents[0].NameSpaces[MdocTestBuilder.DefaultNamespace];
+        Assert.NotNull(items.Single(i => i.ElementIdentifier == "deep").ElementValue);
     }
 
     [Fact]

@@ -230,7 +230,7 @@ public sealed class ZkVerificationTests : IDisposable
     public async Task A_value_nested_past_the_limit_is_a_structure_error_not_a_crash()
     {
         var result = await Verify(
-            AvZkResponses.Build(new() { Value = w => Nest(w, CborValueConverter.MaxDepth + 1) }), new StandInProofVerifier());
+            AvZkResponses.Build(new() { Value = w => CborNesting.Write(w, CborValueConverter.MaxDepth + 1) }), new StandInProofVerifier());
 
         Assert.Equal(MdocErrorCodes.StructureInvalid, Assert.Single(result.Errors).Code);
     }
@@ -239,7 +239,7 @@ public sealed class ZkVerificationTests : IDisposable
     public async Task A_value_nested_to_the_limit_is_read()
     {
         var result = await Verify(
-            AvZkResponses.Build(new() { Value = w => Nest(w, CborValueConverter.MaxDepth) }), new StandInProofVerifier());
+            AvZkResponses.Build(new() { Value = w => CborNesting.Write(w, CborValueConverter.MaxDepth) }), new StandInProofVerifier());
 
         Assert.True(result.IsValid);
     }
@@ -342,21 +342,6 @@ public sealed class ZkVerificationTests : IDisposable
             ResponseUri = openId4VpInputs ? "https://verifier.example/response" : null,
         };
         return verifier.VerifyAsync(new PresentedCredential { Format = MdocVerifier.Format, RawValue = Base64UrlEncoder.Encode(response) }, context);
-    }
-
-    private static void Nest(CborWriter writer, int levels)
-    {
-        // levels arrays inside one another, around a true: depth levels to the converter.
-        for (var i = 0; i < levels; i++)
-        {
-            writer.WriteStartArray(1);
-        }
-
-        writer.WriteBoolean(true);
-        for (var i = 0; i < levels; i++)
-        {
-            writer.WriteEndArray();
-        }
     }
 
     private sealed class StandInProofVerifier(bool verdict = true) : IZkProofVerifier
