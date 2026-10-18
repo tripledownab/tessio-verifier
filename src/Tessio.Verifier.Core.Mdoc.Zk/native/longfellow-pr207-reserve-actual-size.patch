@@ -1,0 +1,102 @@
+diff --git a/lib/circuits/mdoc/mdoc_circuit_id.cc b/lib/circuits/mdoc/mdoc_circuit_id.cc
+index b9ca1eb..31070ab 100644
+--- a/lib/circuits/mdoc/mdoc_circuit_id.cc
++++ b/lib/circuits/mdoc/mdoc_circuit_id.cc
+@@ -47,8 +47,7 @@ int circuit_id(uint8_t id[/*kSHA256DigestSize*/], const uint8_t* bcp,
+   SHA256 sha;
+   uint8_t cid[kSHA256DigestSize];
+ 
+-  size_t len = kCircuitSizeMax;
+-  std::vector<uint8_t> bytes(len);
++  std::vector<uint8_t> bytes;  // sized by decompress from the frame header
+   size_t full_size = decompress(bytes, bcp, bcsz);
+ 
+   ReadBuffer rb_circuit(bytes.data(), full_size);
+diff --git a/lib/circuits/mdoc/mdoc_decompress.cc b/lib/circuits/mdoc/mdoc_decompress.cc
+index fcd6a5c..4bf3d64 100644
+--- a/lib/circuits/mdoc/mdoc_decompress.cc
++++ b/lib/circuits/mdoc/mdoc_decompress.cc
+@@ -21,6 +21,8 @@
+ #include "util/log.h"
+ #include "zstd.h"
+ 
++#include "circuits/mdoc/mdoc_zk.h"
++
+ namespace proofs {
+ 
+ // Decompress a circuit representation into a vector that has been reserved
+@@ -28,6 +30,20 @@ namespace proofs {
+ // the size of the uncompressed string.
+ size_t decompress(std::vector<uint8_t>& bytes, const uint8_t* compressed,
+                   size_t compressed_len) {
++  // Size the output buffer from the frame header rather than from the
++  // kCircuitSizeMax upper bound. Constructing a std::vector of that bound
++  // value-initialises 130 MB -- every page written, so every page resident --
++  // when the v6 circuit needs only 87.7 MB of it.
++  unsigned long long fcs = ZSTD_getFrameContentSize(compressed, compressed_len);
++  size_t want = kCircuitSizeMax;
++  if (fcs != ZSTD_CONTENTSIZE_ERROR && fcs != ZSTD_CONTENTSIZE_UNKNOWN &&
++      fcs <= (unsigned long long)kCircuitSizeMax) {
++    want = (size_t)fcs;
++  }
++  if (bytes.size() < want) {
++    bytes.resize(want);
++  }
++
+   size_t res =
+       ZSTD_decompress(bytes.data(), bytes.size(), compressed, compressed_len);
+ 
+diff --git a/lib/circuits/mdoc/mdoc_zk.cc b/lib/circuits/mdoc/mdoc_zk.cc
+index 3dd168e..5a035b4 100644
+--- a/lib/circuits/mdoc/mdoc_zk.cc
++++ b/lib/circuits/mdoc/mdoc_zk.cc
+@@ -434,8 +434,7 @@ MdocProverErrorCode run_mdoc_prover(
+   std::unique_ptr<Circuit<Fp256Base>> c_sig = nullptr;
+   std::unique_ptr<Circuit<f_128>> c_hash = nullptr;
+   /* scope for the bytes array */ {
+-    size_t len = kCircuitSizeMax;
+-    std::vector<uint8_t> bytes(len);
++    std::vector<uint8_t> bytes;  // sized by decompress from the frame header
+     size_t full_size = decompress(bytes, bcp, bcsz);
+ 
+     if (full_size == 0) {
+@@ -596,8 +595,14 @@ MdocVerifierErrorCode run_mdoc_verifier(
+   const f2_p256 p256_2(p256_base);
+ 
+   // Parse circuits from cached byte representation.
+-  size_t len = kCircuitSizeMax;
+-  std::vector<uint8_t> bytes(len);
++  //
++  // Scoped, the way the prover already scopes its copy: the decompressed
++  // circuit is needed only until CircuitRep has built c_sig and c_hash, and
++  // holding it for the whole verification adds its full size to the peak.
++  std::unique_ptr<Circuit<Fp256Base>> c_sig;
++  std::unique_ptr<Circuit<f_128>> c_hash;
++  { /* scope for the bytes array */
++  std::vector<uint8_t> bytes;
+   size_t full_size = decompress(bytes, bcp, bcsz);
+ 
+   // For now, we are not using the ZKSpec version anywhere and assuming no
+@@ -607,19 +612,20 @@ MdocVerifierErrorCode run_mdoc_verifier(
+ 
+   ReadBuffer rb_circuit(bytes.data(), full_size);
+   CircuitRep<Fp256Base> cr_s(p256_base, P256_ID);
+-  auto c_sig = cr_s.from_bytes(rb_circuit, enforce_circuit_id_in_verifier);
++  c_sig = cr_s.from_bytes(rb_circuit, enforce_circuit_id_in_verifier);
+   if (c_sig == nullptr) {
+     log(ERROR, "signature circuit could not be parsed");
+     return MDOC_VERIFIER_CIRCUIT_PARSING_FAILURE;
+   }
+ 
+   CircuitRep<f_128> cr_h(Fs, GF2_128_ID);
+-  auto c_hash = cr_h.from_bytes(rb_circuit, enforce_circuit_id_in_verifier);
++  c_hash = cr_h.from_bytes(rb_circuit, enforce_circuit_id_in_verifier);
+ 
+   if (c_hash == nullptr) {
+     log(ERROR, "circuit could not be parsed");
+     return MDOC_VERIFIER_CIRCUIT_PARSING_FAILURE;
+   }
++  } /* bytes freed here */
+   log(INFO, "circuit created. h[in:%zu], s[in:%zu]", c_hash->ninputs,
+       c_sig->ninputs);
+ 

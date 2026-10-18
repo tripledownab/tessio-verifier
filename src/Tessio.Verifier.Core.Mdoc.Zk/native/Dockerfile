@@ -17,6 +17,14 @@ RUN git init -q . \
  && git checkout -q FETCH_HEAD \
  && test "$(git rev-parse HEAD)" = "$LONGFELLOW_COMMIT"
 
+# One upstream change on top of v0.9, until a release carries it: longfellow-zk pull request #207 (merged
+# into main as d9d8d6a), which sizes each decompressed circuit from its zstd frame header instead of the
+# 130 MB bound and frees the verifier's copy once it is parsed. It lowers the verifier's peak memory and
+# changes no behaviour. Backported unchanged except for v0.9's name for one class (CircuitRep, later
+# renamed CircuitReader). Drop this step, and the file, when the pinned commit is a release that has it.
+COPY longfellow-pr207-reserve-actual-size.patch /longfellow-pr207.patch
+RUN git apply /longfellow-pr207.patch
+
 # Position independent code, so the static archive can become a shared library.
 RUN CXX=clang++ CC=clang cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
       -S lib -B build \

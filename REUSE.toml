@@ -23,6 +23,13 @@ precedence = "override"
 SPDX-FileCopyrightText = "Copyright 2026 Google LLC"
 SPDX-License-Identifier = "Apache-2.0"
 
+# Longfellow pull request #207, backported to the pinned v0.9 commit and applied by native/Dockerfile.
+[[annotations]]
+path = "src/Tessio.Verifier.Core.Mdoc.Zk/native/longfellow-pr207-reserve-actual-size.patch"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright 2026 Google LLC and the longfellow-zk contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
 # The zero knowledge response example of the European Age Verification Solution technical specification
 # 1.1.0, Annex A, A.11 (github.com/eu-digital-identity-wallet/av-doc-technical-specification).
 [[annotations]]
