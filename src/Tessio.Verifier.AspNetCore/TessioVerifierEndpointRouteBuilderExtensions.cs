@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -24,6 +23,10 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
     /// <item><description><c>GET {prefix}/{sessionId}</c> — session status as JSON.</description></item>
     /// <item><description><c>GET {prefix}/{sessionId}/stream</c> — result as Server-Sent Events.</description></item>
     /// <item><description><c>POST {prefix}/callback</c> — wallet response callback (live modes).</description></item>
+    /// <item><description><c>GET {prefix}/{sessionId}/return</c> — the page a wallet's redirect lands on.</description></item>
+    /// <item><description><c>POST {prefix}/same-device</c>, <c>POST {prefix}/callback/same-device</c> and
+    /// <c>POST {prefix}/{sessionId}/redeem</c> — the same-device flow, when the session store implements
+    /// <see cref="ISameDeviceSessionStore"/> (see <see cref="SameDeviceEndpoints"/>).</description></item>
     /// </list>
     /// </summary>
     /// <param name="endpoints">The endpoint route builder.</param>
@@ -53,87 +56,31 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             }
         }
 
-        endpoints.MapGet($"{prefix}/start", (HttpContext http) => StartAsync(http, prefix));
+        endpoints.MapGet($"{prefix}/start", (HttpContext http) => SessionStartEndpoint.HandleAsync(http, prefix));
         endpoints.MapGet($"{prefix}/request/{{requestId}}", (string requestId, HttpContext http) => ServeRequestObjectAsync(requestId, http));
         endpoints.MapGet($"{prefix}/{{sessionId}}", (string sessionId, HttpContext http) => GetStatusAsync(sessionId, http));
         endpoints.MapGet($"{prefix}/{{sessionId}}/stream", (string sessionId, HttpContext http) => SessionEventStream.StreamAsync(sessionId, http, SerializerOptions));
-        endpoints.MapPost($"{prefix}/callback", (HttpContext http) => CallbackAsync(http, prefix));
+        endpoints.MapPost($"{prefix}{WalletCallbackEndpoint.CallbackPath}", (HttpContext http) => WalletCallbackEndpoint.HandleAsync(http, prefix, SerializerOptions));
+
+        // The return page is mapped whatever the store, because every processed callback redirects to it.
+        var store = endpoints.ServiceProvider.GetRequiredService<ISessionStore>();
+        var sameDevice = store is ISameDeviceSessionStore;
+        SameDeviceEndpoints.MapReturnPage(endpoints, prefix, offerRedemption: sameDevice);
+        if (sameDevice)
+        {
+            endpoints.MapPost($"{prefix}{SameDeviceRequests.CallbackPath}", (HttpContext http) => WalletCallbackEndpoint.HandleAsync(http, prefix, SerializerOptions));
+            SameDeviceEndpoints.Map(endpoints, prefix, SerializerOptions);
+        }
+        else
+        {
+            // Loud rather than fatal: a store written against contracts-v0 keeps working for cross-device
+            // verification, and failing its host's boot on upgrade would be a breaking change.
+            Log.SameDeviceUnavailable(
+                endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Tessio.Verifier.Sessions"),
+                store.GetType().Name);
+        }
 
         return endpoints;
-    }
-
-    private static async Task StartAsync(HttpContext http, string prefix)
-    {
-        var options = http.RequestServices.GetRequiredService<IOptions<VerifierOptions>>().Value;
-        var store = http.RequestServices.GetRequiredService<ISessionStore>();
-
-        var responseUri = new Uri($"{http.Request.Scheme}://{http.Request.Host}{prefix}/callback");
-
-        // A FRESH key per request (OpenID4VP 1.0 §8.3, HAIP 1.0 §5): reusing one is a correlation
-        // handle and a single point of retrospective compromise. Held until the session expires; the
-        // callback finds it again via the kid the wallet echoes in the JWE header.
-        var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
-            ? http.RequestServices.GetRequiredService<ResponseEncryptionKeyStore>()
-                .CreateForRequest(http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow() + options.SessionLifetime)
-                .PublicJwk
-            : null;
-        var requestOptions = DemoRequestOptionsFactory.Create(options, responseUri, encryptionJwk);
-        var session = await store.CreateAsync(requestOptions, http.RequestAborted).ConfigureAwait(false);
-        var logger = http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Tessio.Verifier.Sessions");
-        Log.SessionCreated(logger, session.SessionId, options.Mode, session.ExpiresAt);
-
-        // By-reference delivery: host the signed JAR where the wallet will fetch it.
-        if (session.Request is PresentationRequest.ByReference byReference)
-        {
-            var requestId = byReference.RequestUri.Segments[^1].TrimEnd('/');
-            http.RequestServices.GetRequiredService<RequestObjectStore>()
-                .Put(requestId, byReference.SignedRequestObject, byReference.ExpiresAt);
-        }
-
-        switch (options.Mode)
-        {
-            case VerifierMode.Demo:
-                await http.RequestServices.GetRequiredService<DemoCompletionQueue>()
-                    .EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
-                break;
-            case VerifierMode.Mock:
-                await http.RequestServices.GetRequiredService<MockWalletQueue>()
-                    .EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
-                break;
-            case VerifierMode.Test:
-                await http.RequestServices.GetRequiredService<TestFixtureQueue>()
-                    .EnqueueAsync(session.SessionId, http.RequestAborted).ConfigureAwait(false);
-                break;
-            default:
-                break; // Live wallets respond via the callback on their own schedule.
-        }
-
-        var html = RenderStartPage(session.SessionId, prefix, options.Mode, session.Request.AuthorizationRequestUri.ToString());
-        http.Response.ContentType = "text/html; charset=utf-8";
-        // no-store: this page carries a new session's authorization request, and so its state. A cache
-        // handing the same page to the next visitor would give two people one session.
-        http.Response.Headers.CacheControl = "no-store";
-        await http.Response.WriteAsync(html, http.RequestAborted).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Renders the authorization request URI as an SVG QR code for cross-device scanning. Returns an
-    /// empty string when the payload exceeds QR capacity (huge by-value JARs); the page then shows
-    /// the URI only. Keep requests scannable with by-reference delivery (see docs/going-live.md).
-    /// </summary>
-    internal static string RenderQrCode(string payload)
-    {
-        try
-        {
-            using var generator = new QRCoder.QRCodeGenerator();
-            using var data = generator.CreateQrCode(payload, QRCoder.QRCodeGenerator.ECCLevel.L);
-            return new QRCoder.SvgQRCode(data).GetGraphic(
-                4, "#000000", "#ffffff", sizingMode: QRCoder.SvgQRCode.SizingMode.ViewBoxAttribute);
-        }
-        catch (QRCoder.Exceptions.DataTooLongException)
-        {
-            return string.Empty;
-        }
     }
 
     private static async Task ServeRequestObjectAsync(string requestId, HttpContext http)
@@ -173,57 +120,6 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
             http.RequestAborted).ConfigureAwait(false);
     }
 
-    private static async Task CallbackAsync(HttpContext http, string prefix)
-    {
-        // SPEC: OpenID4VP 1.0 §8.2 — wallets POST application/x-www-form-urlencoded to response_uri.
-        if (!http.Request.HasFormContentType)
-        {
-            http.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await http.Response.WriteAsJsonAsync(
-                new { error = "invalid_request", message = "Expected an application/x-www-form-urlencoded wallet response." },
-                SerializerOptions, http.RequestAborted).ConfigureAwait(false);
-            return;
-        }
-
-        var form = await http.Request.ReadFormAsync(http.RequestAborted).ConfigureAwait(false);
-        var response = new Tessio.Verifier.OpenId4Vp.WalletResponseData
-        {
-            ContentType = http.Request.ContentType ?? "application/x-www-form-urlencoded",
-            Form = form.ToDictionary(
-                static f => f.Key,
-                static f => (IReadOnlyList<string>)f.Value.Where(v => v is not null).Cast<string>().ToArray(),
-                StringComparer.Ordinal),
-            Body = ReadOnlyMemory<byte>.Empty,
-        };
-
-        var processor = http.RequestServices.GetRequiredService<WalletCallbackProcessor>();
-        var result = await processor.ProcessAsync(response, http.RequestAborted).ConfigureAwait(false);
-
-        (http.Response.StatusCode, var error) = result.Outcome switch
-        {
-            CallbackOutcome.Completed => (StatusCodes.Status200OK, (string?)null),
-            CallbackOutcome.UnknownSession => (StatusCodes.Status400BadRequest, "unknown_session"),
-            CallbackOutcome.SessionNotPending => (StatusCodes.Status409Conflict, "session_not_pending"),
-            // The response may be perfectly well formed. It is the stored session that cannot be checked
-            // against, so this is a conflict with the session's state rather than a bad request.
-            CallbackOutcome.SessionNotVerifiable => (StatusCodes.Status409Conflict, "session_not_verifiable"),
-            // The response was read and checked, and the credential failed. The session stays open for another
-            // response (VerifierOptions.CompleteOnlyOnValidResponse), so the wallet is told the answer was refused.
-            CallbackOutcome.PresentationRejected => (StatusCodes.Status400BadRequest, "invalid_response"),
-            _ => (StatusCodes.Status400BadRequest, "invalid_response"),
-        };
-
-        // SPEC: HAIP 1.0 §5.1 requires this response to carry redirect_uri, which is where the wallet
-        // sends the user next. OpenID4VP §8.2 permits omitting it, so this used to be a bare
-        // {"status":"accepted"}: valid OpenID4VP, not valid HAIP, and "status" is not a member the
-        // specification defines at all. Point it at this session's own status resource.
-        await http.Response.WriteAsJsonAsync(
-            error is null
-                ? new { redirect_uri = $"{http.Request.Scheme}://{http.Request.Host}{prefix}/{result.SessionId}" }
-                : (object)new { error },
-            SerializerOptions, http.RequestAborted).ConfigureAwait(false);
-    }
-
     private static string NormalizePrefix(string prefix)
     {
         prefix = prefix.Trim();
@@ -234,76 +130,4 @@ public static class TessioVerifierEndpointRouteBuilderExtensions
 
         return prefix.TrimEnd('/');
     }
-
-    private static string RenderStartPage(string sessionId, string prefix, VerifierMode mode, string authorizationRequestUri) =>
-        StartPageTemplate
-            .Replace("__STREAM_URL__", $"{prefix}/{sessionId}/stream", StringComparison.Ordinal)
-            .Replace("__STATUS_URL__", $"{prefix}/{sessionId}", StringComparison.Ordinal)
-            .Replace("__SESSION_ID__", WebUtility.HtmlEncode(sessionId), StringComparison.Ordinal)
-            .Replace("__MODE__", WebUtility.HtmlEncode(mode.ToString()), StringComparison.Ordinal)
-            .Replace("__QR_SVG__", RenderQrCode(authorizationRequestUri), StringComparison.Ordinal)
-            // In Live mode scanning IS the flow; open the request section by default.
-            .Replace("__DETAILS_OPEN__", mode == VerifierMode.Live ? "open" : "", StringComparison.Ordinal)
-            .Replace("__AUTH_URI__", WebUtility.HtmlEncode(authorizationRequestUri), StringComparison.Ordinal);
-
-    private const string StartPageTemplate = """
-        <!doctype html>
-        <html lang="en">
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Tessio.Verifier — verification</title>
-          <style>
-            :root { color-scheme: light dark; }
-            body { font: 15px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
-            h1 { font-size: 1.4rem; margin-bottom: .25rem; }
-            .badge { display: inline-block; padding: .1rem .5rem; border-radius: 1rem; background: #5b6cff; color: #fff; font-size: .75rem; font-weight: 600; }
-            .status { font-size: 1.1rem; font-weight: 600; padding: .75rem 1rem; border-radius: .5rem; background: #8883; margin: 1rem 0; }
-            .status.ok { background: #2e7d3222; color: #2e7d32; }
-            .status.fail { background: #c6282822; color: #c62828; }
-            code { word-break: break-all; font-size: .8rem; }
-            .req { background: #8881; padding: .75rem; border-radius: .5rem; }
-            .qr { margin: .75rem 0; }
-            .qr svg { width: 240px; height: 240px; display: block; background: #fff; padding: 8px; border-radius: .5rem; }
-            table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
-            td { border-bottom: 1px solid #8883; padding: .35rem .5rem; }
-            td:first-child { font-weight: 600; width: 40%; }
-            .issuer { color: #888; font-size: .8rem; }
-          </style>
-        </head>
-        <body>
-          <h1>Tessio.Verifier <span class="badge">__MODE__ mode</span></h1>
-          <p>Session <code>__SESSION_ID__</code></p>
-          <div id="status" class="status pending">Starting…</div>
-          <div id="claims"></div>
-          <details __DETAILS_OPEN__>
-            <summary>Authorization request (scan with a wallet)</summary>
-            <div class="qr">__QR_SVG__</div>
-            <p class="req"><code>__AUTH_URI__</code></p>
-            <p><a href="__STATUS_URL__">Raw status JSON</a></p>
-          </details>
-          <script>
-            const streamUrl = "__STREAM_URL__";
-            const statusEl = document.getElementById('status');
-            const claimsEl = document.getElementById('claims');
-            function setStatus(text, cls) { statusEl.textContent = text; statusEl.className = 'status ' + cls; }
-            const es = new EventSource(streamUrl);
-            es.addEventListener('pending', () => setStatus('Waiting for wallet…', 'pending'));
-            es.addEventListener('completed', (e) => {
-              const view = JSON.parse(e.data);
-              const r = view.result;
-              setStatus(r && r.isValid ? 'Verified ✓' : 'Verification failed ✗', r && r.isValid ? 'ok' : 'fail');
-              if (r) {
-                const rows = Object.entries(r.disclosedClaims || {})
-                  .map(([k, v]) => `<tr><td>${k}</td><td>${String(v)}</td></tr>`).join('');
-                claimsEl.innerHTML = `<table>${rows}</table>` +
-                  `<p class="issuer">Issuer: ${r.issuer.identifier} · trusted: ${r.issuer.trusted} · key: ${r.issuer.keyResolutionMethod}</p>`;
-              }
-              es.close();
-            });
-            es.addEventListener('expired', () => { setStatus('Session expired', 'fail'); es.close(); });
-          </script>
-        </body>
-        </html>
-        """;
 }

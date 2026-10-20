@@ -53,4 +53,13 @@ public static class ErrorCodes
     /// issuer was neither trusted nor refused, so the credential fails closed with this instead.
     /// </summary>
     public const string IssuerTrustUnresolvable = "issuer_trust_unresolvable";
+
+    /// <summary>
+    /// A same-device presentation verified, but the redirect back arrived in a different browser from the
+    /// one that started the request, so the presentation was rejected. HAIP 1.0 section 5.1: "Verifiers MUST
+    /// reject presentations if ... the redirect back arrives in a different user session to the one the
+    /// request was initiated in." Emitted by the ASP.NET Core host's same-device flow, not by a credential
+    /// verifier.
+    /// </summary>
+    public const string SessionMismatch = "session_mismatch";
 }

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,31 +11,6 @@ namespace Tessio.Verifier.AspNetCore.Tests;
 /// </summary>
 public sealed class LoggingTests
 {
-    private sealed record LogRecord(string Category, LogLevel Level, string Message, Exception? Exception = null, string? EventName = null);
-
-    private sealed class CapturingLoggerProvider(Func<LogLevel, bool>? enabled = null) : ILoggerProvider
-    {
-        public ConcurrentQueue<LogRecord> Records { get; } = new();
-
-        public ILogger CreateLogger(string categoryName) => new CapturingLogger(categoryName, Records, enabled ?? (_ => true));
-
-        public void Dispose()
-        {
-        }
-
-        private sealed class CapturingLogger(string category, ConcurrentQueue<LogRecord> records, Func<LogLevel, bool> enabled) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-            public bool IsEnabled(LogLevel logLevel) => enabled(logLevel);
-
-            public void Log<TState>(
-                LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-                Func<TState, Exception?, string> formatter) =>
-                records.Enqueue(new LogRecord(category, logLevel, formatter(state, exception), exception, eventId.Name));
-        }
-    }
-
     private static (ServiceProvider Provider, CapturingLoggerProvider Logs) BuildProvider()
     {
         var logs = new CapturingLoggerProvider();
@@ -276,7 +250,8 @@ public sealed class LoggingTests
     public void EveryReachableLogEvent_TakesOnlyTheLibrarysOwnValues()
     {
         // The library's own: ids it minted, codes and methods it named, words it wrote.
-        string[] ownStrings = ["sessionId", "errorCodes", "keyResolutionMethod", "arrived", "asked"];
+        // storeType is the host's, not a presenter's: the name of the session store type it registered.
+        string[] ownStrings = ["sessionId", "errorCodes", "keyResolutionMethod", "arrived", "asked", "storeType"];
         // The mock wallet's exception comes from its own credential and its own pipeline, not a presenter.
         string[] ownExceptions = ["MockWalletFailed"];
 

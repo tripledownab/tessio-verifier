@@ -135,7 +135,11 @@ The endpoints `MapTessioVerifier` exposes (default prefix `/verify`):
 | `GET /verify/request/{id}` | Serves the signed request object (by-reference delivery, see below) |
 | `GET /verify/{sessionId}` | Session status and result as JSON, for your own frontend. Carries no authorization request (see "What the session endpoints may say") |
 | `GET /verify/{sessionId}/stream` | Server-Sent Events: `pending`, then `attempt_failed` when `failedAttempts` rises (with `CompleteOnlyOnValidResponse` on, and failures close together can share one), then `completed` or `expired` |
-| `POST /verify/callback` | The wallet's `response_uri`. Returns 200 on completion, 400 for invalid or unknown responses, 409 when the session cannot take this response |
+| `POST /verify/callback` | The wallet's `response_uri`. Returns 200 with a `redirect_uri` once the response is processed, 400 for invalid or unknown responses, 409 when the session cannot take this response |
+| `GET /verify/{sessionId}/return` | The page the wallet's `redirect_uri` lands on. It shows the session, and redeems the response code when the store runs the same-device flow |
+| `POST /verify/same-device` | Mints a request bound to this browser and returns the link that opens a wallet on the same device (see "The same-device flow") |
+| `POST /verify/callback/same-device` | The `response_uri` of a same-device request |
+| `POST /verify/{sessionId}/redeem` | Redeems the response code from the redirect |
 
 The callback endpoint enforces `state` correlation and completes each session exactly once, so replayed responses get a 409 (`session_not_pending`) and stray posts a 400. A response in a mode the request did not ask for also gets a 400 and does not end the session. That covers a plaintext form answering a `direct_post.jwt` request, and a `response` token that is not encrypted: OpenID4VP 1.0 §8.3 requires an unsigned, encrypted JWT. An encrypted response is also refused, before any key is looked up, when its JWE header lists critical extensions (`crit`, none of which the verifier supports), names a compression (`zip`), repeats a member name, nests deeper than `JweHeaderRules.MaxDepth`, or is anything other than a single JSON object. The `crit`, duplicate and single object rules come from RFC 7516 §4.1.13 and §5.2. Refusing `zip` on every route is this verifier's own choice, which §5.2 leaves to the application: neither OpenID4VP 1.0 nor HAIP 1.0 mentions compressing a response.
 
@@ -144,6 +148,33 @@ The callback endpoint enforces `state` correlation and completes each session ex
 It also refuses a session whose stored request cannot be read, or whose query never said which credential type it asked for, with a 409 (`session_not_verifiable`). Verifying either one accepts a credential of any type, because the verifier skips the type comparison when it has nothing to compare rather than failing it.
 
 The built-in store and request builders never produce such a session. Reaching it takes one of three things: a custom store that persisted less than the whole request, a custom `IPresentationRequestBuilder` that emits neither a request object nor the query parameters, or a hand-written DCQL entry that names no type. OpenID4VP 1.0 requires that name in both profiles, `vct_values` by §B.3.5 and `doctype_value` by §B.2.3, so `Dcql` always writes one and a query built through it always passes. See [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md#3-persist-the-whole-request) for what has to survive.
+
+### The same-device flow
+
+HAIP 1.0 §5.1 requires a verifier to support the same-device flow, in which the wallet runs on the device whose browser started the request. For that flow it says: "Verifiers MUST reject presentations if Wallets do not follow the redirect back or the redirect back arrives in a different user session to the one the request was initiated in." OpenID4VP 1.0 §14.2 says how: the Response URI "MUST include a fresh secret (Response Code) into the redirect URI returned to the Wallet and the Verifier's Response URI MUST require the frontend to pass the respective Response Code when fetching the Authorization Response". The library gates completing the session rather than fetching its result: a same-device session completes only when the response code and the browser binding both arrive. After that its result is readable by session id, like any other session's.
+
+The start page in Live mode offers a button that opens a wallet on this device. The routes behind it are mapped in every mode, so tests in Mock mode can drive them. It works like this:
+
+1. The page posts to `/verify/same-device`. That route creates a new session bound to this browser by an HttpOnly `__Host-` cookie and answers with the wallet link. The request names `/verify/callback/same-device` as its `response_uri`, so the session carries two marks of being same-device: the store's binding and the stored request. No session that either mark calls same-device completes unbound: the binding holds its presentation, and the mark alone has it refused. The route refuses to hand out a request whose `response_uri` does not carry that path, which a custom `IPresentationRequestBuilder` that ignores the response URI it is given would produce. The page opens the wallet only after all of that succeeds.
+2. When the wallet posts a presentation that verifies, the session does not complete. The presentation is held for a short window (`RedemptionWindow` in `SameDeviceSecrets.cs`, two minutes at the time of writing). The callback answers with a `redirect_uri` pointing at `/verify/{sessionId}/return` with a fresh response code in the fragment, which keeps the code out of server logs and `Referer` headers.
+3. The return page posts that code to `/verify/{sessionId}/redeem`. With the cookie of the browser that started the request, the session completes with the held result. From any other browser the presentation is rejected with `session_mismatch`, under the same rule as any failed response. By default that completes the session as invalid. With `CompleteOnlyOnValidResponse` on it counts as a failed attempt and the session stays pending.
+4. A presentation nobody redeems within the window never completes its session, which is the "do not follow the redirect back" case.
+
+A wallet that opens the redirect in a different browser from the one that started the request is rejected too, because HAIP 1.0 §5.1 requires rejecting a redirect that arrives in a different user session. Expect this for some legitimate users: a wallet may open links in the system's default browser rather than the one the user started in, and that user is told to start again in the browser the wallet opens.
+
+Every 200 from the callback carries a `redirect_uri` with a code, the start page's own cross-device session included. Only the code for a held presentation can be redeemed. The others are stored nowhere, so the return page finds nothing to redeem and shows the session as it stands.
+
+**What this protects, and what it does not.** A same-device request relayed to someone else's device cannot complete its session, because their browser does not hold the binding. The start page's own request, the one in its QR code, stays unbound, because OpenID4VP 1.0 §14.2 says the technique "is not applicable to cross-device scenarios because the browser used by the Wallet will not have the original session".
+
+That leaves the choice of flow with whoever starts the request, an attacker included: they can relay the QR request instead of a same-device one. HAIP 1.0 §5.1 says "Verifiers are RECOMMENDED to use only the "same-device" flow unless the Verifier does not rely on session binding for phishing resistance". The built-in start page offers both. If you rely on session binding, serve your own page that offers only the same-device request, by posting to `/verify/same-device` as the built-in button does.
+
+This covers §5.1's requirements for the same-device flow. The rest of §5.1 depends on your configuration: signed requests (section 2) delivered by reference (section 3) and encrypted responses, which `ResponseMode` asks for by default.
+
+Anyone who saw the wallet link holds the request's `state`. With it they can end a session that is holding a valid presentation by posting a failing response before the browser comes back. Without `CompleteOnlyOnValidResponse` that completes the session as invalid. It is a refusal, never a wrong verdict, and the user starts again.
+
+The cookie is `Secure`, so the flow needs HTTPS, as the callback already does (see the checklist). Over plain HTTP a browser other than on `localhost` drops the cookie, and every redemption is rejected as coming from another browser.
+
+Both POST routes accept JSON only. A form on another site can post without a CORS preflight. A JSON body needs one, so this keeps another site from replacing a browser's binding. Like `/start`, neither route is rate limited by the library: limit all three at your edge, by client address.
 
 ## 2. Sign your requests
 
@@ -408,6 +439,18 @@ builder.Services.AddSingleton<ISessionStore, RedisSessionStore>();
 
 `FindByStateAsync` is the extra member beyond the base `ISessionStore`: a wallet response carries only the OpenID4VP `state` value, so the callback path needs a state index next to the sessions. Registering a store without it fails fast with an explanatory exception on the first callback.
 
+For the same-device flow the store must also implement `ISameDeviceSessionStore`:
+
+- `CreateBoundAsync` keeps a browser's binding with the session.
+- `HoldAsync` keeps a verified result without completing the session. The callback calls it for every verified presentation, cross-device ones included, so for a session it holds no binding for it must answer `NotBound` and change nothing, whatever that session's state. Anything else breaks the QR flow.
+- `RedeemAsync` completes the session with the held result in one step, and only when the response code and the binding both match. These two comparisons are the protection, and the library does not repeat them, so they must be made here. A browser that sent no cookie is passed a hash nothing was bound to, which the comparison must reject.
+
+The values a store receives are SHA-256 hashes, never the secrets, so compare them with `CryptographicOperations.FixedTimeEquals`.
+
+Without the interface, `MapTessioVerifier` maps no same-device route and logs a warning (`SameDeviceUnavailable`) at startup. Cross-device verification works unchanged, with the return page showing the session and redeeming nothing. HAIP 1.0 §5.1 requires the same-device flow, though, so a HAIP deployment needs the interface.
+
+A session is same-device when either the store's binding or the stored request says so. A store that loses the binding but keeps the request is caught: the callback refuses the presentation with a 409 (`session_not_verifiable`) and logs an error (`SameDeviceBindingLost`) rather than complete the session unbound. A store that keeps the binding and loses the request's `response_uri` still holds through the binding. A store must keep at least one of the two: with neither, the session is indistinguishable from a cross-device one and completes as one.
+
 With `CompleteOnlyOnValidResponse` on, the store must also implement `IAttemptRecordingSessionStore`, whose `RecordFailedAttemptAsync` sets `LastFailure`, increments `FailedAttempts` and leaves the session pending. It must do nothing once the session has left `Pending`, so a failure that loses a race with a valid response cannot overwrite it. A store without it fails fast the same way, when the callback is first built.
 
 If you drive creation and completion from your own API (bypassing `/start` and `/callback`) or host many tenants in one process, see [self-driving-and-multi-tenant.md](self-driving-and-multi-tenant.md) for the `IWalletResponseVerifier` seam, a durable Postgres store and the request-object round-trip.
@@ -524,7 +567,8 @@ Verifying real EUDI wallets in production also requires registering as a relying
 - [ ] `RequestUriBase` set so QR codes stay small
 - [ ] Real `ITrustListResolver` registered, with trust anchors for issuers that use x5c
 - [ ] `PublicTrustListSources` names every trust list identifier you are content to publish, and nothing else
-- [ ] Multi-instance: `IStateCorrelatingSessionStore` over shared storage
+- [ ] Multi-instance: `IStateCorrelatingSessionStore` over shared storage and `ISameDeviceSessionStore` for the same-device flow
+- [ ] `/verify/start`, `/verify/same-device` and `/verify/{sessionId}/redeem` rate limited at your edge
 - [ ] Multi-instance: `ResponseEncryptionKeyProvider` built from one persisted key
 - [ ] Callback endpoint reachable over HTTPS from the public internet
 - [ ] Verified end to end in Mock mode first, then against a reference wallet

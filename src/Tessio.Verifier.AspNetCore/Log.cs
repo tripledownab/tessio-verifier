@@ -114,6 +114,30 @@ internal static partial class Log
         VerificationFailedSessionKeptCore(logger, sessionId, oneLine, errorCodes);
     }
 
+    [LoggerMessage(EventId = 11, EventName = "PresentationHeld", Level = LogLevel.Information,
+        Message = "Session {SessionId}: same-device presentation verified and held until its browser redeems the response code")]
+    public static partial void PresentationHeld(ILogger logger, string sessionId);
+
+    [LoggerMessage(EventId = 12, EventName = "CallbackWhileHeld", Level = LogLevel.Warning,
+        Message = "Session {SessionId}: a wallet response arrived while a presentation is held or after the session ended, and was rejected")]
+    public static partial void CallbackWhileHeld(ILogger logger, string sessionId);
+
+    [LoggerMessage(EventId = 13, EventName = "SameDeviceRedeemed", Level = LogLevel.Information,
+        Message = "Session {SessionId}: the held presentation was redeemed by the browser that started the request")]
+    public static partial void SameDeviceRedeemed(ILogger logger, string sessionId);
+
+    [LoggerMessage(EventId = 14, EventName = "SameDeviceBindingMismatch", Level = LogLevel.Warning,
+        Message = "Session {SessionId}: the held presentation was redeemed from another browser and rejected")]
+    public static partial void SameDeviceBindingMismatch(ILogger logger, string sessionId);
+
+    [LoggerMessage(EventId = 15, EventName = "SameDeviceUnavailable", Level = LogLevel.Warning,
+        Message = "The registered session store ({StoreType}) does not implement ISameDeviceSessionStore, so the same-device flow HAIP 1.0 section 5.1 requires is not served")]
+    public static partial void SameDeviceUnavailable(ILogger logger, string storeType);
+
+    [LoggerMessage(EventId = 16, EventName = "SameDeviceBindingLost", Level = LogLevel.Error,
+        Message = "Session {SessionId} was started for the same-device flow, but the session store holds no browser binding for it, so the presentation was refused")]
+    public static partial void SameDeviceBindingLost(ILogger logger, string sessionId);
+
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Mock wallet failed for session {SessionId}.")]
     public static partial void MockWalletFailed(ILogger logger, Exception exception, string sessionId);

@@ -9,7 +9,7 @@ namespace Tessio.Verifier.AspNetCore;
 /// Default in-memory <see cref="ISessionStore"/>. Suitable for a single-process app, the demo, and tests.
 /// Production deployments swap in a distributed store (Redis, SQL, …).
 /// </summary>
-public sealed class InMemorySessionStore : IStateCorrelatingSessionStore, IAttemptRecordingSessionStore
+public sealed partial class InMemorySessionStore : ISameDeviceSessionStore, IAttemptRecordingSessionStore
 {
     /// <summary>
     /// How long a session stays readable after <see cref="VerificationSession.ExpiresAt"/> before it
@@ -32,7 +32,11 @@ public sealed class InMemorySessionStore : IStateCorrelatingSessionStore, IAttem
     }
 
     /// <inheritdoc />
-    public async Task<VerificationSession> CreateAsync(PresentationRequestOptions options, CancellationToken ct = default)
+    public Task<VerificationSession> CreateAsync(PresentationRequestOptions options, CancellationToken ct = default) =>
+        CreateCoreAsync(options, browserBinding: null, ct);
+
+    private async Task<VerificationSession> CreateCoreAsync(
+        PresentationRequestOptions options, byte[]? browserBinding, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(options);
         EvictStaleSessions();
@@ -48,7 +52,7 @@ public sealed class InMemorySessionStore : IStateCorrelatingSessionStore, IAttem
             ExpiresAt = request.ExpiresAt,
         };
 
-        _sessions[session.SessionId] = new SessionEntry(session);
+        _sessions[session.SessionId] = new SessionEntry(session, browserBinding);
         if (request.State is { } state)
         {
             _sessionIdByState[state] = session.SessionId;
@@ -173,84 +177,5 @@ public sealed class InMemorySessionStore : IStateCorrelatingSessionStore, IAttem
         }
 
         return session;
-    }
-
-    private sealed class SessionEntry
-    {
-        private readonly object _gate = new();
-        private VerificationSession _current;
-        private TaskCompletionSource<VerificationSession> _changed = NewSignal();
-
-        public SessionEntry(VerificationSession initial) => _current = initial;
-
-        public TaskCompletionSource<VerificationSession> Terminal { get; } = NewSignal();
-
-        public VerificationSession Current
-        {
-            get { lock (_gate) { return _current; } }
-        }
-
-        /// <summary>The session as it is now if it differs from <paramref name="seen"/>, else the next change.</summary>
-        public Task<VerificationSession> NextChangeAfter(VerificationSession seen)
-        {
-            lock (_gate)
-            {
-                return ReferenceEquals(_current, seen) ? _changed.Task : Task.FromResult(_current);
-            }
-        }
-
-        public void Complete(VerificationResult result)
-        {
-            lock (_gate)
-            {
-                if (_current.Status != VerificationSessionStatus.Pending)
-                {
-                    return;
-                }
-
-                Publish(_current with { Status = VerificationSessionStatus.Completed, Result = result });
-                Terminal.TrySetResult(_current);
-            }
-        }
-
-        public void RecordFailure(VerificationResult failure)
-        {
-            lock (_gate)
-            {
-                if (_current.Status != VerificationSessionStatus.Pending)
-                {
-                    return;
-                }
-
-                Publish(_current with { LastFailure = failure, FailedAttempts = _current.FailedAttempts + 1 });
-            }
-        }
-
-        public VerificationSession Expire()
-        {
-            lock (_gate)
-            {
-                if (_current.Status == VerificationSessionStatus.Pending)
-                {
-                    Publish(_current with { Status = VerificationSessionStatus.Expired });
-                    Terminal.TrySetResult(_current);
-                }
-
-                return _current;
-            }
-        }
-
-        // Called under _gate. Replaces the signal before releasing the old one, so a waiter woken here
-        // that asks again waits for the NEXT change rather than returning this one twice.
-        private void Publish(VerificationSession next)
-        {
-            _current = next;
-            var released = _changed;
-            _changed = NewSignal();
-            released.TrySetResult(next);
-        }
-
-        private static TaskCompletionSource<VerificationSession> NewSignal() =>
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }
