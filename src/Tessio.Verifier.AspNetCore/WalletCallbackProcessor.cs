@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tessio.Verifier.Core;
 using Tessio.Verifier.OpenId4Vp;
 
 namespace Tessio.Verifier.AspNetCore;
@@ -13,16 +14,20 @@ internal enum CallbackOutcome
     SessionNotPending = 3,
     SessionNotVerifiable = 4,
     PresentationRejected = 5,
+
+    /// <summary>A verified same-device presentation, held until its browser redeems the response code.</summary>
+    Held = 6,
 }
 
 /// <summary>
-/// The outcome plus the session it belonged to, when one was correlated.
+/// The outcome plus the session it belonged to, when one was correlated, and the response code a held
+/// presentation is redeemed with.
 /// </summary>
 /// <remarks>
 /// The session id is carried out because HAIP 1.0 5.1 requires the response to the wallet's POST to
-/// contain a <c>redirect_uri</c>, and the only sensible destination is this session's own result.
+/// contain a <c>redirect_uri</c>, and its destination is this session's own return page.
 /// </remarks>
-internal readonly record struct CallbackResult(CallbackOutcome Outcome, string? SessionId);
+internal readonly record struct CallbackResult(CallbackOutcome Outcome, string? SessionId, string? ResponseCode = null);
 
 /// <summary>
 /// Processes a wallet authorization response end to end: parse (<see cref="WalletResponseParser"/>),
@@ -31,12 +36,14 @@ internal readonly record struct CallbackResult(CallbackOutcome Outcome, string? 
 /// with the outcome. With <see cref="VerifierOptions.CompleteOnlyOnValidResponse"/> on, a failing outcome
 /// is recorded as a failed attempt instead, and the session stays pending.
 /// </summary>
-internal sealed class WalletCallbackProcessor
+internal sealed partial class WalletCallbackProcessor
 {
     private readonly WalletResponseParser _parser;
     private readonly WalletResponseVerifier _responseVerifier;
     private readonly IStateCorrelatingSessionStore _store;
     private readonly IAttemptRecordingSessionStore? _attempts;
+    private readonly ISameDeviceSessionStore? _sameDevice;
+    private readonly TimeProvider _clock;
     private readonly ILogger<WalletCallbackProcessor> _logger;
 
     public WalletCallbackProcessor(
@@ -44,11 +51,16 @@ internal sealed class WalletCallbackProcessor
         WalletResponseVerifier responseVerifier,
         ISessionStore store,
         IOptions<VerifierOptions> options,
+        TimeProvider clock,
         ILogger<WalletCallbackProcessor> logger)
     {
         _parser = parser;
         _responseVerifier = responseVerifier;
+        _clock = clock;
         _logger = logger;
+        // Null for a store that cannot hold a presentation. MapTessioVerifier maps no same-device route for
+        // one, so every session it holds is cross-device and completes here as before.
+        _sameDevice = store as ISameDeviceSessionStore;
         // Wallet responses carry only `state` as a correlation handle, so the callback path cannot
         // work against a store that has no state index.
         _store = store as IStateCorrelatingSessionStore ?? throw new InvalidOperationException(
@@ -127,26 +139,49 @@ internal sealed class WalletCallbackProcessor
         // response-encryption thumbprint from the session's own request.
         var outcome = await _responseVerifier.VerifyParsedAsync(session, parsed, ct).ConfigureAwait(false);
 
-        if (!outcome.IsValid && _attempts is not null)
+        if (!outcome.IsValid)
         {
-            await _attempts.RecordFailedAttemptAsync(session.SessionId, outcome, ct).ConfigureAwait(false);
-            Log.VerificationFailedSessionKept(_logger, session.SessionId, outcome.Issuer.Identifier,
-                string.Join(",", outcome.Errors.Select(e => e.Code)));
-            return new CallbackResult(CallbackOutcome.PresentationRejected, session.SessionId);
+            var errorCodes = string.Join(",", outcome.Errors.Select(e => e.Code));
+            if (await RefuseAsync(session.SessionId, outcome, ct).ConfigureAwait(false))
+            {
+                Log.VerificationFailedSessionKept(_logger, session.SessionId, outcome.Issuer.Identifier, errorCodes);
+                return new CallbackResult(CallbackOutcome.PresentationRejected, session.SessionId);
+            }
+
+            Log.VerificationFailed(_logger, session.SessionId, outcome.Issuer.Identifier, errorCodes);
+            return new CallbackResult(CallbackOutcome.Completed, session.SessionId);
+        }
+
+        // A VERIFIED SAME-DEVICE PRESENTATION DOES NOT COMPLETE THE SESSION. It is held until the browser that
+        // started the request comes back with the response code the redirect carries, which is what HAIP 1.0
+        // section 5.1 requires: reject the presentation if the wallet does not follow the redirect back, or if
+        // the redirect arrives in another user session. Only a valid one is held, because a failing one is
+        // refused already. A session is same-device when EITHER its request says so or the store holds a binding
+        // for it, so losing one of the two still never completes it unbound (SameDeviceRequests).
+        if (await HoldAsync(session, outcome, ct).ConfigureAwait(false) is { } held)
+        {
+            return held;
         }
 
         await _store.CompleteAsync(session.SessionId, outcome, ct).ConfigureAwait(false);
-
-        if (outcome.IsValid)
-        {
-            Log.VerificationSucceeded(_logger, session.SessionId, outcome.Issuer.Identifier, outcome.Issuer.KeyResolutionMethod);
-        }
-        else
-        {
-            Log.VerificationFailed(_logger, session.SessionId, outcome.Issuer.Identifier,
-                string.Join(",", outcome.Errors.Select(e => e.Code)));
-        }
-
+        Log.VerificationSucceeded(_logger, session.SessionId, outcome.Issuer.Identifier, outcome.Issuer.KeyResolutionMethod);
         return new CallbackResult(CallbackOutcome.Completed, session.SessionId);
+    }
+
+    /// <summary>
+    /// The one rule for a refused presentation: with <see cref="VerifierOptions.CompleteOnlyOnValidResponse"/>
+    /// on, it is recorded as a failed attempt and the session stays pending; otherwise it completes the
+    /// session. Returns whether the session was kept open.
+    /// </summary>
+    private async Task<bool> RefuseAsync(string sessionId, VerificationResult failure, CancellationToken ct)
+    {
+        if (_attempts is null)
+        {
+            await _store.CompleteAsync(sessionId, failure, ct).ConfigureAwait(false);
+            return false;
+        }
+
+        await _attempts.RecordFailedAttemptAsync(sessionId, failure, ct).ConfigureAwait(false);
+        return true;
     }
 }
