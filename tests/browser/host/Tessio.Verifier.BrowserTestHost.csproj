@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- The host tests/browser/pages.mjs drives: the library's endpoints in Live mode, with a test-only route
+       that answers a request as a wallet would. It exists for the browser test and is never packed. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Tessio.Verifier.AspNetCore.Tests\LiveModeStandIns.cs" Link="LiveModeStandIns.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Tessio.Verifier.AspNetCore\Tessio.Verifier.AspNetCore.csproj" />
+  </ItemGroup>
+
+</Project>

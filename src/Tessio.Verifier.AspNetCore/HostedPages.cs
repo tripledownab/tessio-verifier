@@ -7,11 +7,11 @@ namespace Tessio.Verifier.AspNetCore;
 /// <summary>
 /// Renders the HTML pages the built-in endpoints serve to a browser: the start page a verification begins
 /// on, and the return page a same-device wallet's redirect lands on. The markup and scripts themselves are
-/// in <see cref="HostedPageAssets"/>.
+/// in <see cref="HostedPageAssets"/>, and how the pages go out over HTTP is in <see cref="HostedPageResponses"/>.
 /// </summary>
 /// <remarks>
 /// Values reach a page's script as a JSON configuration block, never spliced into script text, so the
-/// scripts are fixed text that no session id or URL can change. Values in markup are HTML encoded.
+/// scripts are fixed files that no session id or URL can change. Values in markup are HTML encoded.
 /// </remarks>
 internal static partial class HostedPages
 {
@@ -42,7 +42,7 @@ internal static partial class HostedPages
     /// <param name="mode">The verifier mode, shown on the page.</param>
     /// <param name="authorizationRequestUri">The request a wallet is handed, as a QR code and as text.</param>
     /// <param name="offerSameDevice">Whether to show the button that opens a wallet on this device.</param>
-    public static string Start(
+    public static HostedPage Start(
         string sessionId, string prefix, VerifierMode mode, string authorizationRequestUri, bool offerSameDevice)
     {
         var body = Fill(HostedPageAssets.StartBody, new Dictionary<string, string>
@@ -70,7 +70,7 @@ internal static partial class HostedPages
     /// <param name="offerRedemption">
     /// Whether the page redeems the response code, which it can only when the store runs the same-device flow.
     /// </param>
-    public static string Return(string sessionId, string prefix, bool offerRedemption)
+    public static HostedPage Return(string sessionId, string prefix, bool offerRedemption)
     {
         var body = Fill(HostedPageAssets.ReturnBody, new Dictionary<string, string>
         {
@@ -85,21 +85,24 @@ internal static partial class HostedPages
     }
 
     /// <summary>
-    /// The page around <paramref name="body"/>, with <paramref name="config"/> in a JSON block and the
-    /// shared script followed by the page's own in one module.
+    /// The page around <paramref name="body"/>, with <paramref name="config"/> in a JSON block, the shared
+    /// stylesheet and <paramref name="script"/> as its module, and the policy that lets exactly those run.
     /// </summary>
     /// <remarks>
     /// The serializer's default encoder escapes <c>&lt;</c>, <c>&gt;</c> and <c>&amp;</c>, so no value in the
     /// configuration can close the script element it sits in. A session id is whatever the store minted,
     /// and a host's store is free to mint ids this library would not.
     /// </remarks>
-    private static string Page(string body, PageConfig config, string pageScript) =>
+    private static HostedPage Page(string body, PageConfig config, HostedPageAssets.InlineAsset script) => new(
         Fill(HostedPageAssets.PageTemplate, new Dictionary<string, string>
         {
             ["BODY"] = body,
             ["CONFIG"] = JsonSerializer.Serialize(config, ConfigOptions),
-            ["SCRIPT"] = HostedPageAssets.SharedScript + pageScript,
-        });
+            // Written exactly as hashed: the policy names these two by the hash of this text.
+            ["STYLE"] = HostedPageAssets.Style.Content,
+            ["SCRIPT"] = script.Content,
+        }),
+        HostedPageResponses.ContentSecurityPolicy(script));
 
     /// <summary>A URL under one session, its id escaped as a path segment.</summary>
     private static string SessionUrl(string prefix, string sessionId, string suffix) =>

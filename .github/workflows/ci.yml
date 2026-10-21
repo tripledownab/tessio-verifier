@@ -118,3 +118,43 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: '**/TestResults/*.trx'
           retention-days: 7
+
+  # The hosted pages' scripts run only in a browser, so no unit test can show that a page reaches its
+  # verdict under its content security policy. This drives their main flows in Chromium, against the
+  # browser test host (tests/browser/host), which answers requests as a wallet would. Linux only: nothing
+  # in the pages depends on the server's platform.
+  pages-in-a-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+
+      - name: Install Playwright and Chromium
+        working-directory: tests/browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start the browser test host
+        run: |
+          dotnet run --project tests/browser/host --no-launch-profile --urls http://localhost:5000 > host.log 2>&1 &
+          for _ in $(seq 1 90); do curl -sf -o /dev/null http://localhost:5000/verify/start && exit 0; sleep 2; done
+          cat host.log
+          exit 1
+
+      - name: Load the pages
+        working-directory: tests/browser
+        env:
+          BASE_URL: http://localhost:5000
+        run: npm test

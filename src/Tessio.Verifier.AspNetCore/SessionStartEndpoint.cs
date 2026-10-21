@@ -38,14 +38,10 @@ internal static class SessionStartEndpoint
 
         // Offered in Live mode only: the other modes answer the start page's own session themselves, and
         // nothing would answer a same-device one.
-        var html = HostedPages.Start(session.SessionId, prefix, options.Mode,
+        var page = HostedPages.Start(session.SessionId, prefix, options.Mode,
             session.Request.AuthorizationRequestUri.ToString(),
             offerSameDevice: options.Mode == VerifierMode.Live && store is ISameDeviceSessionStore);
-        http.Response.ContentType = "text/html; charset=utf-8";
-        // no-store: this page carries a new session's authorization request, and so its state. A cache
-        // handing the same page to the next visitor would give two people one session.
-        http.Response.Headers.CacheControl = "no-store";
-        await http.Response.WriteAsync(html, http.RequestAborted).ConfigureAwait(false);
+        await HostedPageResponses.WritePageAsync(http, page).ConfigureAwait(false);
     }
 
     /// <summary>
