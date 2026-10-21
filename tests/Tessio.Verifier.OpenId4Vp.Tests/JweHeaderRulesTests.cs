@@ -3,6 +3,7 @@
 // all are CraftedJweHeaderTests'.
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
@@ -36,10 +37,14 @@ public sealed class JweHeaderRulesTests : IDisposable
             ["vp_token"] = new Dictionary<string, string[]> { ["pid"] = ["eyJoZWFkZXIifQ.eyJwYXlsb2FkIn0.c2ln~"] },
             ["state"] = "s",
         });
-        // EPKDUP repeats the key's crv member, which leaves the key itself unchanged.
-        var jwe = WalletEncryption.EcdhEsUnderHeader(VerifierPublicJwk(), payload, epk => headerTemplate
-            .Replace("EPKDUP", epk.Replace("\"crv\":\"P-256\"", "\"crv\":\"P-256\",\"crv\":\"P-256\"", StringComparison.Ordinal), StringComparison.Ordinal)
-            .Replace("EPK", epk, StringComparison.Ordinal));
+        // EPKDUP repeats the key's crv member, which leaves the key itself unchanged. One pass over the template:
+        // a second would rescan the inserted key, whose random coordinates can themselves contain "EPK".
+        var jwe = WalletEncryption.EcdhEsUnderHeader(VerifierPublicJwk(), payload, epk => Regex.Replace(
+            headerTemplate,
+            "EPKDUP|EPK",
+            placeholder => placeholder.Value == "EPK"
+                ? epk
+                : epk.Replace("\"crv\":\"P-256\"", "\"crv\":\"P-256\",\"crv\":\"P-256\"", StringComparison.Ordinal)));
         var parser = new WalletResponseParser(options);
         return parser.ParseDetailedAsync(new WalletResponseData
         {
