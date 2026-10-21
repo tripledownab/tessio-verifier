@@ -57,7 +57,7 @@ internal static class SessionStartEndpoint
         var options = http.RequestServices.GetRequiredService<IOptions<VerifierOptions>>().Value;
         var responseUri = new Uri($"{http.Request.Scheme}://{http.Request.Host}{prefix}{callbackPath}");
 
-        // A FRESH key per request (OpenID4VP 1.0 §8.3, HAIP 1.0 §5): reusing one is a correlation
+        // A FRESH key per request (HAIP 1.0 §5): reusing one is a correlation
         // handle and a single point of retrospective compromise. Held until the session expires; the
         // callback finds it again via the kid the wallet echoes in the JWE header.
         var encryptionJwk = options.ResponseMode == ResponseMode.DirectPostJwt
