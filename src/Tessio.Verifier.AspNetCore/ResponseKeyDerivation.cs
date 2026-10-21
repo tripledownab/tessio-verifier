@@ -45,17 +45,12 @@ public static class ResponseKeyDerivation
     /// disposes it.
     /// </summary>
     /// <exception cref="ArgumentException">
-    /// The master is shorter than <see cref="MinimumMasterLength"/> bytes or the salt shorter than
-    /// <see cref="MinimumSaltLength"/>.
+    /// The master is shorter than <see cref="MinimumMasterLength"/> bytes or all zeros, or the salt is
+    /// shorter than <see cref="MinimumSaltLength"/>.
     /// </exception>
     public static ECDsa Derive(ReadOnlySpan<byte> master, ReadOnlySpan<byte> salt)
     {
-        if (master.Length < MinimumMasterLength)
-        {
-            throw new ArgumentException(
-                $"The response-key master must be at least {MinimumMasterLength} bytes.", nameof(master));
-        }
-
+        ThrowIfUnusable(master, nameof(master));
         if (salt.Length < MinimumSaltLength)
         {
             throw new ArgumentException(
@@ -76,8 +71,25 @@ public static class ResponseKeyDerivation
         }
         finally
         {
+            // The buffers only: the BigInteger values computed from them cannot be zeroed and are left to
+            // the garbage collector.
             CryptographicOperations.ZeroMemory(okm);
             CryptographicOperations.ZeroMemory(d);
+        }
+    }
+
+    /// <summary>Refuses a master no key should be derived from.</summary>
+    internal static void ThrowIfUnusable(ReadOnlySpan<byte> master, string paramName)
+    {
+        if (master.Length < MinimumMasterLength)
+        {
+            throw new ArgumentException($"The response-key master must be at least {MinimumMasterLength} bytes.", paramName);
+        }
+
+        // What an unset or unread secret yields, and a master every key derived from is computable with.
+        if (!master.ContainsAnyExcept((byte)0))
+        {
+            throw new ArgumentException("The response-key master is all zeros.", paramName);
         }
     }
 }

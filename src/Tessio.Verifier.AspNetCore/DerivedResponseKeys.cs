@@ -30,18 +30,9 @@ internal sealed class DerivedResponseKeys : IDisposable
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.Master);
         ArgumentNullException.ThrowIfNull(options.Salts);
-        if (options.Master.Length < ResponseKeyDerivation.MinimumMasterLength)
-        {
-            throw new ArgumentException(
-                $"The response-key master must be at least {ResponseKeyDerivation.MinimumMasterLength} bytes.",
-                nameof(options));
-        }
 
-        // What an unset or unread secret yields, and a master every key derived from is computable with.
-        if (!options.Master.AsSpan().ContainsAnyExcept((byte)0))
-        {
-            throw new ArgumentException("The response-key master is all zeros.", nameof(options));
-        }
+        // Here as well as in Derive, so a bad master stops the host at boot rather than at the first request.
+        ResponseKeyDerivation.ThrowIfUnusable(options.Master, nameof(options));
 
         _master = (byte[])options.Master.Clone();
         _salts = options.Salts;

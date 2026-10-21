@@ -28,12 +28,12 @@ public sealed class ResponseKeyDerivationTests
             "bAgMKB2x2XHEyAlIQU2_0qgnWM4SssDx7zn2gLAZpMY"
         },
         {
-            "0000000000000000000000000000000000000000000000000000000000000000",
+            "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
             "ffffffffffffffffffffffffffffffff",
-            "8e71c03ed3b62cc9af89042570ac4a0209b54b5ef1c0de9bbefd6d44cbebbe76",
-            "5096a7075743c73df7e9ddc667220f6a1a42aba3ff8b17a2e2aae71bd980a5ff",
-            "eb6fee2a1846aad346f1cdeca671cdf1b78507cc1a662ffed6bdec792af6eb87",
-            "sN3IaFxPY2KRxK5jnp60_GlGfMVXx6HPJtbdBZpLt40"
+            "d565bf0cf4a1bc972c0a43db2a91acf3a0d17a9623f74de92bd3e25b76adce8d",
+            "7b53373a0a86c184cd97be5435c032b2abeacfb1c997da9d3347678d192f1dcd",
+            "cc07112f60a7e8bf2aae9108bb3c867a754c8394a22e6fda926d562a8803e1d6",
+            "oCDDWD6mhKvJ0fDGmXiMCmbQ_sjPRxlzOUR_gOKWucg"
         },
         {
             "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -73,7 +73,7 @@ public sealed class ResponseKeyDerivationTests
     [Fact]
     public void A_master_or_salt_below_its_minimum_is_refused_and_one_at_it_is_not()
     {
-        var master = new byte[ResponseKeyDerivation.MinimumMasterLength];
+        var master = RandomNumberGenerator.GetBytes(ResponseKeyDerivation.MinimumMasterLength);
         var salt = new byte[ResponseKeyDerivation.MinimumSaltLength];
         using (ResponseKeyDerivation.Derive(master, salt))
         {
@@ -81,6 +81,14 @@ public sealed class ResponseKeyDerivationTests
 
         Assert.Equal("master", Assert.Throws<ArgumentException>(() => ResponseKeyDerivation.Derive(master.AsSpan(1), salt)).ParamName);
         Assert.Equal("salt", Assert.Throws<ArgumentException>(() => ResponseKeyDerivation.Derive(master, salt.AsSpan(1))).ParamName);
+    }
+
+    [Fact]
+    public void A_master_of_all_zeros_is_refused()
+    {
+        var salt = new byte[ResponseKeyDerivation.MinimumSaltLength];
+        Assert.Equal("master", Assert.Throws<ArgumentException>(
+            () => ResponseKeyDerivation.Derive(new byte[ResponseKeyDerivation.MinimumMasterLength], salt)).ParamName);
     }
 
     [Fact]

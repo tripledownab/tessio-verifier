@@ -22,7 +22,7 @@ N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 VECTORS = [
     (bytes(range(32)), bytes(range(0x80, 0x90))),
     (bytes(range(0x20, 0x60)), bytes(range(0xA0, 0xC0))),
-    (b"\x00" * 32, b"\xff" * 16),
+    (b"\x5a" * 32, b"\xff" * 16),
     # Chosen because its d begins with a zero byte, so the scalar must be written right-aligned.
     (bytes(range(32)), bytes(15) + b"\x51"),
 ]

@@ -499,7 +499,7 @@ Registering your own store replaces the default one. Implementing `IResponseKeyS
 
 **What derivation gives up.** An in-memory key is gone when its request ends, so nothing can decrypt that request's response afterwards. A derived key can be derived again for as long as its salt is kept: the master and a kept salt together decrypt a captured response, and the master with read access to the salts decrypts every response to come until it is replaced. Each request still advertises its own key, because each has its own salt.
 
-**The master is the only long-lived secret, and it lives in process memory**, because the derivation runs there. Load it from your secret store at boot. A key that never leaves an HSM cannot serve as the master. The store copies it and zeroes the copy when disposed.
+**The master is the only long-lived secret, and it lives in process memory**, because the derivation runs there. Load it from your secret store at boot. A key that never leaves an HSM cannot serve as the master. The store copies it and zeroes its copy when disposed; the array you pass in is yours to clear.
 
 **Every instance that shares the salts must hold the same master.** A salt that derives a key with another `kid` means the master is not the one that created it, or the stored salt is corrupt. `Get` then throws `InvalidOperationException` rather than reporting an unknown key, so the callback fails with a server error instead of passing for an expired session or a replay. A `kid` that differs from an issued one only in letter case, which a salt store that ignores case would match, names no key and is refused as unknown. Rotating the master therefore fails the requests still in flight under the old one wherever their key has to be derived again, until they expire (`SessionLifetime`). An instance already holding a key keeps answering with it.
 
@@ -594,7 +594,7 @@ Verifying real EUDI wallets in production also requires registering as a relying
 - [ ] Real `ITrustListResolver` registered, with trust anchors for issuers that use x5c
 - [ ] `PublicTrustListSources` names every trust list identifier you are content to publish, and nothing else
 - [ ] Multi-instance: `IStateCorrelatingSessionStore` over shared storage and `ISameDeviceSessionStore` for the same-device flow
-- [ ] `/verify/start`, `/verify/same-device` and `/verify/{sessionId}/redeem` rate limited at your edge
+- [ ] `/verify/start`, `/verify/same-device` and `/verify/{sessionId}/redeem` rate limited at your edge, and the callback too with derived keys, where each response naming a well-formed `kid` costs a salt store read
 - [ ] Multi-instance: `ResponseEncryptionKeyStore` built with `ResponseKeyDerivationOptions`, one master shared by every instance and an `IResponseKeySaltStore` over shared storage
 - [ ] Callback endpoint reachable over HTTPS from the public internet
 - [ ] Verified end to end in Mock mode first, then against a reference wallet

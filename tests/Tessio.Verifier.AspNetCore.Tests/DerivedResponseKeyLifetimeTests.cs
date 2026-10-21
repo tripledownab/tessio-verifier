@@ -69,16 +69,18 @@ public sealed class DerivedResponseKeyLifetimeTests
     }
 
     [Fact]
-    public async Task Disposing_while_a_request_is_created_never_yields_a_key_from_a_zeroed_master()
+    public async Task Disposing_while_a_request_is_created_never_yields_a_key_from_another_master()
     {
-        // The race is a matter of timing, so one round proves little; without the lock, this many fail.
+        // Each round releases both sides together, so every round races; whether a round lands inside the
+        // window is still timing, which is why there are many.
         const int Rounds = 2000;
-        var zeroMaster = new byte[ResponseKeyDerivation.MinimumMasterLength];
         for (var round = 0; round < Rounds; round++)
         {
             var store = Store();
+            using var start = new Barrier(2);
             var creating = Task.Run(() =>
             {
+                start.SignalAndWait();
                 try
                 {
                     return store.CreateForRequest(_clock.Now + Lifetime).KeyId;
@@ -88,12 +90,14 @@ public sealed class DerivedResponseKeyLifetimeTests
                     return null;
                 }
             });
+            start.SignalAndWait();
             store.Dispose();
 
+            // A key that was handed out must be the one the real master derives from its salt.
             if (await creating is { } kid)
             {
-                using var fromZero = new ResponseEncryptionKeyProvider(ResponseKeyDerivation.Derive(zeroMaster, _salts.Rows[kid].Salt));
-                Assert.NotEqual(fromZero.KeyId, kid);
+                using var fromMaster = new ResponseEncryptionKeyProvider(ResponseKeyDerivation.Derive(_master, _salts.Rows[kid].Salt));
+                Assert.Equal(fromMaster.KeyId, kid);
             }
         }
     }
