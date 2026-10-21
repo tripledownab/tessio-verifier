@@ -222,9 +222,9 @@ Response encryption is per session too. `ResponseEncryptionKeyStore.CreateForReq
 authorization request, the request advertises it in `client_metadata`, and the callback resolves it again by
 the `kid` the wallet echoes. Two tenants, and two in-flight requests of one tenant, each get their own key.
 
-The keys are held in memory, so a callback must reach the instance that issued the request. On more than one
-instance, wire a shared key source: see [going-live.md](going-live.md) section 6, which recommends deriving
-each request's key from one KMS master secret and storing only a per-request salt.
+By default the keys are held in memory, so a callback must reach the instance that issued the request. On
+more than one instance, build the store with `ResponseKeyDerivationOptions`: see [going-live.md](going-live.md)
+section 6. It derives each request's key from one master secret and stores only a per-request salt.
 
 ## 6. Completing sessions without a wallet
 

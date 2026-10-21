@@ -8,9 +8,8 @@ namespace Tessio.Verifier.AspNetCore;
 /// <summary>
 /// Holds the verifier's response-encryption key pair. The public half is advertised to wallets via
 /// <c>client_metadata.jwks</c>; the private half decrypts <c>direct_post.jwt</c> (ECDH-ES) responses.
-/// The default registration generates an ephemeral EC P-256 key at startup, which is fine for a
-/// single process. Multi-instance deployments must register an instance built from a shared,
-/// persisted key so every instance can decrypt responses encrypted against the advertised JWK.
+/// <see cref="ResponseEncryptionKeyStore"/> creates one per authorization request, generated or, built with
+/// <see cref="ResponseKeyDerivationOptions"/>, derived so every instance can create it again.
 /// </summary>
 public sealed class ResponseEncryptionKeyProvider : IDisposable
 {
@@ -22,8 +21,8 @@ public sealed class ResponseEncryptionKeyProvider : IDisposable
     }
 
     /// <summary>
-    /// Creates a provider from a caller-supplied EC P-256 private key, e.g. one loaded from a key
-    /// store so all instances share it. The provider takes ownership and disposes the key.
+    /// Creates a provider from a caller-supplied EC P-256 private key, such as one
+    /// <see cref="ResponseKeyDerivation.Derive"/> returns. The provider takes ownership and disposes the key.
     /// </summary>
     public ResponseEncryptionKeyProvider(ECDsa privateKey)
     {

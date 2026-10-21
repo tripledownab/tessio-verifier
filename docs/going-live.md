@@ -466,26 +466,50 @@ Two behaviors to know:
 
 With `ResponseMode.DirectPostJwt` (the default and the HAIP baseline) wallets encrypt their responses to a key published in your request's `client_metadata.jwks`.
 
-**The key is ephemeral per authorization request, not per process.** OpenID4VP 1.0 §8.3 and HAIP 1.0 §5 require this, and the conformance suite fails a verifier that reuses one. The reasons are real: a single long-lived key means its compromise retrospectively exposes every response ever encrypted against it, and a stable advertised public key is a correlation handle tying separate presentations to one verifier. `ResponseEncryptionKeyStore` generates a fresh P-256 key at `/verify/start`, holds it in memory, and the callback finds it again by the `kid` (RFC 7638 thumbprint) the wallet echoes in the JWE header. **The private half never touches disk.**
+**The key is ephemeral per authorization request, not per process.** HAIP 1.0 §5 requires this ("Verifiers MUST supply ephemeral encryption public keys specific to each Authorization Request"), OpenID4VP 1.0 §5.1 allows it, and the conformance suite fails a verifier that reuses one. The reasons are real: a single long-lived key means its compromise retrospectively exposes every response ever encrypted against it, and a stable advertised public key is a correlation handle tying separate presentations to one verifier. By default `ResponseEncryptionKeyStore` generates a fresh P-256 key at `/verify/start`, holds it in memory, and the callback finds it again by the `kid` (RFC 7638 thumbprint) the wallet echoes in the JWE header. **The private half never touches disk.**
 
 **Resolving by `kid` is spec-mandated, so decryption requires it with no fallback.** OpenID4VP 1.0 §5 requires that every JWK in `client_metadata.jwks` carry a `kid`, and §8.3 then requires that "if the selected public key contains a `kid` parameter, the JWE MUST include the same value in the `kid` JWE Header Parameter" of the encrypted response. The advertised key always has a `kid`, so a conformant wallet always echoes it. A response that carries none, or names a `kid` the store no longer holds, is rejected rather than decrypted against a guessed key: for `direct_post.jwt` the `state` that correlates the session lives inside the ciphertext, so the `kid` is the only handle available before decryption, and quietly trying "the only key we have" would reintroduce the shared-key ambiguity this design exists to remove. Failing loud surfaces a non-conformant wallet instead of masking it.
 
 That default is complete for a **single process**. Across instances it breaks the same way sessions do: instance A generates the key and holds it in its own memory, so instance B cannot decrypt a response routed to it.
 
-**Recommended when you scale out: derive the key, store no key material.** Do not persist private keys, not even encrypted. Keep one master secret in a KMS or HSM, ideally non-exportable, and derive each request's private scalar from it:
+**When you scale out, or need a request's response to survive a redeploy: derive the key, store no key material.** Build the store with `ResponseKeyDerivationOptions` and it derives each request's private key from one master secret and a fresh random salt, and saves only the salt:
 
 ```
-d    = HKDF(master, salt)      // salt: a fresh random value per request
+d    = HKDF-SHA256(master, salt), reduced to a P-256 scalar   // salt: 32 random bytes per request
 kid  = base64url SHA-256 thumbprint of the public JWK
 ```
 
-Store only the non-secret `salt`, keyed by `kid`, in the shared store you already run for sessions (§5). At the callback, any instance reads the `salt` for the response's `kid`, re-derives `d` from the master secret it reaches via the KMS, and decrypts. The database holds a random salt and nothing secret; the only long-lived secret is the master, which can live in hardware and never be exported.
+`ResponseKeyDerivation` says exactly how, and its tests check it against an independent implementation. The salt is stored keyed by `kid`, in storage every instance shares, such as the database you already run for sessions (§5). At the callback, whichever instance receives the response finds the salt for the response's `kid`, derives the key again and decrypts. The salt is not secret: without the master it derives nothing.
+
+```csharp
+builder.Services.AddSingleton(sp => new ResponseEncryptionKeyStore(
+    sp.GetRequiredService<TimeProvider>(),
+    new ResponseKeyDerivationOptions
+    {
+        Master = LoadResponseKeyMaster(),                        // at least 32 random bytes
+        Salts = sp.GetRequiredService<IResponseKeySaltStore>(),  // yours, over shared storage
+    }));
+```
+
+Registering your own store replaces the default one. Implementing `IResponseKeySaltStore`:
+- `Save` must make the salt visible to every instance before it returns, because the request naming the key is sent straight after. If it throws, the request fails and no key is kept.
+- `Find` returns null when it has no salt for the `kid`. It may return an expired one, which the store treats as absent. The `kid` it is given is the one the wallet's response names: it has the shape of a `kid` the store issues and is otherwise unchecked, so parameterise the lookup.
+- Both are synchronous: the library resolves the key through a synchronous callback inside response decryption, so an implementation over a database blocks on it.
+- Delete a salt once it expires. While it is kept, the master derives its key again, and so can decrypt a response to it that someone captured.
+
+**What derivation gives up.** An in-memory key is gone when its request ends, so nothing can decrypt that request's response afterwards. A derived key can be derived again for as long as its salt is kept: the master and a kept salt together decrypt a captured response, and the master with read access to the salts decrypts every response to come until it is replaced. Each request still advertises its own key, because each has its own salt.
+
+**The master is the only long-lived secret, and it lives in process memory**, because the derivation runs there. Load it from your secret store at boot. A key that never leaves an HSM cannot serve as the master. The store copies it and zeroes the copy when disposed.
+
+**Every instance that shares the salts must hold the same master.** A salt that derives a key with another `kid` means the master is not the one that created it, or the stored salt is corrupt. `Get` then throws `InvalidOperationException` rather than reporting an unknown key, so the callback fails with a server error instead of passing for an expired session or a replay. A `kid` that differs from an issued one only in letter case, which a salt store that ignores case would match, names no key and is refused as unknown. Rotating the master therefore fails the requests still in flight under the old one wherever their key has to be derived again, until they expire (`SessionLifetime`). An instance already holding a key keeps answering with it.
+
+**The key is not the only thing a request needs.** A request object the start endpoint stores for delivery by reference (§3) is held in memory by the instance that stored it, so a wallet that fetches its `request_uri` from another instance, or after a restart, finds nothing. The session must survive too (§5).
 
 Why not the alternatives:
-- **Persisting the private key**, even as KMS-encrypted ciphertext in Postgres, puts key material in your database. Derivation avoids that entirely.
+- **Persisting the private key**, even as KMS-encrypted ciphertext in Postgres, puts key material in your database, though the key that encrypts it can stay in hardware. Derivation stores no key material, and pays for it with a master in process memory.
 - **Sticky sessions** (route the callback to the instance that issued the request) store nothing, but couple you to load-balancer affinity and lose the key if that instance restarts mid-flow. A reasonable stopgap, not the target.
 
-This derivation path is **not yet wired into the library**, deliberately: no consumer has needed it yet, and adding the seam before one does would be speculative (see the extract-when-needed rule). When you scale out, the change is a pluggable key source on `ResponseEncryptionKeyStore` (create-from-salt, resolve-by-kid) backed by your KMS. On a single instance the in-memory default is correct and needs no configuration.
+On a single instance whose requests need not survive a restart, the in-memory default is correct and needs no configuration.
 
 `ResponseMode.DirectPost` (cleartext form posts) is also supported, but encrypted responses are the profile default so stay on `DirectPostJwt` unless you have a reason not to.
 
@@ -571,6 +595,6 @@ Verifying real EUDI wallets in production also requires registering as a relying
 - [ ] `PublicTrustListSources` names every trust list identifier you are content to publish, and nothing else
 - [ ] Multi-instance: `IStateCorrelatingSessionStore` over shared storage and `ISameDeviceSessionStore` for the same-device flow
 - [ ] `/verify/start`, `/verify/same-device` and `/verify/{sessionId}/redeem` rate limited at your edge
-- [ ] Multi-instance: `ResponseEncryptionKeyProvider` built from one persisted key
+- [ ] Multi-instance: `ResponseEncryptionKeyStore` built with `ResponseKeyDerivationOptions`, one master shared by every instance and an `IResponseKeySaltStore` over shared storage
 - [ ] Callback endpoint reachable over HTTPS from the public internet
 - [ ] Verified end to end in Mock mode first, then against a reference wallet

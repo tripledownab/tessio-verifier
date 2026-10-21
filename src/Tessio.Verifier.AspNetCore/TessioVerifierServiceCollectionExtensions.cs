@@ -44,7 +44,7 @@ public static class TessioVerifierServiceCollectionExtensions
         services.TryAddSingleton<MockWalletQueue>();
         services.TryAddSingleton<MockCredentialIssuer>();
         services.TryAddSingleton<MockMdocIssuer>();
-        // One response-encryption key PER AUTHORIZATION REQUEST (OpenID4VP 1.0 §8.3, HAIP 1.0 §5).
+        // One response-encryption key PER AUTHORIZATION REQUEST (HAIP 1.0 §5).
         // This used to register a process-wide ResponseEncryptionKeyProvider, which reused one key for
         // every request; the conformance suite fails that, and a stable advertised key is a correlation
         // handle whose compromise exposes every past response.
