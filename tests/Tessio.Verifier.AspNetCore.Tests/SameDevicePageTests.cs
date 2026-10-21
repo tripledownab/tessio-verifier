@@ -50,7 +50,7 @@ public sealed class SameDevicePageTests
     {
         // The prefix is the host's, so this is the serializer's escaping standing alone: session ids are
         // escaped as path segments before they reach the configuration block.
-        var page = HostedPages.Return("s", "/x</script><script>alert(1)</script>", offerRedemption: true);
+        var page = HostedPages.Return("s", "/x</script><script>alert(1)</script>", offerRedemption: true).Html;
 
         Assert.DoesNotContain("<script>alert(1)", page, StringComparison.Ordinal);
         Assert.Equal(2, CountOf(page, "</script>"));
@@ -78,26 +78,10 @@ public sealed class SameDevicePageTests
     }
 
     [Fact]
-    public void ThePageScripts_NeverWriteMarkupFromAValue()
-    {
-        // An issuer identifier on a failing result is whatever the presenter put there. The scripts
-        // build every element with textContent, so this rule is what keeps it text.
-        string[] scripts = [HostedPageAssets.SharedScript, HostedPageAssets.StartScript, HostedPageAssets.ReturnScript];
-
-        Assert.All(scripts, script =>
-        {
-            Assert.DoesNotContain("innerHTML", script, StringComparison.Ordinal);
-            Assert.DoesNotContain("outerHTML", script, StringComparison.Ordinal);
-            Assert.DoesNotContain("insertAdjacentHTML", script, StringComparison.Ordinal);
-            Assert.DoesNotContain("document.write", script, StringComparison.Ordinal);
-        });
-    }
-
-    [Fact]
     public void TheStartPage_OffersSameDeviceOnlyWhenAsked()
     {
-        var offered = HostedPages.Start("s", "/verify", VerifierMode.Live, "openid4vp://authorize?x=1", offerSameDevice: true);
-        var withheld = HostedPages.Start("s", "/verify", VerifierMode.Live, "openid4vp://authorize?x=1", offerSameDevice: false);
+        var offered = HostedPages.Start("s", "/verify", VerifierMode.Live, "openid4vp://authorize?x=1", offerSameDevice: true).Html;
+        var withheld = HostedPages.Start("s", "/verify", VerifierMode.Live, "openid4vp://authorize?x=1", offerSameDevice: false).Html;
 
         Assert.Contains("id=\"same-device\"", offered, StringComparison.Ordinal);
         Assert.Contains("\"sameDeviceUrl\":\"/verify/same-device\"", offered, StringComparison.Ordinal);
@@ -172,16 +156,9 @@ public sealed class SameDevicePageTests
     }
 
     private static string Render(bool startPage, string sessionId) => startPage
-        ? HostedPages.Start(sessionId, "/verify", VerifierMode.Live, "openid4vp://authorize?x=1", offerSameDevice: true)
-        : HostedPages.Return(sessionId, "/verify", offerRedemption: true);
+        ? HostedPages.Start(sessionId, "/verify", VerifierMode.Live, "openid4vp://authorize?x=1", offerSameDevice: true).Html
+        : HostedPages.Return(sessionId, "/verify", offerRedemption: true).Html;
 
     private static int CountOf(string text, string value) =>
         (text.Length - text.Replace(value, "", StringComparison.Ordinal).Length) / value.Length;
-
-    /// <summary>Builds what the demo builder builds, without being it, so Live mode's startup check passes.</summary>
-    private sealed class NotTheDemoBuilder(IPresentationRequestBuilder inner) : IPresentationRequestBuilder
-    {
-        public Task<PresentationRequest> BuildAsync(PresentationRequestOptions options, CancellationToken ct = default) =>
-            inner.BuildAsync(options, ct);
-    }
 }

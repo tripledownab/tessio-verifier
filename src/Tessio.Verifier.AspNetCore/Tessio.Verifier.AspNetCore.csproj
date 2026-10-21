@@ -24,7 +24,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The hosted pages' markup, styles and scripts, kept as files so tools read them as what they are.
+         The logical name is fixed here because HostedPageAssets reads them by it. -->
+    <EmbeddedResource Include="PageAssets\*" LogicalName="Tessio.Verifier.AspNetCore.PageAssets.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Tessio.Verifier.AspNetCore.Tests" />
+    <!-- The browser test's host answers requests as a wallet would, with the mock issuer. -->
+    <InternalsVisibleTo Include="Tessio.Verifier.BrowserTestHost" />
   </ItemGroup>
 
 </Project>

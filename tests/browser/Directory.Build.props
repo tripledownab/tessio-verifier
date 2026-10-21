@@ -1,0 +1,9 @@
+<Project>
+  <!-- The browser test host is a web app, not a test project, so it takes the repository's build settings
+       without the xUnit packages tests/Directory.Build.props adds to every project under tests/. -->
+  <Import Project="../../Directory.Build.props" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

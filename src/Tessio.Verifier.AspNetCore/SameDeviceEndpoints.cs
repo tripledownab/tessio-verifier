@@ -130,10 +130,9 @@ internal static class SameDeviceEndpoints
             return;
         }
 
-        http.Response.ContentType = "text/html; charset=utf-8";
-        // no-store, as on the start page. The response code is in the fragment, which never reaches here.
-        http.Response.Headers.CacheControl = "no-store";
-        await http.Response.WriteAsync(HostedPages.Return(session.SessionId, prefix, offerRedemption), http.RequestAborted).ConfigureAwait(false);
+        // The response code is in the fragment, which never reaches here.
+        await HostedPageResponses.WritePageAsync(http, HostedPages.Return(session.SessionId, prefix, offerRedemption))
+            .ConfigureAwait(false);
     }
 
     /// <summary>

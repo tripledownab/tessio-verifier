@@ -36,3 +36,9 @@ updates:
     directory: /site/web
     schedule:
       interval: monthly
+
+  # Playwright, for the hosted pages' browser test in CI. Nothing here ships.
+  - package-ecosystem: npm
+    directory: /tests/browser
+    schedule:
+      interval: monthly

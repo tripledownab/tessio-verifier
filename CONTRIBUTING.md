@@ -15,6 +15,15 @@ dotnet build Tessio.Verifier.sln
 dotnet test Tessio.Verifier.sln
 ```
 
+The hosted pages' scripts live in `src/Tessio.Verifier.AspNetCore/PageAssets/` and run only in a browser.
+CI drives their main flows in Chromium (`tests/browser/pages.mjs`, the `pages-in-a-browser` job).
+To run it locally, start the browser test host and point the test at it:
+
+```bash
+dotnet run --project tests/browser/host --urls http://localhost:5000 &
+cd tests/browser && npm ci && npx playwright install chromium && BASE_URL=http://localhost:5000 npm test
+```
+
 The build treats warnings as errors with analyzers on. If it builds clean locally, CI will agree.
 
 Every project under `src/` commits a `packages.lock.json`, and CI restores in locked mode. After changing

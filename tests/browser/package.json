@@ -1,0 +1,12 @@
+{
+  "name": "tessio-verifier-browser-tests",
+  "private": true,
+  "description": "Loads the hosted pages in a real browser, under their content security policy.",
+  "type": "module",
+  "scripts": {
+    "test": "node pages.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}
