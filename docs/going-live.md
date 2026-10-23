@@ -117,6 +117,29 @@ holder having nothing to offer. An id outside §6.3's alphanumeric, underscore a
 claims sharing an id; a set naming a claim that is absent; and a claim
 that no set names, which §6.4.1 means would never be requested at all.
 
+### Asking only for credentials from issuers you trust
+
+A wallet holding several credentials of the requested type cannot tell which issuers you accept. `Dcql.WithTrustedAuthorities` adds a Trusted Authorities Query of type `aki` to every credential in a query, built from the certificates your trust list names for those issuers:
+
+```csharp
+DcqlQueryJson = Dcql.WithTrustedAuthorities(
+    Dcql.Mdoc("eu.europa.ec.eudi.pid.1", "eu.europa.ec.eudi.pid.1", "age_over_18"),
+    trustedIssuerCertificates),
+```
+
+OpenID4VP 1.0 §6.1.1.1 has the wallet match each value against the Authority Key Identifier of a certificate in the credential's chain, so each certificate contributes the value that chain carries:
+- **A CA certificate**, such as an IACA, contributes its Subject Key Identifier. RFC 5280 §4.2.1.2 makes that, in conforming CA certificates, the Authority Key Identifier of everything the CA issues. CA status is read from BasicConstraints, which §4.2.1.9 requires in every CA certificate.
+- **Any other certificate**, such as a Document Signer a list names directly, contributes its own Authority Key Identifier.
+
+HAIP 1.0 §5 says this query "MUST be supported". A certificate is refused when it lacks the identifier its role contributes, carries an empty one, or repeats an extension. A query whose credentials already name trusted authorities is refused too, because adding to an entry would widen it.
+
+What to pass, because a wrong set makes the wallet offer nothing:
+- **The certificates your trust list names**, whether CA or signing certificates. Lists name both: an IACA for one issuer, a Document Signer for another.
+- **Not the ones it refuses, nor issuers trusted through metadata** rather than a chain. Ask for their credentials in a query without trusted authorities. A certificate with no key identifier names no authority a wallet could match.
+- **Rebuild it when your trust list changes.** The query is fixed when you build it.
+
+It is a filter for the wallet, and it can be wider than your trust list. A signing certificate's value names the CA that issued it, so the wallet may offer any credential signed under that CA. It does not replace your trust check. §6.1 says the wallet SHOULD return only credentials that match, and that verifiers must still verify the issuer's trust themselves, so every response is verified against your `ITrustListResolver` as before.
+
 ## 1. Live mode
 
 ```csharp
