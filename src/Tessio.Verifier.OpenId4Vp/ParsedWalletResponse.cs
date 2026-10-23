@@ -32,4 +32,30 @@ public sealed record ParsedWalletResponse
     /// response to a request that asked for encryption does not answer that request.
     /// </remarks>
     public bool Encrypted { get; init; }
+
+    /// <summary>
+    /// The wallet's <c>error</c> code when it answered with an Authorization Error Response instead of a
+    /// presentation, for example because the holder declined; null for a presentation. When it is set,
+    /// <see cref="Credentials"/> is empty. Set only by a parser with
+    /// <see cref="WalletResponseParserOptions.ReadErrorResponses"/> on; any other parser throws for such a form.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// SPEC: OpenID4VP 1.0 section 8.5: "The error response follows the rules as defined in [RFC6749]". RFC 6749
+    /// section 4.1.2.1 limits the code to printable ASCII without <c>"</c> or <c>\</c>, which the parser
+    /// enforces. Only the code is kept: <c>error_description</c> and <c>error_uri</c> are text the sender chose.
+    /// </para>
+    /// <para>
+    /// The cleartext form only. Section 8.3.1 lets a wallet that is unable to encrypt send it unencrypted even
+    /// when the request asked for encryption; an error sealed inside an encrypted <c>response</c> is still refused
+    /// as malformed.
+    /// </para>
+    /// <para>
+    /// It proves nothing about the holder: anyone holding the request's <c>state</c> can send one.
+    /// </para>
+    /// <para>
+    /// Init-only and optional, so every existing construction of this record still compiles and behaves as it did.
+    /// </para>
+    /// </remarks>
+    public string? Error { get; init; }
 }

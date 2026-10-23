@@ -48,6 +48,8 @@ internal static class WalletCallbackEndpoint
             CallbackOutcome.Completed => (StatusCodes.Status200OK, (string?)null),
             // Verified and waiting for its browser: processed, as far as the wallet is concerned.
             CallbackOutcome.Held => (StatusCodes.Status200OK, null),
+            // SPEC: OpenID4VP 1.0 section 8.2: a processed Authorization Error Response is answered 200 too.
+            CallbackOutcome.WalletError => (StatusCodes.Status200OK, null),
             CallbackOutcome.UnknownSession => (StatusCodes.Status400BadRequest, "unknown_session"),
             CallbackOutcome.SessionNotPending => (StatusCodes.Status409Conflict, "session_not_pending"),
             // The response may be perfectly well formed. It is the stored session that cannot be checked

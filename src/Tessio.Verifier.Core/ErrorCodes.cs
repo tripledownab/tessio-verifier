@@ -62,4 +62,12 @@ public static class ErrorCodes
     /// verifier.
     /// </summary>
     public const string SessionMismatch = "session_mismatch";
+
+    /// <summary>
+    /// The wallet answered with an OpenID4VP Authorization Error Response instead of a presentation, for
+    /// example because the holder declined. The wallet's own code is in the error's message. Anyone holding
+    /// the request's <c>state</c> can send one, so it says what the sender claimed, not what the holder did.
+    /// Emitted by the ASP.NET Core package's wallet response verifier and callback, not by a credential verifier.
+    /// </summary>
+    public const string WalletError = "wallet_error";
 }

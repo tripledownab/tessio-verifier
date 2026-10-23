@@ -138,6 +138,17 @@ internal static partial class Log
         Message = "Session {SessionId} was started for the same-device flow, but the session store holds no browser binding for it, so the presentation was refused")]
     public static partial void SameDeviceBindingLost(ILogger logger, string sessionId);
 
+    [LoggerMessage(EventId = 17, EventName = "WalletErrorResponse", Level = LogLevel.Warning,
+        Message = "Session {SessionId}: the wallet answered with an Authorization Error Response ({WalletError}); kept pending as a failed attempt: {KeptPending}")]
+    private static partial void WalletErrorResponseCore(ILogger logger, string sessionId, string walletError, bool keptPending);
+
+    /// <summary>The error code is the sender's, so it is made one line.</summary>
+    public static void WalletErrorResponse(ILogger logger, string sessionId, string walletError, bool keptPending)
+    {
+        if (!logger.IsEnabled(LogLevel.Warning)) return;
+        WalletErrorResponseCore(logger, sessionId, MessageText.OneLine(walletError), keptPending);
+    }
+
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Mock wallet failed for session {SessionId}.")]
     public static partial void MockWalletFailed(ILogger logger, Exception exception, string sessionId);

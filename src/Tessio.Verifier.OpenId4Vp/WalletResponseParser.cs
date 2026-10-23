@@ -20,14 +20,25 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         _options = options ?? new WalletResponseParserOptions();
 
     /// <inheritdoc />
+    /// <remarks>
+    /// This contract returns credentials only, so an Authorization Error Response is thrown here as a
+    /// <see cref="WalletResponseException"/>, as it always was. <see cref="ParseDetailedAsync"/> returns it.
+    /// </remarks>
     public async Task<IReadOnlyList<PresentedCredential>> ParseAsync(
-        WalletResponseData response, CancellationToken ct = default) =>
-        (await ParseDetailedAsync(response, ct).ConfigureAwait(false)).Credentials;
+        WalletResponseData response, CancellationToken ct = default)
+    {
+        var parsed = await ParseDetailedAsync(response, ct).ConfigureAwait(false);
+        return parsed.Error is null
+            ? parsed.Credentials
+            : throw new WalletResponseException("The wallet answered with an Authorization Error Response, not a presentation.");
+    }
 
     /// <summary>
     /// Parses the response including the <c>state</c> needed for session correlation. Prefer this
     /// over <see cref="ParseAsync"/> when hosting the wallet callback: for <c>direct_post.jwt</c>
-    /// the state travels inside the encrypted JWT.
+    /// the state travels inside the encrypted JWT. With <see cref="WalletResponseParserOptions.ReadErrorResponses"/>
+    /// on, a cleartext Authorization Error Response is returned with <see cref="ParsedWalletResponse.Error"/> set
+    /// rather than thrown.
     /// </summary>
     /// <exception cref="WalletResponseException">
     /// The response is malformed in any part its sender controls, or cannot be decrypted with the configured
@@ -57,13 +68,23 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         else if (response.Form.TryGetValue("vp_token", out var vpValues))
         {
             vpTokenJson = SingleValue(vpValues, "vp_token");
-            state = response.Form.TryGetValue("state", out var stateValues)
-                ? SingleValue(stateValues, "state")
-                : null;
+            state = FormState(response.Form);
+        }
+        else if (_options.ReadErrorResponses && response.Form.TryGetValue("error", out var errorValues))
+        {
+            // SPEC: OpenID4VP 1.0 section 8.5, an Authorization Error Response. Read only when the form carries no
+            // presentation, so an `error` field cannot hide one from the verifier, and only when the caller asked
+            // for it (WalletResponseParserOptions.ReadErrorResponses).
+            return new ParsedWalletResponse
+            {
+                Credentials = [],
+                State = FormState(response.Form),
+                Error = ErrorCode(SingleValue(errorValues, "error")),
+            };
         }
         else
         {
-            throw new WalletResponseException("The wallet response carries neither 'vp_token' nor 'response'.");
+            throw new WalletResponseException("The wallet response carries neither 'vp_token', 'response' nor 'error'.");
         }
 
         return new ParsedWalletResponse
@@ -73,6 +94,20 @@ public sealed class WalletResponseParser : IPresentationResponseParser
             Encrypted = encrypted,
         };
     }
+
+    private static string? FormState(IReadOnlyDictionary<string, IReadOnlyList<string>> form) =>
+        form.TryGetValue("state", out var values) ? SingleValue(values, "state") : null;
+
+    /// <summary>The longest error code accepted. RFC 6749 sets none; the codes it and OpenID4VP define are far shorter.</summary>
+    private const int MaxErrorCodeLength = 64;
+
+    // SPEC: RFC 6749 section 4.1.2.1: values for the "error" parameter "MUST NOT include characters outside the
+    // set %x20-21 / %x23-5B / %x5D-7E". Enforced because the code is written into results and logs.
+    private static string ErrorCode(string value) =>
+        value.Length is > 0 and <= MaxErrorCodeLength && value.All(c => c is >= '\x20' and <= '\x7E' and not '"' and not '\\')
+            ? value
+            : throw new WalletResponseException(
+                "The wallet's error code is empty or too long, or uses characters RFC 6749 section 4.1.2.1 does not allow.");
 
     private static string SingleValue(IReadOnlyList<string> values, string name) =>
         values.Count == 1
