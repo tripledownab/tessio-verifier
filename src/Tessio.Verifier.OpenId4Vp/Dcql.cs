@@ -23,7 +23,7 @@ namespace Tessio.Verifier.OpenId4Vp;
 /// </para>
 /// </remarks>
 // SPEC: OpenID4VP 1.0 uses DCQL, not Presentation Exchange.
-public static class Dcql
+public static partial class Dcql
 {
     // SPEC: SD-JWT VC credential format identifier is "dc+sd-jwt" (not the legacy "vc+sd-jwt").
     private const string SdJwtVcFormat = "dc+sd-jwt";

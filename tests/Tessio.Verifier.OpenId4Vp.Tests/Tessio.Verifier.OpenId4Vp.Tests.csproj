@@ -17,6 +17,8 @@
   <ItemGroup>
     <!-- One fixture for every test of a reader certificate path, linked rather than copied. -->
     <Compile Include="..\Tessio.Verifier.Core.Mdoc.Tests\TestReaderCertificates.cs" Link="TestReaderCertificates.cs" />
+    <!-- A real IACA and the Document Signer it issued, for the Trusted Authorities Query's key identifiers. -->
+    <None Include="..\Tessio.Verifier.Trust.Tests\Fixtures\mdoc-*.der" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
