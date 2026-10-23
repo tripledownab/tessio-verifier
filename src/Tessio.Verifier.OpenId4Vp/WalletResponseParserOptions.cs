@@ -31,4 +31,17 @@ public sealed class WalletResponseParserOptions
     // SPEC: dc+sd-jwt presentations appear as strings in vp_token; mdoc (v0.2) would be
     // base64url-encoded and carry the mso_mdoc format identifier.
     public string PresentationFormat { get; set; } = "dc+sd-jwt";
+
+    /// <summary>
+    /// Whether <see cref="WalletResponseParser.ParseDetailedAsync"/> returns a cleartext Authorization Error
+    /// Response, with <see cref="ParsedWalletResponse.Error"/> set and no credentials, instead of throwing.
+    /// Off by default.
+    /// </summary>
+    /// <remarks>
+    /// Off by default because a caller written before this option existed expects an exception for a form with
+    /// no presentation. Handed an empty credential list instead, a check over "every credential" would pass on
+    /// nothing. Turn it on only where <see cref="ParsedWalletResponse.Error"/> is read before the credentials.
+    /// The built-in callback and <c>WalletResponseVerifier</c> in the ASP.NET Core package do.
+    /// </remarks>
+    public bool ReadErrorResponses { get; set; }
 }

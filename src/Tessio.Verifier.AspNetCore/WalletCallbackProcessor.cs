@@ -17,6 +17,9 @@ internal enum CallbackOutcome
 
     /// <summary>A verified same-device presentation, held until its browser redeems the response code.</summary>
     Held = 6,
+
+    /// <summary>The wallet's Authorization Error Response, processed and refused under the usual rule.</summary>
+    WalletError = 7,
 }
 
 /// <summary>
@@ -87,8 +90,14 @@ internal sealed partial class WalletCallbackProcessor
         }
         catch (WalletResponseException e)
         {
-            Log.CallbackParseFailed(_logger, e);
-            return new CallbackResult(CallbackOutcome.ResponseInvalid, null);
+            var (declined, failure) = await ReadErrorResponseAsync(response, e, ct).ConfigureAwait(false);
+            if (declined is null)
+            {
+                Log.CallbackParseFailed(_logger, failure);
+                return new CallbackResult(CallbackOutcome.ResponseInvalid, null);
+            }
+
+            parsed = declined;
         }
 
         // SPEC: OpenID4VP 1.0 — state echoes the request and is this verifier's session correlation
@@ -110,6 +119,20 @@ internal sealed partial class WalletCallbackProcessor
         {
             Log.CallbackNotPending(_logger, session.SessionId, session.Status);
             return new CallbackResult(CallbackOutcome.SessionNotPending, session.SessionId); // Sessions complete exactly once (replay protection).
+        }
+
+        // AN ERROR RESPONSE IS THE WALLET'S ANSWER, not a malformed one, so it is processed and answered 200 with a
+        // redirect_uri. SPEC: OpenID4VP 1.0 section 8.2 asks for the 200 and lets the answer carry redirect_uri;
+        // section 8.3.1: "If a Wallet is unable to generate an encrypted response, it MAY send an error response
+        // without encryption". The callback cannot tell a wallet that was unable from one that chose not to, so
+        // the response mode check below does not apply to an error. It proves nothing and anyone holding `state`
+        // can send it, so it is refused under the same rule as a presentation that fails verification.
+        if (parsed.Error is not null)
+        {
+            var declined = await _responseVerifier.VerifyParsedAsync(session, parsed, ct).ConfigureAwait(false);
+            var kept = await RefuseAsync(session.SessionId, declined, ct).ConfigureAwait(false);
+            Log.WalletErrorResponse(_logger, session.SessionId, parsed.Error, kept);
+            return new CallbackResult(CallbackOutcome.WalletError, session.SessionId);
         }
 
         // A RESPONSE IN THE WRONG MODE DOES NOT ANSWER THE REQUEST, so it is refused BEFORE completion, the
@@ -166,6 +189,43 @@ internal sealed partial class WalletCallbackProcessor
         await _store.CompleteAsync(session.SessionId, outcome, ct).ConfigureAwait(false);
         Log.VerificationSucceeded(_logger, session.SessionId, outcome.Issuer.Identifier, outcome.Issuer.KeyResolutionMethod);
         return new CallbackResult(CallbackOutcome.Completed, session.SessionId);
+    }
+
+    /// <summary>
+    /// Reads a cleartext Authorization Error Response, which needs no decryption key. The registered
+    /// <see cref="WalletResponseParser"/> keeps <see cref="WalletResponseParserOptions.ReadErrorResponses"/> at its
+    /// default, off, so a host resolving it from the container is never handed an empty presentation for a
+    /// declined request. The callback reads <see cref="ParsedWalletResponse.Error"/> before anything else, so it
+    /// opts in here, and only after the registered parser has refused the form.
+    /// </summary>
+    private static readonly WalletResponseParser ErrorResponses =
+        new(new WalletResponseParserOptions { ReadErrorResponses = true });
+
+    /// <summary>
+    /// The error response in a form the registered parser refused, or null with the failure to log: the
+    /// registered parser's, unless the form named an <c>error</c> the error reader could not accept either.
+    /// </summary>
+    private static async Task<(ParsedWalletResponse? Declined, WalletResponseException Failure)> ReadErrorResponseAsync(
+        WalletResponseData response, WalletResponseException refused, CancellationToken ct)
+    {
+        // The parser reads `error` only from a form with no presentation in it, so a form carrying one was refused
+        // for the presentation and keeps that reason. Retrying it here would log this keyless reader's failure
+        // to decrypt instead.
+        if (!response.Form.ContainsKey("error") || response.Form.ContainsKey("response") || response.Form.ContainsKey("vp_token"))
+        {
+            return (null, refused);
+        }
+
+        try
+        {
+            // With `error` present and neither `response` nor `vp_token`, this reader reaches only its error branch:
+            // it returns an error response or throws, never a presentation.
+            return (await ErrorResponses.ParseDetailedAsync(response, ct).ConfigureAwait(false), refused);
+        }
+        catch (WalletResponseException e)
+        {
+            return (null, e);
+        }
     }
 
     /// <summary>

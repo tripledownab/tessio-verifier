@@ -80,6 +80,8 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
                 ResponseDecryptionKeyResolver = kid => _encryptionKeys.Get(kid)?.DecryptionKey,
                 PresentationFormat = RequestParameters.TryGetRequestedFormat(session.Request)
                     ?? DefaultCredentialFormat,
+                // VerifyParsedAsync reads Error before the credentials.
+                ReadErrorResponses = true,
             });
             parsed = await parser.ParseDetailedAsync(response, ct).ConfigureAwait(false);
         }
@@ -102,6 +104,17 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
     internal async Task<VerificationResult> VerifyParsedAsync(
         VerificationSession session, ParsedWalletResponse response, CancellationToken ct)
     {
+        // A wallet's error response is its answer, and there is nothing to verify in it. Without this it would
+        // fall through to "no credentials" below, which misdescribes it.
+        if (response.Error is { } walletError)
+        {
+            return VerificationResult.Invalid(new VerificationError
+            {
+                Code = ErrorCodes.WalletError,
+                Message = $"The wallet answered with an Authorization Error Response: {walletError}.",
+            });
+        }
+
         // Transaction data is bound into the request object; the KB-JWT must acknowledge these exact bytes.
         var transactionData = RequestParameters.TryGetTransactionData(session.Request) is { } tds
             ? new TransactionDataExpectation { TransactionData = tds }
