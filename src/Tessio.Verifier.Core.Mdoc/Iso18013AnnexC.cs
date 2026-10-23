@@ -43,11 +43,51 @@ public static class Iso18013AnnexC
         return CreateUnsigned(docType, nameSpace, elementIdentifiers, zkRequest);
     }
 
+    /// <summary>
+    /// As <see cref="CreateRequest(string, string, IReadOnlyList{string})"/>, with the response key supplied by
+    /// the caller rather than minted here. For a verifier whose answer may be opened by another instance or by
+    /// this one after a restart: derive the key from a shared master and a fresh salt, store only the salt and
+    /// derive the key again to open the answer.
+    /// </summary>
+    /// <remarks>
+    /// Use a new key for every request, as the minted path does. One long-lived key would tie separate
+    /// presentations to one verifier, and whoever obtained it could open every answer ever encrypted to it. Each
+    /// request still gets its own nonce, but that does not remove the link. Nothing here can tell a reused key
+    /// from a new one, so this is the caller's to keep. A derived key also differs from a minted one in a way
+    /// this method cannot change: while its salt is kept, the master derives it again. The key stays the
+    /// caller's, and this method neither keeps nor disposes it.
+    /// </remarks>
+    /// <param name="docType">The requested document type.</param>
+    /// <param name="nameSpace">The namespace the elements live in.</param>
+    /// <param name="elementIdentifiers">The elements to request or to have proved.</param>
+    /// <param name="zkRequest">The circuits to offer and whether a proof is required. Null asks for no proof.</param>
+    /// <param name="responseKey">A P-256 key holding its private part, which the wallet encrypts its response to.</param>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="responseKey"/> is not on P-256 or lacks its private part, or no circuit
+    /// <paramref name="zkRequest"/> offers proves as many elements as are requested.
+    /// </exception>
+    public static Iso18013AnnexCRequest CreateRequest(
+        string docType,
+        string nameSpace,
+        IReadOnlyList<string> elementIdentifiers,
+        ZkRequest? zkRequest,
+        ECDiffieHellman responseKey)
+    {
+        ArgumentNullException.ThrowIfNull(responseKey);
+        return CreateUnsigned(docType, nameSpace, elementIdentifiers, zkRequest, responseKey);
+    }
+
     private static Iso18013AnnexCRequest CreateUnsigned(
-        string docType, string nameSpace, IReadOnlyList<string> elementIdentifiers, ZkRequest? zkRequest) =>
+        string docType,
+        string nameSpace,
+        IReadOnlyList<string> elementIdentifiers,
+        ZkRequest? zkRequest,
+        ECDiffieHellman? responseKey = null) =>
         // This seam never retains disclosed elements, so IntentToRetain is always false here.
         // DeviceRequestBuilder exposes the flag for callers that do retain.
-        Create(_ => DeviceRequestBuilder.BuildUnsigned(docType, nameSpace, elementIdentifiers, intentToRetain: false, zkRequest));
+        Create(
+            _ => DeviceRequestBuilder.BuildUnsigned(docType, nameSpace, elementIdentifiers, intentToRetain: false, zkRequest),
+            responseKey);
 
     /// <summary>
     /// Builds the request pair with the docRequest signed by <paramref name="reader"/>, so the wallet
@@ -119,6 +159,43 @@ public static class Iso18013AnnexC
         return CreateSigned(docType, nameSpace, elementIdentifiers, origin, reader, registrationCertificate, zkRequest);
     }
 
+    /// <summary>
+    /// As <see cref="CreateSignedRequest(string, string, IReadOnlyList{string}, string, MdocReaderKey, byte[])"/>,
+    /// with the response key supplied by the caller rather than minted here. See
+    /// <see cref="CreateRequest(string, string, IReadOnlyList{string}, ZkRequest, ECDiffieHellman)"/> for when to
+    /// use it and why each request needs a new key.
+    /// </summary>
+    /// <param name="docType">The requested document type.</param>
+    /// <param name="nameSpace">The namespace the elements live in.</param>
+    /// <param name="elementIdentifiers">The elements to request or to have proved.</param>
+    /// <param name="origin">
+    /// The origin of the page that will make the browser call; see the overload without a response key.
+    /// </param>
+    /// <param name="reader">The reader key and certificate path to sign with.</param>
+    /// <param name="registrationCertificate">
+    /// The registration certificate, or null; see the overload without a response key.
+    /// </param>
+    /// <param name="zkRequest">The circuits to offer and whether a proof is required. Null asks for no proof.</param>
+    /// <param name="responseKey">A P-256 key holding its private part, which the wallet encrypts its response to.</param>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="responseKey"/> is not on P-256 or lacks its private part. Also when
+    /// <paramref name="origin"/> is not a serialized origin and when no circuit <paramref name="zkRequest"/>
+    /// offers proves as many elements as are requested.
+    /// </exception>
+    public static Iso18013AnnexCRequest CreateSignedRequest(
+        string docType,
+        string nameSpace,
+        IReadOnlyList<string> elementIdentifiers,
+        string origin,
+        MdocReaderKey reader,
+        byte[]? registrationCertificate,
+        ZkRequest? zkRequest,
+        ECDiffieHellman responseKey)
+    {
+        ArgumentNullException.ThrowIfNull(responseKey);
+        return CreateSigned(docType, nameSpace, elementIdentifiers, origin, reader, registrationCertificate, zkRequest, responseKey);
+    }
+
     private static Iso18013AnnexCRequest CreateSigned(
         string docType,
         string nameSpace,
@@ -126,27 +203,38 @@ public static class Iso18013AnnexC
         string origin,
         MdocReaderKey reader,
         byte[]? registrationCertificate,
-        ZkRequest? zkRequest)
+        ZkRequest? zkRequest,
+        ECDiffieHellman? responseKey = null)
     {
         BrowserOrigin.RequireSerialized(origin);
-        return Create(encryptionInfo => DeviceRequestBuilder.BuildSigned(
-            docType,
-            nameSpace,
-            elementIdentifiers,
-            intentToRetain: false,
-            BuildSessionTranscript(encryptionInfo, origin),
-            reader,
-            registrationCertificate,
-            zkRequest));
+        return Create(
+            encryptionInfo => DeviceRequestBuilder.BuildSigned(
+                docType,
+                nameSpace,
+                elementIdentifiers,
+                intentToRetain: false,
+                BuildSessionTranscript(encryptionInfo, origin),
+                reader,
+                registrationCertificate,
+                zkRequest),
+            responseKey);
     }
 
     /// <summary>
-    /// Mints the response key and EncryptionInfo, then builds the DeviceRequest from them. In that
-    /// order because a signed request covers the EncryptionInfo bytes through the transcript.
+    /// Takes the response key (the caller's or a fresh one minted here), builds the EncryptionInfo around it,
+    /// then builds the DeviceRequest from them. In that order because a signed request covers the
+    /// EncryptionInfo bytes through the transcript.
     /// </summary>
-    private static Iso18013AnnexCRequest Create(Func<byte[], byte[]> buildDeviceRequest)
+    private static Iso18013AnnexCRequest Create(Func<byte[], byte[]> buildDeviceRequest, ECDiffieHellman? callerKey)
     {
-        using var responseKey = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        if (callerKey is not null)
+        {
+            RequireUsableResponseKey(callerKey);
+        }
+
+        // Disposed only when minted here: a caller's key stays the caller's.
+        using var minted = callerKey is null ? ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256) : null;
+        var responseKey = callerKey ?? minted!;
         var encryptionInfo = EncryptionInfo.Encode(
             RandomNumberGenerator.GetBytes(EncryptionInfo.NonceLength),
             responseKey.ExportParameters(includePrivateParameters: false));
@@ -157,6 +245,42 @@ public static class Iso18013AnnexC
             EncryptionInfo = encryptionInfo,
             ResponseKeyPkcs8 = responseKey.ExportPkcs8PrivateKey(),
         };
+    }
+
+    // SPEC: RFC 9180 §7.1, kem_id 0x0010 is DHKEM(P-256, HKDF-SHA256), the only KEM Hpke implements. A key on
+    // another curve would be advertised and then never open an answer. Curves whose points have P-256's size
+    // (brainpoolP256r1, secp256k1) would even be encoded as P-256 keys, so the curve is checked by its OID.
+    // Refused here, where the caller sees why, not at the response, where it would look like an undecryptable
+    // wallet. A P-256 key given by explicit parameters rather than by name is refused too: it cannot be told
+    // from another curve without comparing every parameter, and every usual way of making a key names it.
+    private static void RequireUsableResponseKey(ECDiffieHellman responseKey)
+    {
+        ECParameters parameters;
+        try
+        {
+            parameters = responseKey.ExportParameters(includePrivateParameters: true);
+        }
+        catch (CryptographicException e)
+        {
+            throw new ArgumentException("The response key must hold its private part.", nameof(responseKey), e);
+        }
+
+        try
+        {
+            if (parameters.D is not { Length: > 0 })
+            {
+                throw new ArgumentException("The response key must hold its private part.", nameof(responseKey));
+            }
+
+            if (!parameters.Curve.IsNamed || parameters.Curve.Oid.Value != ECCurve.NamedCurves.nistP256.Oid.Value)
+            {
+                throw new ArgumentException("The response key must be on P-256.", nameof(responseKey));
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(parameters.D);
+        }
     }
 
     /// <summary>
@@ -231,8 +355,9 @@ public sealed record Iso18013AnnexCRequest
     public required byte[] EncryptionInfo { get; init; }
 
     /// <summary>
-    /// The PKCS#8 private key the wallet encrypts its response to. Store it with the session and
-    /// pass it to <see cref="Iso18013AnnexC.OpenResponse"/>.
+    /// The PKCS#8 private key the wallet encrypts its response to, for <see cref="Iso18013AnnexC.OpenResponse"/>.
+    /// For a key minted here, store it with the session. For a key you supplied, store nothing: make the key
+    /// again when the answer arrives.
     /// </summary>
     public required byte[] ResponseKeyPkcs8 { get; init; }
 }
