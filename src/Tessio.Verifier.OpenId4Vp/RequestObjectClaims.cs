@@ -44,18 +44,26 @@ internal static class RequestObjectClaims
             payload["state"] = options.State;
         }
 
-        if (options.ClientMetadataJson is not null)
+        AddOptionalMembers(payload, options.ClientMetadataJson, options.TransactionDataJson);
+        return payload;
+    }
+
+    /// <summary>
+    /// Adds <c>client_metadata</c> and <c>transaction_data</c> when given: members both transports carry,
+    /// written here once so a redirect request and a Digital Credentials API request encode them alike.
+    /// </summary>
+    public static void AddOptionalMembers(JsonObject payload, string? clientMetadataJson, string? transactionDataJson)
+    {
+        if (clientMetadataJson is not null)
         {
-            payload["client_metadata"] = JsonNode.Parse(options.ClientMetadataJson);
+            payload["client_metadata"] = JsonNode.Parse(clientMetadataJson);
         }
 
         // SPEC: OpenID4VP 1.0 §5.1 / Annex B.3.3 — transaction_data is an array of base64url-encoded
         // JSON objects, and the KB-JWT hashes are computed over these exact strings.
-        if (options.TransactionDataJson is not null)
+        if (transactionDataJson is not null)
         {
-            payload["transaction_data"] = JsonNode.Parse(options.TransactionDataJson);
+            payload["transaction_data"] = JsonNode.Parse(transactionDataJson);
         }
-
-        return payload;
     }
 }

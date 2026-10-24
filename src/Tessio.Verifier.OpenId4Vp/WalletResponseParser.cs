@@ -8,10 +8,11 @@ namespace Tessio.Verifier.OpenId4Vp;
 /// <summary>
 /// Parses wallet authorization responses — <c>direct_post</c> (cleartext form) and
 /// <c>direct_post.jwt</c> (encrypted JWE in the <c>response</c> form parameter) — and extracts the
-/// presented credentials from <c>vp_token</c>.
+/// presented credentials from <c>vp_token</c>. A response returned through the Digital Credentials API
+/// is read by <see cref="ParseDcApiAsync"/>.
 /// </summary>
 // SPEC: OpenID4VP 1.0 §8.2 (direct_post) and §8.3 (direct_post.jwt).
-public sealed class WalletResponseParser : IPresentationResponseParser
+public sealed partial class WalletResponseParser : IPresentationResponseParser
 {
     private readonly WalletResponseParserOptions _options;
 
@@ -135,7 +136,7 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         // still meet an exception it had no reason to expect.
         if (!CompactJwt.TryParse(responseJwt, out var jwe))
         {
-            throw new WalletResponseException("The direct_post.jwt response is not a well-formed JWT/JWE.");
+            throw new WalletResponseException("The response parameter is not a well-formed JWT/JWE.");
         }
 
         // SPEC: OpenID4VP 1.0 §8.3: "To encrypt the Authorization Response, implementations MUST use an
@@ -145,7 +146,7 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         if (!jwe.IsEncrypted)
         {
             throw new WalletResponseException(
-                "The direct_post.jwt response is not encrypted. OpenID4VP 1.0 §8.3 requires an unsigned, encrypted JWT (a JWE).");
+                "The response parameter is not encrypted. OpenID4VP 1.0 §8.3 requires an unsigned, encrypted JWT (a JWE).");
         }
 
         // Before any key is looked up: these rules hold whatever the key, and a response that breaks them
@@ -161,8 +162,8 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         if (decryptionKey is null)
         {
             throw new WalletResponseException(_options.ResponseDecryptionKeyResolver is null
-                ? "Received a direct_post.jwt response but no ResponseDecryptionKey is configured."
-                : "The direct_post.jwt response names no known response-encryption key: its kid matches "
+                ? "Received an encrypted wallet response but no ResponseDecryptionKey is configured."
+                : "The encrypted wallet response names no known response-encryption key: its kid matches "
                   + "no live session, so the session may have expired or the response may be a replay.");
         }
 
@@ -173,7 +174,7 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         if (EcdhEsJweDecryptor.CanHandle(jwe))
         {
             var plaintext = EcdhEsJweDecryptor.Decrypt(jwe, decryptionKey);
-            return ExtractResponseClaims(NormalizeDecryptedPayload(plaintext));
+            return ExtractResponseClaims(NormalizeDecryptedPayload(plaintext), DecryptedSource);
         }
 
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(responseJwt, new TokenValidationParameters
@@ -188,7 +189,7 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         if (!result.IsValid)
         {
             throw new WalletResponseException(
-                "The direct_post.jwt response could not be decrypted with the configured key, or its content is not a readable JWT.",
+                "The encrypted wallet response could not be decrypted with the configured key, or its content is not a readable JWT.",
                 result.Exception);
         }
 
@@ -197,11 +198,14 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         // claims would be a second reading of the same JSON, free to disagree with the first.
         if (result.SecurityToken is not JsonWebToken { InnerToken: { } inner })
         {
-            throw new WalletResponseException("The direct_post.jwt response decrypted to no token.");
+            throw new WalletResponseException("The encrypted wallet response decrypted to no token.");
         }
 
-        return ExtractResponseClaims(Base64UrlEncoder.Decode(inner.EncodedPayload));
+        return ExtractResponseClaims(Base64UrlEncoder.Decode(inner.EncodedPayload), DecryptedSource);
     }
+
+    /// <summary>What <see cref="ExtractResponseClaims"/> calls a payload that arrived encrypted.</summary>
+    private const string DecryptedSource = "decrypted wallet response";
 
     /// <summary>
     /// A decrypted response is either the response-parameter JSON directly, or a nested (typically
@@ -225,11 +229,15 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         return Base64UrlEncoder.Decode(nested.EncodedPayload);
     }
 
-    private ResponseClaims ExtractResponseClaims(string payloadJson)
+    /// <summary>
+    /// Reads the response parameters from a JSON object: a decrypted payload or the cleartext object a
+    /// Digital Credentials API response returns. <paramref name="source"/> names it in the messages.
+    /// </summary>
+    private ResponseClaims ExtractResponseClaims(string payloadJson, string source)
     {
-        // A decrypted payload is untrusted input (see NormalizeDecryptedPayload), so a payload that only
-        // looks like JSON is a malformed response, answered like every other, not an exception that
-        // escapes the parser.
+        // A decrypted payload is untrusted input (see NormalizeDecryptedPayload), and so is a cleartext one,
+        // so a payload that only looks like JSON is a malformed response, answered like every other, not an
+        // exception that escapes the parser.
         JsonDocument parsed;
         try
         {
@@ -237,18 +245,18 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         }
         catch (JsonException e)
         {
-            throw new WalletResponseException("The decrypted wallet response is not well formed JSON.", e);
+            throw new WalletResponseException($"The {source} is not well formed JSON.", e);
         }
 
         using var document = parsed;
-        // The response parameters are members of an object, and the reads below need one. Every route that
-        // reaches here delivers an object today; checked here so these reads do not depend on that.
+        // The response parameters are members of an object, and the reads below need one.
         if (document.RootElement.ValueKind != JsonValueKind.Object)
         {
-            throw new WalletResponseException("The decrypted wallet response is not a JSON object.");
+            throw new WalletResponseException($"The {source} is not a JSON object.");
         }
 
         RequireReadableText(document.RootElement);
+        RequireUniqueMembers(document.RootElement, source);
         var state = document.RootElement.TryGetProperty("state", out var stateProp)
                     && stateProp.ValueKind == JsonValueKind.String
             ? stateProp.GetString()
@@ -265,10 +273,10 @@ public sealed class WalletResponseParser : IPresentationResponseParser
             {
                 return new ResponseClaims(null, state, error.ValueKind == JsonValueKind.String
                     ? ErrorCode(error.GetString()!)
-                    : throw new WalletResponseException("The decrypted wallet response's error is not a string."));
+                    : throw new WalletResponseException($"The {source}'s error is not a string."));
             }
 
-            throw new WalletResponseException("The decrypted wallet response carries no vp_token claim.");
+            throw new WalletResponseException($"The {source} carries no vp_token claim.");
         }
 
         var vpTokenJson = vpToken.ValueKind == JsonValueKind.String ? vpToken.GetString()! : vpToken.GetRawText();
@@ -339,6 +347,25 @@ public sealed class WalletResponseParser : IPresentationResponseParser
                 break;
             default:
                 throw new WalletResponseException($"Unsupported presentation value of kind {element.ValueKind} in vp_token.");
+        }
+    }
+
+    /// <summary>
+    /// Refuses a response object that names one of its parameters twice. JSON parsing keeps both and a read takes
+    /// one, so the other would ride along unread: a second <c>vp_token</c> or <c>response</c> beside the one
+    /// verified. The form a redirect wallet posts already refuses a repeated field (<see cref="SingleValue"/>);
+    /// this holds the JSON forms to the same rule.
+    /// </summary>
+    private static void RequireUniqueMembers(JsonElement responseObject, string source)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var member in responseObject.EnumerateObject())
+        {
+            if (!names.Add(member.Name))
+            {
+                // The name is the sender's text, so it is not written into a message that reaches logs.
+                throw new WalletResponseException($"The {source} names one of its parameters more than once.");
+            }
         }
     }
 

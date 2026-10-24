@@ -69,7 +69,10 @@ public sealed class PresentationRequestBuilderOptions
     public string AuthorizationEndpoint { get; set; } = "openid4vp://authorize";
 
     /// <summary>Request lifetime applied when the per-request options carry none. Default: 5 minutes.</summary>
-    public TimeSpan DefaultRequestLifetime { get; set; } = TimeSpan.FromMinutes(5);
+    public TimeSpan DefaultRequestLifetime { get; set; } = StandardRequestLifetime;
+
+    /// <summary>The lifetime a request gets when nothing sets one, for every builder in this package.</summary>
+    internal static readonly TimeSpan StandardRequestLifetime = TimeSpan.FromMinutes(5);
 
     /// <summary>Time source for iat/exp; system clock when null.</summary>
     public TimeProvider? Clock { get; set; }

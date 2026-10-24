@@ -32,9 +32,54 @@ public static class ClientMetadata
     /// encrypted responses, so in practice this is supplied.
     /// </param>
     /// <returns>The <c>client_metadata</c> JSON.</returns>
-    public static string Build(string credentialFormat, JsonObject? responseEncryptionJwk = null)
+    public static string Build(string credentialFormat, JsonObject? responseEncryptionJwk = null) =>
+        Build(credentialFormat, responseEncryptionJwk, additionalMembers: null);
+
+    /// <summary>
+    /// Builds <c>client_metadata</c> as <see cref="Build(string, JsonObject?)"/> does, adding members a particular
+    /// wallet asks for beside the standard ones.
+    /// </summary>
+    /// <param name="credentialFormat"><c>dc+sd-jwt</c> or <c>mso_mdoc</c>.</param>
+    /// <param name="responseEncryptionJwk">The public half of the response-encryption key, or null.</param>
+    /// <param name="additionalMembers">
+    /// Members to add, such as a wallet's own relying party metadata. Each value is copied. A member this builder
+    /// writes itself cannot be replaced from here, so a caller cannot weaken what the standard members advertise.
+    /// </param>
+    /// <returns>The <c>client_metadata</c> JSON.</returns>
+    /// <exception cref="ArgumentException">A name in <paramref name="additionalMembers"/> is one this builder writes.</exception>
+    // SPEC: OpenID4VP 1.0 §5.1: "Other metadata parameters MUST be ignored unless a profile of this specification
+    // explicitly defines them as usable in the client_metadata parameter." So an additional member is for a wallet
+    // or profile that defines it, and every other wallet ignores it. The standard members stay the three the class
+    // header names, written only by this builder.
+    public static string Build(
+        string credentialFormat,
+        JsonObject? responseEncryptionJwk,
+        IReadOnlyDictionary<string, JsonNode?>? additionalMembers)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(credentialFormat);
+        var metadata = Standard(credentialFormat, responseEncryptionJwk);
+
+        foreach (var (name, value) in additionalMembers ?? new Dictionary<string, JsonNode?>())
+        {
+            if (metadata.ContainsKey(name) || StandardMemberNames.Contains(name))
+            {
+                throw new ArgumentException(
+                    $"client_metadata member '{name}' is written by this builder and cannot be replaced.",
+                    nameof(additionalMembers));
+            }
+
+            metadata[name] = value?.DeepClone();
+        }
+
+        return metadata.ToJsonString(JsonDefaults.Relaxed);
+    }
+
+    /// <summary>Every member the standard builder may write, whether or not this call writes it.</summary>
+    private static readonly HashSet<string> StandardMemberNames =
+        ["vp_formats_supported", "jwks", "encrypted_response_enc_values_supported"];
+
+    private static JsonObject Standard(string credentialFormat, JsonObject? responseEncryptionJwk)
+    {
 
         // Neither client_id nor client_name belongs here, and both used to. client_id is an
         // authorization request parameter. client_name was a display name for the consent screen, and
@@ -61,7 +106,7 @@ public static class ClientMetadata
             metadata["encrypted_response_enc_values_supported"] = new JsonArray("A128GCM", "A256GCM");
         }
 
-        return metadata.ToJsonString(JsonDefaults.Relaxed);
+        return metadata;
     }
 
     /// <summary>The signature algorithms we accept, keyed by credential format.</summary>

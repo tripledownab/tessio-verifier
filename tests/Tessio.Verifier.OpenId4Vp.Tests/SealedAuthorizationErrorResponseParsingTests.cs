@@ -79,4 +79,15 @@ public sealed class SealedAuthorizationErrorResponseParsingTests : IDisposable
         await Assert.ThrowsAsync<WalletResponseException>(() => Parser(readErrorResponses: true).ParseAsync(
             Form(Sealed("""{"error":"access_denied","state":"s-1"}"""))));
     }
+
+    [Theory]
+    [InlineData("""{"vp_token":{"pid":["junk"]},"vp_token":{"pid":["a.b.c~"]},"state":"s-1"}""")]
+    [InlineData("""{"vp_token":{"pid":["a.b.c~"]},"state":"s-1","state":"s-2"}""")]
+    public async Task ASealedPayloadNamingAParameterTwice_IsRefused(string payloadJson)
+    {
+        // The form a wallet posts refuses a repeated field; the payload sealed inside it is held to the same rule,
+        // so a second vp_token cannot ride along beside the one verified.
+        await Assert.ThrowsAsync<WalletResponseException>(() =>
+            Parser(readErrorResponses: true).ParseDetailedAsync(Form(Sealed(payloadJson))));
+    }
 }
