@@ -22,9 +22,9 @@ public interface IWalletResponseVerifier
     /// Parses <paramref name="response"/> (picking SD-JWT vs mdoc from the session's request, so mixed-format
     /// tenants share one process) and verifies every presented credential against <paramref name="session"/>.
     /// A malformed or undecryptable response yields an invalid result (error code <c>response_invalid</c>)
-    /// rather than throwing, so the caller can always complete the session with the outcome. A cleartext
-    /// Authorization Error Response yields <see cref="ErrorCodes.WalletError"/>; before 0.25.0 it yielded
-    /// <c>response_invalid</c>.
+    /// rather than throwing, so the caller can always complete the session with the outcome. An Authorization
+    /// Error Response yields <see cref="ErrorCodes.WalletError"/>: in the clear from 0.25.0, sealed in a
+    /// <c>direct_post.jwt</c> <c>response</c> from 0.26.0. Before that it yielded <c>response_invalid</c>.
     /// </summary>
     Task<VerificationResult> VerifyAsync(
         VerificationSession session,

@@ -59,7 +59,7 @@ public static class TessioVerifierServiceCollectionExtensions
         {
             // Ephemeral keys are looked up by the kid the wallet echoes from our client_metadata.
             ResponseDecryptionKeyResolver = kid =>
-                sp.GetRequiredService<ResponseEncryptionKeyStore>().Get(kid)?.DecryptionKey,
+                sp.GetRequiredService<ResponseEncryptionKeyStore>().DecryptionKeyFor(kid),
             PresentationFormat = sp.GetRequiredService<IOptions<VerifierOptions>>().Value.CredentialFormat,
         }));
         services.TryAddSingleton<IPresentationResponseParser>(sp => sp.GetRequiredService<WalletResponseParser>());

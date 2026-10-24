@@ -79,6 +79,13 @@ public sealed class ResponseEncryptionKeyStore : IDisposable
         return keys;
     }
 
+    /// <summary>
+    /// The private key that opens a response sealed to this <c>kid</c>, or null when the kid is unknown or expired.
+    /// The one lookup every <see cref="Tessio.Verifier.OpenId4Vp.WalletResponseParserOptions.ResponseDecryptionKeyResolver"/>
+    /// in this package uses, so the parsers cannot disagree about which keys open a response.
+    /// </summary>
+    internal Microsoft.IdentityModel.Tokens.SecurityKey? DecryptionKeyFor(string? keyId) => Get(keyId)?.DecryptionKey;
+
     /// <summary>The key with this <c>kid</c>, or null when it is unknown or expired.</summary>
     /// <remarks>
     /// A derived key this process does not hold is derived again from its stored salt and kept until it

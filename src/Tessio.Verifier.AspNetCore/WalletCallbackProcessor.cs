@@ -48,16 +48,27 @@ internal sealed partial class WalletCallbackProcessor
     private readonly ISameDeviceSessionStore? _sameDevice;
     private readonly TimeProvider _clock;
     private readonly ILogger<WalletCallbackProcessor> _logger;
+    private readonly WalletResponseParser _errorResponses;
 
     public WalletCallbackProcessor(
         WalletResponseParser parser,
         WalletResponseVerifier responseVerifier,
         ISessionStore store,
         IOptions<VerifierOptions> options,
+        ResponseEncryptionKeyStore encryptionKeys,
         TimeProvider clock,
         ILogger<WalletCallbackProcessor> logger)
     {
         _parser = parser;
+        // The registered parser keeps WalletResponseParserOptions.ReadErrorResponses at its default, off, so a host
+        // resolving it from the container is never handed an empty presentation for a declined request. The
+        // callback reads ParsedWalletResponse.Error before anything else, so it opts in here, with the same keys,
+        // because a wallet SHOULD seal its error under direct_post.jwt (OpenID4VP 1.0 section 5.6).
+        _errorResponses = new WalletResponseParser(new WalletResponseParserOptions
+        {
+            ResponseDecryptionKeyResolver = encryptionKeys.DecryptionKeyFor,
+            ReadErrorResponses = true,
+        });
         _responseVerifier = responseVerifier;
         _clock = clock;
         _logger = logger;
@@ -192,35 +203,26 @@ internal sealed partial class WalletCallbackProcessor
     }
 
     /// <summary>
-    /// Reads a cleartext Authorization Error Response, which needs no decryption key. The registered
-    /// <see cref="WalletResponseParser"/> keeps <see cref="WalletResponseParserOptions.ReadErrorResponses"/> at its
-    /// default, off, so a host resolving it from the container is never handed an empty presentation for a
-    /// declined request. The callback reads <see cref="ParsedWalletResponse.Error"/> before anything else, so it
-    /// opts in here, and only after the registered parser has refused the form.
+    /// The error response in a form the registered parser refused, cleartext or sealed, or null with the failure
+    /// to log: the registered parser's, unless the error reader reached a reason of its own.
     /// </summary>
-    private static readonly WalletResponseParser ErrorResponses =
-        new(new WalletResponseParserOptions { ReadErrorResponses = true });
-
-    /// <summary>
-    /// The error response in a form the registered parser refused, or null with the failure to log: the
-    /// registered parser's, unless the form named an <c>error</c> the error reader could not accept either.
-    /// </summary>
-    private static async Task<(ParsedWalletResponse? Declined, WalletResponseException Failure)> ReadErrorResponseAsync(
+    private async Task<(ParsedWalletResponse? Declined, WalletResponseException Failure)> ReadErrorResponseAsync(
         WalletResponseData response, WalletResponseException refused, CancellationToken ct)
     {
-        // The parser reads `error` only from a form with no presentation in it, so a form carrying one was refused
-        // for the presentation and keeps that reason. Retrying it here would log this keyless reader's failure
-        // to decrypt instead.
-        if (!response.Form.ContainsKey("error") || response.Form.ContainsKey("response") || response.Form.ContainsKey("vp_token"))
+        // A cleartext vp_token is a presentation, refused for its own reason. A form with neither `error` nor a
+        // sealed `response` cannot hold an error response at all. A sealed response the registered parser refused
+        // has its key looked up and is decrypted a second time here; only the refusal path pays for that.
+        if (response.Form.ContainsKey("vp_token") || !(response.Form.ContainsKey("error") || response.Form.ContainsKey("response")))
         {
             return (null, refused);
         }
 
         try
         {
-            // With `error` present and neither `response` nor `vp_token`, this reader reaches only its error branch:
-            // it returns an error response or throws, never a presentation.
-            return (await ErrorResponses.ParseDetailedAsync(response, ct).ConfigureAwait(false), refused);
+            var parsed = await _errorResponses.ParseDetailedAsync(response, ct).ConfigureAwait(false);
+            // Only an error response is taken from here. A sealed presentation the registered parser refused stays
+            // refused, whatever this differently configured reader makes of it.
+            return parsed.Error is null ? (null, refused) : (parsed, refused);
         }
         catch (WalletResponseException e)
         {

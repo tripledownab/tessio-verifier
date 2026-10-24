@@ -41,8 +41,8 @@ public sealed class VerifierOptions
     /// <summary>
     /// When true, only a response that passes verification completes a session. A response that fails
     /// verification is answered 400, recorded as <see cref="VerificationSession.LastFailure"/>, and the
-    /// session stays pending for another response until it expires. A wallet's cleartext Authorization Error
-    /// Response is recorded the same way but answered 200, as OpenID4VP 1.0 section 8.2 requires. Defaults to false.
+    /// session stays pending for another response until it expires. A wallet's Authorization Error Response,
+    /// in the clear or sealed, is recorded the same way but answered 200, as OpenID4VP 1.0 section 8.2 requires. Defaults to false.
     /// </summary>
     /// <remarks>
     /// <para>
