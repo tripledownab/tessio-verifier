@@ -92,7 +92,7 @@ public sealed partial class WalletResponseParser
 
         // An encrypted response and cleartext parameters beside it cannot both be the answer, and choosing one
         // would let the other ride along unread, so the pair is refused.
-        if (root.TryGetProperty("vp_token", out _) || root.TryGetProperty("error", out _))
+        if (CleartextAnswerParameters.Any(name => root.TryGetProperty(name, out _)))
         {
             throw new WalletResponseException(
                 $"The {DcApiSource} carries an encrypted response beside cleartext response parameters.");

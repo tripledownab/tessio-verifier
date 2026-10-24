@@ -62,7 +62,18 @@ public sealed partial class WalletResponseParser : IPresentationResponseParser
         var encrypted = false;
         if (response.Form.TryGetValue("response", out var jwtValues))
         {
-            // direct_post.jwt: the whole authorization response rides inside one (encrypted) JWT.
+            // direct_post.jwt: the whole authorization response rides inside one (encrypted) JWT. SPEC: OpenID4VP 1.0
+            // section 8.3: "The payload of the encrypted JWT response MUST include the contents of the response as
+            // defined in Section 8.1 as top-level JSON members." No text gives a cleartext answer beside it a role,
+            // and none forbids one. Refusing the pair is this verifier's own choice, as on the Digital Credentials API
+            // path, because reading one answer would let the other ride along unread. Other parameters beside it,
+            // such as `state`, are ignored: the response is correlated by the state sealed inside it.
+            if (CleartextAnswerParameters.FirstOrDefault(response.Form.ContainsKey) is { } beside)
+            {
+                throw new WalletResponseException(
+                    $"The wallet response carries an encrypted 'response' beside a cleartext '{beside}'.");
+            }
+
             var claims = await UnwrapResponseJwtAsync(SingleValue(jwtValues, "response")).ConfigureAwait(false);
             if (claims.Error is { } sealedError)
             {
@@ -102,6 +113,12 @@ public sealed partial class WalletResponseParser : IPresentationResponseParser
             Encrypted = encrypted,
         };
     }
+
+    /// <summary>
+    /// The cleartext parameters that answer a request, a presentation or an error, and so cannot stand beside an
+    /// encrypted <c>response</c> on either transport.
+    /// </summary>
+    private static readonly string[] CleartextAnswerParameters = ["vp_token", "error"];
 
     private static string? FormState(IReadOnlyDictionary<string, IReadOnlyList<string>> form) =>
         form.TryGetValue("state", out var values) ? SingleValue(values, "state") : null;
