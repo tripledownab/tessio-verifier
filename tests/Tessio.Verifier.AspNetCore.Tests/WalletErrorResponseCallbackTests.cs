@@ -14,8 +14,8 @@ using Tessio.Verifier.OpenId4Vp;
 namespace Tessio.Verifier.AspNetCore.Tests;
 
 /// <summary>
-/// What the built-in callback does with a wallet's cleartext Authorization Error Response, for example a holder
-/// who declined. OpenID4VP 1.0 section 8.2: "If the Response URI has successfully processed the Authorization
+/// What the built-in callback does with a wallet's Authorization Error Response, for example a holder who declined,
+/// in the clear or sealed in a <c>direct_post.jwt</c> <c>response</c>. OpenID4VP 1.0 section 8.2: "If the Response URI has successfully processed the Authorization
 /// Response or Authorization Error Response, it MUST respond with an HTTP status code of 200", and the answer
 /// "MAY return the redirect_uri parameter ... for Error Responses". HAIP 1.0 section 5.1 makes that a MUST for
 /// the same-device flow. The built-in callback returns one in both flows.
@@ -63,6 +63,104 @@ public sealed class WalletErrorResponseCallbackTests
 
     private static async Task<VerificationSession> ReadAsync(IHost host, string sessionId) =>
         (await host.Services.GetRequiredService<ISessionStore>().GetAsync(sessionId))!;
+
+    /// <summary>The wallet's error response sealed to the key the session's request published, as a HAIP wallet sends it.</summary>
+    private static string SealedDecline(VerificationSession session) => Tessio.Verifier.OpenId4Vp.Tests.WalletEncryption.EcdhEsTo(
+        new Microsoft.IdentityModel.Tokens.JsonWebKey(RequestParameters.TryGetEncryptionJwkJson(session.Request)!),
+        $$"""{"error":"access_denied","state":"{{session.Request.State}}"}""");
+
+    [Fact]
+    public async Task ASealedDecline_IsAnswered200_AndCompletesTheSessionWithTheWalletErrorCode()
+    {
+        using var host = StartHost(completeOnlyOnValid: false, ResponseMode.DirectPostJwt);
+        var session = await CreateSessionAsync(host);
+
+        var response = await host.GetTestClient().PostAsync("/verify/callback",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["response"] = SealedDecline(session) }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var redirect = new Uri((await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("redirect_uri").GetString()!);
+        Assert.Equal($"/verify/{session.SessionId}/return", redirect.AbsolutePath);
+        var after = await ReadAsync(host, session.SessionId);
+        Assert.Equal(VerificationSessionStatus.Completed, after.Status);
+        var error = Assert.Single(after.Result!.Errors);
+        Assert.Equal(ErrorCodes.WalletError, error.Code);
+        Assert.Contains("access_denied", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WithCompleteOnlyOnValidResponse_ASealedDecline_IsAFailedAttempt()
+    {
+        using var host = StartHost(completeOnlyOnValid: true, ResponseMode.DirectPostJwt);
+        var session = await CreateSessionAsync(host);
+
+        var response = await host.GetTestClient().PostAsync("/verify/callback",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["response"] = SealedDecline(session) }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var kept = await ReadAsync(host, session.SessionId);
+        Assert.Equal(VerificationSessionStatus.Pending, kept.Status);
+        Assert.Equal(ErrorCodes.WalletError, Assert.Single(kept.LastFailure!.Errors).Code);
+    }
+
+    [Fact]
+    public async Task WithAHostParserThatCannotDecrypt_ASealedPresentationStaysRefused_ButASealedDeclineIsRead()
+    {
+        // A host replaced the registered parser with one that holds no keys, so it refuses every sealed response.
+        // The callback's own error reader holds the session keys. It may take a declined request from there, never
+        // a presentation the host's parser refused.
+        using var host = new HostBuilder()
+            .ConfigureWebHost(web => web
+                .UseTestServer()
+                .ConfigureServices(services => services
+                    .AddSingleton(new WalletResponseParser(new WalletResponseParserOptions()))
+                    .AddRouting().AddTessioVerifier(options =>
+                    {
+                        options.Mode = VerifierMode.Mock;
+                        options.ResponseMode = ResponseMode.DirectPostJwt;
+                        options.RequestedClaims = ["age_over_18"];
+                    }))
+                .Configure(app => app.UseRouting().UseEndpoints(e => e.MapTessioVerifier())))
+            .Start();
+        var client = host.GetTestClient();
+        var presented = await CreateSessionAsync(host);
+        var options = host.Services.GetRequiredService<IOptions<VerifierOptions>>().Value;
+        var presentation = host.Services.GetRequiredService<MockCredentialIssuer>().IssuePresentation(
+            ["age_over_18"], DemoRequestOptionsFactory.DefaultVct, presented.Request.Nonce, options.ClientId);
+        var sealedPresentation = Tessio.Verifier.OpenId4Vp.Tests.WalletEncryption.EcdhEsTo(
+            new Microsoft.IdentityModel.Tokens.JsonWebKey(RequestParameters.TryGetEncryptionJwkJson(presented.Request)!),
+            $$"""{"vp_token":{"credential":["{{presentation}}"]},"state":"{{presented.Request.State}}"}""");
+
+        var refused = await client.PostAsync("/verify/callback",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["response"] = sealedPresentation }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Equal(VerificationSessionStatus.Pending, (await ReadAsync(host, presented.SessionId)).Status);
+
+        var declined = await CreateSessionAsync(host);
+        var answered = await client.PostAsync("/verify/callback",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["response"] = SealedDecline(declined) }));
+
+        Assert.Equal(HttpStatusCode.OK, answered.StatusCode);
+        Assert.Equal(ErrorCodes.WalletError, Assert.Single((await ReadAsync(host, declined.SessionId)).Result!.Errors).Code);
+    }
+
+    [Fact]
+    public async Task ThePublicVerifier_ReportsASealedDecline_AsTheWalletsError()
+    {
+        using var host = StartHost(completeOnlyOnValid: false, ResponseMode.DirectPostJwt);
+        var session = await CreateSessionAsync(host);
+        var form = new WalletResponseData
+        {
+            ContentType = "application/x-www-form-urlencoded",
+            Form = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { ["response"] = [SealedDecline(session)] },
+            Body = ReadOnlyMemory<byte>.Empty,
+        };
+
+        var result = await host.Services.GetRequiredService<IWalletResponseVerifier>().VerifyAsync(session, form);
+
+        Assert.Equal(ErrorCodes.WalletError, Assert.Single(result.Errors).Code);
+    }
 
     [Fact]
     public async Task ADeclinedRequest_IsAnswered200_WithARedirectToTheSessionsReturnPage()
@@ -174,8 +272,9 @@ public sealed class WalletErrorResponseCallbackTests
     [Fact]
     public async Task AnErrorFieldBesideAnEncryptedResponse_IsRefused_ForTheResponsesOwnReason()
     {
-        // A sealed response naming a key no session holds. The registered parser refuses it for that; the
-        // callback's keyless error reader would refuse it for having no key at all, which is the wrong reason.
+        // A sealed response naming a key no session holds. The registered parser refuses it for that, and so does the
+        // callback's error reader, which holds the same keys. A reader without them would refuse it for having no key
+        // at all, which is the wrong reason.
         var logs = new CapturingLoggerProvider();
         using var host = StartHost(completeOnlyOnValid: false, ResponseMode.DirectPostJwt, logs);
         var header = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode("""{"alg":"ECDH-ES","enc":"A128GCM","kid":"no-such-key"}""");
@@ -192,6 +291,25 @@ public sealed class WalletErrorResponseCallbackTests
         var reasons = string.Join("\n", logs.Records.Select(r => r.Exception?.Message ?? r.Message));
         Assert.Contains("no known response-encryption key", reasons, StringComparison.Ordinal);
         Assert.DoesNotContain("no ResponseDecryptionKey is configured", reasons, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASealedDecline_BesideACleartextVpToken_IsRefused_AndTheSessionStaysOpen()
+    {
+        // A form carrying a presentation in the clear is a presentation, whatever else it carries, so the error
+        // reader never looks inside its sealed `response`.
+        using var host = StartHost(completeOnlyOnValid: false, ResponseMode.DirectPostJwt);
+        var session = await CreateSessionAsync(host);
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["response"] = SealedDecline(session),
+            ["vp_token"] = """{"credential":["x"]}""",
+        });
+
+        var response = await host.GetTestClient().PostAsync("/verify/callback", form);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(VerificationSessionStatus.Pending, (await ReadAsync(host, session.SessionId)).Status);
     }
 
     [Fact]

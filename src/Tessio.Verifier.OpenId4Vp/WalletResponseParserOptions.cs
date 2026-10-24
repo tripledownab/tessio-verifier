@@ -33,9 +33,9 @@ public sealed class WalletResponseParserOptions
     public string PresentationFormat { get; set; } = "dc+sd-jwt";
 
     /// <summary>
-    /// Whether <see cref="WalletResponseParser.ParseDetailedAsync"/> returns a cleartext Authorization Error
-    /// Response, with <see cref="ParsedWalletResponse.Error"/> set and no credentials, instead of throwing.
-    /// Off by default.
+    /// Whether <see cref="WalletResponseParser.ParseDetailedAsync"/> returns an Authorization Error Response, in
+    /// the clear or sealed in a <c>direct_post.jwt</c> <c>response</c>, with <see cref="ParsedWalletResponse.Error"/>
+    /// set and no credentials, instead of throwing. Off by default.
     /// </summary>
     /// <remarks>
     /// Off by default because a caller written before this option existed expects an exception for a form with

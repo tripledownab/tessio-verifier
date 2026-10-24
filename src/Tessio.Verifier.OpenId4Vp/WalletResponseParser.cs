@@ -37,8 +37,8 @@ public sealed class WalletResponseParser : IPresentationResponseParser
     /// Parses the response including the <c>state</c> needed for session correlation. Prefer this
     /// over <see cref="ParseAsync"/> when hosting the wallet callback: for <c>direct_post.jwt</c>
     /// the state travels inside the encrypted JWT. With <see cref="WalletResponseParserOptions.ReadErrorResponses"/>
-    /// on, a cleartext Authorization Error Response is returned with <see cref="ParsedWalletResponse.Error"/> set
-    /// rather than thrown.
+    /// on, an Authorization Error Response, in the clear or sealed, is returned with
+    /// <see cref="ParsedWalletResponse.Error"/> set rather than thrown.
     /// </summary>
     /// <exception cref="WalletResponseException">
     /// The response is malformed in any part its sender controls, or cannot be decrypted with the configured
@@ -62,7 +62,14 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         if (response.Form.TryGetValue("response", out var jwtValues))
         {
             // direct_post.jwt: the whole authorization response rides inside one (encrypted) JWT.
-            (vpTokenJson, state) = await UnwrapResponseJwtAsync(SingleValue(jwtValues, "response")).ConfigureAwait(false);
+            var claims = await UnwrapResponseJwtAsync(SingleValue(jwtValues, "response")).ConfigureAwait(false);
+            if (claims.Error is { } sealedError)
+            {
+                return new ParsedWalletResponse { Credentials = [], State = claims.State, Error = sealedError, Encrypted = true };
+            }
+
+            vpTokenJson = claims.VpTokenJson!;
+            state = claims.State;
             encrypted = true;
         }
         else if (response.Form.TryGetValue("vp_token", out var vpValues))
@@ -114,7 +121,13 @@ public sealed class WalletResponseParser : IPresentationResponseParser
             ? values[0]
             : throw new WalletResponseException($"The '{name}' form parameter must appear exactly once (found {values.Count}).");
 
-    private async Task<(string VpTokenJson, string? State)> UnwrapResponseJwtAsync(string responseJwt)
+    /// <summary>
+    /// What a decrypted response carries: a <c>vp_token</c>, or, when the caller opted in, the code of an
+    /// Authorization Error Response. Exactly one of the two is set.
+    /// </summary>
+    private readonly record struct ResponseClaims(string? VpTokenJson, string? State, string? Error);
+
+    private async Task<ResponseClaims> UnwrapResponseJwtAsync(string responseJwt)
     {
         // Through CompactJwt, which is where this library states what a malformed token looks like.
         // Written inline this named one of the constructor's two complaints and let the other escape the
@@ -212,7 +225,7 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         return Base64UrlEncoder.Decode(nested.EncodedPayload);
     }
 
-    private static (string VpTokenJson, string? State) ExtractResponseClaims(string payloadJson)
+    private ResponseClaims ExtractResponseClaims(string payloadJson)
     {
         // A decrypted payload is untrusted input (see NormalizeDecryptedPayload), so a payload that only
         // looks like JSON is a malformed response, answered like every other, not an exception that
@@ -236,18 +249,30 @@ public sealed class WalletResponseParser : IPresentationResponseParser
         }
 
         RequireReadableText(document.RootElement);
-        if (!document.RootElement.TryGetProperty("vp_token", out var vpToken))
-        {
-            throw new WalletResponseException("The decrypted wallet response carries no vp_token claim.");
-        }
-
         var state = document.RootElement.TryGetProperty("state", out var stateProp)
                     && stateProp.ValueKind == JsonValueKind.String
             ? stateProp.GetString()
             : null;
 
+        if (!document.RootElement.TryGetProperty("vp_token", out var vpToken))
+        {
+            // SPEC: OpenID4VP 1.0 section 5.6: "Both successful and error responses SHOULD be returned using the
+            // supplied Response Mode", so under direct_post.jwt a wallet should seal its Authorization Error
+            // Response here. No section defines that payload, so it is read as the cleartext form's fields and
+            // under that form's rules: only with a vp_token absent, only when the caller opted in, and only a code
+            // RFC 6749 allows.
+            if (_options.ReadErrorResponses && document.RootElement.TryGetProperty("error", out var error))
+            {
+                return new ResponseClaims(null, state, error.ValueKind == JsonValueKind.String
+                    ? ErrorCode(error.GetString()!)
+                    : throw new WalletResponseException("The decrypted wallet response's error is not a string."));
+            }
+
+            throw new WalletResponseException("The decrypted wallet response carries no vp_token claim.");
+        }
+
         var vpTokenJson = vpToken.ValueKind == JsonValueKind.String ? vpToken.GetString()! : vpToken.GetRawText();
-        return (vpTokenJson, state);
+        return new ResponseClaims(vpTokenJson, state, null);
     }
 
     private List<PresentedCredential> ExtractCredentials(string vpTokenJson)

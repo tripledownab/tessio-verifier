@@ -29,7 +29,9 @@ public sealed record ParsedWalletResponse
     /// The parser accepts either shape, because only the session knows which one it asked for. The
     /// built-in callback compares this with the <c>response_mode</c> its request asked for and refuses a
     /// mismatch before completing. A host with its own callback should do the same, since a plaintext
-    /// response to a request that asked for encryption does not answer that request.
+    /// presentation in answer to a request that asked for encryption does not answer that request. An error
+    /// response is the exception: OpenID4VP 1.0 section 8.3.1 lets a wallet that is unable to encrypt send it in
+    /// the clear, so the built-in callback makes no such comparison for one (see <see cref="Error"/>).
     /// </remarks>
     public bool Encrypted { get; init; }
 
@@ -46,9 +48,11 @@ public sealed record ParsedWalletResponse
     /// enforces. Only the code is kept: <c>error_description</c> and <c>error_uri</c> are text the sender chose.
     /// </para>
     /// <para>
-    /// The cleartext form only. Section 8.3.1 lets a wallet that is unable to encrypt send it unencrypted even
-    /// when the request asked for encryption; an error sealed inside an encrypted <c>response</c> is still refused
-    /// as malformed.
+    /// Read in both forms. Section 5.6: "Both successful and error responses SHOULD be returned using the supplied
+    /// Response Mode", so under <c>direct_post.jwt</c> a wallet should seal it in <c>response</c>, and
+    /// <see cref="Encrypted"/> is then true. No section defines the payload of a sealed error, so the parser reads
+    /// the <c>error</c> and <c>state</c> members the cleartext form carries as fields. Section 8.3.1 lets a wallet
+    /// that is unable to encrypt send it in the clear instead.
     /// </para>
     /// <para>
     /// It proves nothing about the holder: anyone holding the request's <c>state</c> can send one.

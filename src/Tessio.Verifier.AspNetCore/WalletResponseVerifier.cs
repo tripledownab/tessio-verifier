@@ -77,7 +77,7 @@ public sealed class WalletResponseVerifier : IWalletResponseVerifier
             // their own key rather than one shared one.
             var parser = new WalletResponseParser(new WalletResponseParserOptions
             {
-                ResponseDecryptionKeyResolver = kid => _encryptionKeys.Get(kid)?.DecryptionKey,
+                ResponseDecryptionKeyResolver = _encryptionKeys.DecryptionKeyFor,
                 PresentationFormat = RequestParameters.TryGetRequestedFormat(session.Request)
                     ?? DefaultCredentialFormat,
                 // VerifyParsedAsync reads Error before the credentials.
