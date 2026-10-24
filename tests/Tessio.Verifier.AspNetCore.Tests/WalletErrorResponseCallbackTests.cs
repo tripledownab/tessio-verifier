@@ -270,7 +270,7 @@ public sealed class WalletErrorResponseCallbackTests
     }
 
     [Fact]
-    public async Task AnErrorFieldBesideAnEncryptedResponse_IsRefused_ForTheResponsesOwnReason()
+    public async Task ASealedResponseToAnUnknownKey_IsRefused_ForThatReason()
     {
         // A sealed response naming a key no session holds. The registered parser refuses it for that, and so does the
         // callback's error reader, which holds the same keys. A reader without them would refuse it for having no key
@@ -281,7 +281,6 @@ public sealed class WalletErrorResponseCallbackTests
         var form = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["response"] = $"{header}..AAAA.AAAA.AAAA",
-            ["error"] = "access_denied",
             ["state"] = "s-1",
         });
 
@@ -291,6 +290,28 @@ public sealed class WalletErrorResponseCallbackTests
         var reasons = string.Join("\n", logs.Records.Select(r => r.Exception?.Message ?? r.Message));
         Assert.Contains("no known response-encryption key", reasons, StringComparison.Ordinal);
         Assert.DoesNotContain("no ResponseDecryptionKey is configured", reasons, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACleartextErrorBesideASealedDecline_IsRefused_AndTheSessionStaysOpen()
+    {
+        // The encrypted response alone answers a direct_post.jwt form, so a cleartext error beside it is refused with
+        // the pair, by the registered parser and the error reader alike.
+        var logs = new CapturingLoggerProvider();
+        using var host = StartHost(completeOnlyOnValid: false, ResponseMode.DirectPostJwt, logs);
+        var session = await CreateSessionAsync(host);
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["response"] = SealedDecline(session),
+            ["error"] = "access_denied",
+        });
+
+        var response = await host.GetTestClient().PostAsync("/verify/callback", form);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(VerificationSessionStatus.Pending, (await ReadAsync(host, session.SessionId)).Status);
+        var reasons = string.Join("\n", logs.Records.Select(r => r.Exception?.Message ?? r.Message));
+        Assert.Contains("beside a cleartext 'error'", reasons, StringComparison.Ordinal);
     }
 
     [Fact]
