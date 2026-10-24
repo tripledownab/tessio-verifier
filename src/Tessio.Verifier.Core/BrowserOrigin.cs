@@ -4,7 +4,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace Tessio.Verifier.Core.Mdoc;
+namespace Tessio.Verifier.Core;
 
 /// <summary>Checks on the origin a Digital Credentials API presentation is bound to.</summary>
 internal static partial class BrowserOrigin

@@ -22,6 +22,11 @@ namespace Tessio.Verifier.AspNetCore;
 /// object wins where both are present, because it is the copy whose integrity is protected.
 /// </para>
 /// <para>
+/// A request sent through the Digital Credentials API is a third form: its parameters are members of the data
+/// object the page passes to the API or the claims of the JWS in that object's <c>request</c> member when it
+/// is signed. The overloads taking a <see cref="DcApiPresentationRequest"/> read it, through the same readers.
+/// </para>
+/// <para>
 /// Reading only the request object is what made an AV session unverifiable. Every accessor returned
 /// null, so the credential format fell back to <c>dc+sd-jwt</c> and an mdoc age attestation was parsed
 /// as an SD-JWT VC, with no docType compared and no response_uri for the device transcript.
@@ -43,19 +48,25 @@ internal static class RequestParameters
 
     /// <summary>The base64url transaction_data strings from the request, or null.</summary>
     public static IReadOnlyList<string>? TryGetTransactionData(PresentationRequest request) =>
-        Read<IReadOnlyList<string>>(request, root =>
-        {
-            if (!root.TryGetProperty("transaction_data", out var td) || td.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
+        Read(request, TransactionDataOf);
 
-            var entries = td.EnumerateArray()
-                .Where(static e => e.ValueKind == JsonValueKind.String)
-                .Select(static e => e.GetString()!)
-                .ToList();
-            return entries.Count > 0 ? entries : null;
-        });
+    /// <inheritdoc cref="TryGetTransactionData(PresentationRequest)"/>
+    public static IReadOnlyList<string>? TryGetTransactionData(DcApiPresentationRequest request) =>
+        Read(request, TransactionDataOf);
+
+    private static IReadOnlyList<string>? TransactionDataOf(JsonElement root)
+    {
+        if (!root.TryGetProperty("transaction_data", out var td) || td.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var entries = td.EnumerateArray()
+            .Where(static e => e.ValueKind == JsonValueKind.String)
+            .Select(static e => e.GetString()!)
+            .ToList();
+        return entries.Count > 0 ? entries : null;
+    }
 
     /// <summary>The request's <c>response_uri</c>, or null.</summary>
     public static string? TryGetResponseUri(PresentationRequest request) =>
@@ -63,7 +74,13 @@ internal static class RequestParameters
 
     /// <summary>The request's <c>response_mode</c> (e.g. <c>direct_post</c> or <c>direct_post.jwt</c>), or null.</summary>
     public static string? TryGetResponseMode(PresentationRequest request) =>
-        Read(request, root => TryGetString(root, "response_mode"));
+        Read(request, ResponseModeOf);
+
+    /// <inheritdoc cref="TryGetResponseMode(PresentationRequest)"/>
+    public static string? TryGetResponseMode(DcApiPresentationRequest request) =>
+        Read(request, ResponseModeOf);
+
+    private static string? ResponseModeOf(JsonElement root) => TryGetString(root, "response_mode");
 
     /// <summary>
     /// Whether this request asked for an encrypted response, <c>direct_post.jwt</c>. The one place that
@@ -74,13 +91,26 @@ internal static class RequestParameters
         string.Equals(TryGetResponseMode(request), "direct_post.jwt", StringComparison.Ordinal);
 
     /// <summary>
+    /// Whether a Digital Credentials API request asked for an encrypted response, <c>dc_api.jwt</c>, read from
+    /// the request the wallet saw. The one place that decides it for this transport, for the reason above.
+    /// </summary>
+    public static bool AsksForEncryptedResponse(DcApiPresentationRequest request) =>
+        string.Equals(TryGetResponseMode(request), "dc_api.jwt", StringComparison.Ordinal);
+
+    /// <summary>
     /// The credential format the request's DCQL asks for (<c>dcql_query.credentials[0].format</c>, e.g.
     /// <c>dc+sd-jwt</c> or <c>mso_mdoc</c>), or null. Lets the callback parse per session instead of from a
     /// process-wide format pin.
     /// </summary>
     public static string? TryGetRequestedFormat(PresentationRequest request) =>
-        Read(request, root =>
-            TryGetFirstCredential(root, out var credential) ? TryGetString(credential, "format") : null);
+        Read(request, RequestedFormatOf);
+
+    /// <inheritdoc cref="TryGetRequestedFormat(PresentationRequest)"/>
+    public static string? TryGetRequestedFormat(DcApiPresentationRequest request) =>
+        Read(request, RequestedFormatOf);
+
+    private static string? RequestedFormatOf(JsonElement root) =>
+        TryGetFirstCredential(root, out var credential) ? TryGetString(credential, "format") : null;
 
     /// <summary>
     /// Every SD-JWT VC type the request's DCQL query accepts
@@ -96,29 +126,35 @@ internal static class RequestParameters
     /// permitted.
     /// </remarks>
     public static IReadOnlyList<string>? TryGetExpectedVctValues(PresentationRequest request) =>
-        Read<IReadOnlyList<string>>(request, root =>
-        {
-            if (!TryGetFirstCredential(root, out var credential)
-                || !credential.TryGetProperty("meta", out var meta)
-                || !meta.TryGetProperty("vct_values", out var vctValues)
-                || vctValues.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
+        Read(request, ExpectedVctValuesOf);
 
-            var values = vctValues.EnumerateArray()
-                .Where(IsTypeIdentifier)
-                .Select(static v => v.GetString()!)
-                .ToList();
-            return values.Count > 0 ? values : null;
-        });
+    /// <inheritdoc cref="TryGetExpectedVctValues(PresentationRequest)"/>
+    public static IReadOnlyList<string>? TryGetExpectedVctValues(DcApiPresentationRequest request) =>
+        Read(request, ExpectedVctValuesOf);
+
+    private static IReadOnlyList<string>? ExpectedVctValuesOf(JsonElement root)
+    {
+        if (!TryGetFirstCredential(root, out var credential)
+            || !credential.TryGetProperty("meta", out var meta)
+            || !meta.TryGetProperty("vct_values", out var vctValues)
+            || vctValues.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var values = vctValues.EnumerateArray()
+            .Where(IsTypeIdentifier)
+            .Select(static v => v.GetString()!)
+            .ToList();
+        return values.Count > 0 ? values : null;
+    }
 
     /// <summary>
     /// Whether a <c>vct_values</c> element is a credential type this verifier can compare against.
     /// </summary>
     /// <remarks>
-    /// One owner for the question, because two callers ask it: <see cref="AreRecoverable"/> decides
-    /// whether the request states a type at all, and <see cref="TryGetExpectedVctValues"/> decides
+    /// One owner for the question, because two callers ask it: <see cref="StatesAQueryAndItsType"/> decides
+    /// whether the request states a type at all, and <see cref="ExpectedVctValuesOf"/> decides
     /// which types the verifier will accept. If those two disagreed, a list containing the empty string
     /// would pass the first and put the empty string into the second, so a credential asserting an
     /// empty <c>vct</c> would be accepted by a request that never meant to allow one.
@@ -137,10 +173,16 @@ internal static class RequestParameters
     /// (<c>dcql_query.credentials[0].meta.doctype_value</c>), or null for a non-mdoc request.
     /// </summary>
     public static string? TryGetExpectedDocType(PresentationRequest request) =>
-        Read(request, root =>
-            TryGetFirstCredential(root, out var credential) && credential.TryGetProperty("meta", out var meta)
-                ? TryGetString(meta, "doctype_value")
-                : null);
+        Read(request, ExpectedDocTypeOf);
+
+    /// <inheritdoc cref="TryGetExpectedDocType(PresentationRequest)"/>
+    public static string? TryGetExpectedDocType(DcApiPresentationRequest request) =>
+        Read(request, ExpectedDocTypeOf);
+
+    private static string? ExpectedDocTypeOf(JsonElement root) =>
+        TryGetFirstCredential(root, out var credential) && credential.TryGetProperty("meta", out var meta)
+            ? TryGetString(meta, "doctype_value")
+            : null;
 
     /// <summary>
     /// The response-encryption public JWK this request advertised in <c>client_metadata.jwks</c>, as
@@ -153,14 +195,20 @@ internal static class RequestParameters
     /// flagged it.
     /// </remarks>
     public static string? TryGetEncryptionJwkJson(PresentationRequest request) =>
-        Read(request, root =>
-            root.TryGetProperty("client_metadata", out var cm)
-            && cm.TryGetProperty("jwks", out var jwks)
-            && jwks.TryGetProperty("keys", out var keys)
-            && keys.ValueKind == JsonValueKind.Array
-            && keys.GetArrayLength() > 0
-                ? keys[0].GetRawText()
-                : null);
+        Read(request, EncryptionJwkJsonOf);
+
+    /// <inheritdoc cref="TryGetEncryptionJwkJson(PresentationRequest)"/>
+    public static string? TryGetEncryptionJwkJson(DcApiPresentationRequest request) =>
+        Read(request, EncryptionJwkJsonOf);
+
+    private static string? EncryptionJwkJsonOf(JsonElement root) =>
+        root.TryGetProperty("client_metadata", out var cm)
+        && cm.TryGetProperty("jwks", out var jwks)
+        && jwks.TryGetProperty("keys", out var keys)
+        && keys.ValueKind == JsonValueKind.Array
+        && keys.GetArrayLength() > 0
+            ? keys[0].GetRawText()
+            : null;
 
     /// <summary>
     /// The RFC 7638 thumbprint of the encryption JWK this request advertised, from its <c>kid</c>. Null
@@ -178,6 +226,21 @@ internal static class RequestParameters
             ? Base64UrlEncoder.DecodeBytes(value)
             : null;
     }
+
+    /// <summary>
+    /// The RFC 7638 SHA-256 thumbprint of the encryption JWK a Digital Credentials API request advertised,
+    /// computed from the key itself. Null when the request advertised no key.
+    /// </summary>
+    /// <remarks>
+    /// Computed, not read from the <c>kid</c> as the redirect overload does. That shortcut holds only because
+    /// this library's own builders set the <c>kid</c> to the thumbprint, and over this transport a host builds
+    /// the metadata for a wallet that may want a <c>kid</c> of its own choosing.
+    /// </remarks>
+    // SPEC: OpenID4VP 1.0 Annex B.2.6.2: "For the Response Mode dc_api.jwt, the third element MUST be the JWK
+    // SHA-256 Thumbprint as defined in [RFC7638], encoded as a Byte String, of the Verifier's public key used to
+    // encrypt the response."
+    public static byte[]? TryGetEncryptionKeyThumbprint(DcApiPresentationRequest request) =>
+        TryGetEncryptionJwkJson(request) is { } jwkJson ? new JsonWebKey(jwkJson).ComputeJwkThumbprint() : null;
 
     /// <summary>
     /// Whether this request's parameters can be recovered, in either encoding. False means nothing a
@@ -205,15 +268,18 @@ internal static class RequestParameters
     /// different job with a different blast radius.
     /// </para>
     /// </remarks>
-    public static bool AreRecoverable(PresentationRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
+    public static bool AreRecoverable(PresentationRequest request) =>
+        Read(request, StatesAQueryAndItsType);
 
-        using var root = TryReadRoot(request);
-        return root is not null
-            && TryGetFirstCredential(root.RootElement, out var credential)
-            && StatesTheCredentialType(credential);
-    }
+    /// <summary>
+    /// Whether a Digital Credentials API request's parameters can be recovered, by the same test as
+    /// <see cref="AreRecoverable(PresentationRequest)"/>.
+    /// </summary>
+    public static bool AreRecoverable(DcApiPresentationRequest request) =>
+        Read(request, StatesAQueryAndItsType);
+
+    private static bool StatesAQueryAndItsType(JsonElement root) =>
+        TryGetFirstCredential(root, out var credential) && StatesTheCredentialType(credential);
 
     /// <summary>
     /// Whether the DCQL entry states the credential type the matching verifier will compare against.
@@ -270,6 +336,49 @@ internal static class RequestParameters
 
         using var root = TryReadRoot(request);
         return root is null ? default : read(root.RootElement);
+    }
+
+    private static T? Read<T>(DcApiPresentationRequest request, Func<JsonElement, T?> read)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var root = TryReadRoot(request);
+        return root is null ? default : read(root.RootElement);
+    }
+
+    /// <summary>
+    /// A Digital Credentials API request's parameters as one JSON object: the <c>data</c> object itself when
+    /// unsigned, the payload of its <c>request</c> JWS when signed. Null when neither yields an object.
+    /// </summary>
+    // SPEC: OpenID4VP 1.0 Appendix A.3.1 (parameters as members of the data object) and A.3.2.1 (a signed
+    // request is "the value of the request claim in the data element").
+    private static JsonDocument? TryReadRoot(DcApiPresentationRequest request)
+    {
+        JsonDocument data;
+        try
+        {
+            data = JsonDocument.Parse(request.DataJson);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        if (data.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            data.Dispose();
+            return null;
+        }
+
+        if (!data.RootElement.TryGetProperty("request", out var requestObject))
+        {
+            return data;
+        }
+
+        using (data)
+        {
+            return requestObject.ValueKind == JsonValueKind.String ? FromRequestObject(requestObject.GetString()!) : null;
+        }
     }
 
     /// <summary>

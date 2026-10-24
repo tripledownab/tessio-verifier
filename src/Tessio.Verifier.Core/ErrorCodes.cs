@@ -70,4 +70,17 @@ public static class ErrorCodes
     /// Emitted by the ASP.NET Core package's wallet response verifier and callback, not by a credential verifier.
     /// </summary>
     public const string WalletError = "wallet_error";
+
+    /// <summary>
+    /// The stored request a response is checked against no longer says what was asked for (its DCQL query or the
+    /// credential type), so nothing the wallet returned could be checked against it. Emitted for Digital
+    /// Credentials API responses by the ASP.NET Core package's wallet response verifier.
+    /// </summary>
+    public const string RequestUnverifiable = "request_unverifiable";
+
+    /// <summary>
+    /// The response arrived after the request it answers expired. Emitted for Digital Credentials API responses by
+    /// the ASP.NET Core package's wallet response verifier.
+    /// </summary>
+    public const string RequestExpired = "request_expired";
 }

@@ -266,6 +266,94 @@ public sealed class MockWalletResponses : IDisposable
             Core.Mdoc.Iso18013AnnexC.SealResponse(deviceResponse, encryptionInfo, origin));
     }
 
+    /// <summary>
+    /// Answers an OpenID4VP request sent through the W3C Digital Credentials API with an mdoc DeviceResponse
+    /// whose device signature covers the API's transcript (origin, nonce and, under <c>dc_api.jwt</c>, the
+    /// encryption key's thumbprint). Returns the JSON of the <c>data</c> object the browser hands the page:
+    /// sealed in a <c>response</c> JWE when the request asked for <c>dc_api.jwt</c>, in the clear otherwise.
+    /// </summary>
+    /// <param name="request">The request to answer. Supplies the nonce, the response mode and the encryption key.</param>
+    /// <param name="origin">The origin of the page that called the API, as the browser serializes it.</param>
+    /// <param name="claimNames">Elements to disclose; defaults as for <see cref="CreateMdocResponse"/>.</param>
+    /// <param name="docType">mdoc docType. Defaults to the EU age-verification attestation.</param>
+    /// <param name="mdocNamespace">Namespace holding the elements. Defaults to <paramref name="docType"/>.</param>
+    /// <param name="claimValues">Values to disclose, by claim name, overriding the sample persona.</param>
+    public string CreateDcApiMdocResponse(
+        DcApiPresentationRequest request,
+        string origin,
+        IEnumerable<string>? claimNames = null,
+        string? docType = null,
+        string? mdocNamespace = null,
+        IReadOnlyDictionary<string, object>? claimValues = null)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(origin);
+
+        var type = docType ?? EuAgeVerificationDocType;
+        var transcript = Core.Mdoc.SessionTranscriptBuilder.BuildForDcApi(
+            origin,
+            request.Nonce,
+            RequestParameters.AsksForEncryptedResponse(request) ? RequestParameters.TryGetEncryptionKeyThumbprint(request) : null);
+        var deviceResponse = _mdocIssuer.IssueDeviceResponseOverTranscript(
+            claimNames ?? claimValues?.Keys ?? ["age_over_18"], type, mdocNamespace ?? type, transcript, claimValues);
+
+        return DcApiData(request, deviceResponse);
+    }
+
+    /// <summary>
+    /// Answers an OpenID4VP request sent through the Digital Credentials API with an SD-JWT VC presentation whose
+    /// Key Binding JWT names the audience the API requires, <c>origin:</c> and the page's origin. Returns the
+    /// <c>data</c> JSON as <see cref="CreateDcApiMdocResponse"/> does.
+    /// </summary>
+    /// <param name="request">The request to answer.</param>
+    /// <param name="origin">The origin of the page that called the API, as the browser serializes it.</param>
+    /// <param name="claims">Claims to disclose. Defaults to <c>age_over_18</c>.</param>
+    /// <param name="vct">Credential type. Defaults to the demo VCT.</param>
+    /// <param name="audience">KB-JWT audience. Defaults to <c>origin:</c> and <paramref name="origin"/>.</param>
+    /// <param name="claimValues">Values to disclose, by claim name, overriding the sample persona.</param>
+    public string CreateDcApiSdJwtResponse(
+        DcApiPresentationRequest request,
+        string origin,
+        IEnumerable<string>? claims = null,
+        string? vct = null,
+        string? audience = null,
+        IReadOnlyDictionary<string, object>? claimValues = null)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(origin);
+
+        var presentation = _issuer.IssuePresentation(
+            claims ?? claimValues?.Keys ?? ["age_over_18"],
+            vct ?? DemoRequestOptionsFactory.DefaultVct,
+            request.Nonce,
+            audience ?? $"origin:{origin}",
+            RequestParameters.TryGetTransactionData(request),
+            claimValues);
+
+        return DcApiData(request, presentation);
+    }
+
+    /// <summary>The <c>data</c> object for one presentation, sealed when the request asked for that.</summary>
+    private static string DcApiData(DcApiPresentationRequest request, string presentation)
+    {
+        var parameters = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["vp_token"] = new Dictionary<string, string[]> { ["credential"] = [presentation] },
+        });
+        if (!RequestParameters.AsksForEncryptedResponse(request))
+        {
+            return parameters;
+        }
+
+        var recipientJwkJson = RequestParameters.TryGetEncryptionJwkJson(request)
+            ?? throw new InvalidOperationException(
+                "This request asks for dc_api.jwt but advertises no encryption key in client_metadata.jwks.");
+        return System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["response"] = Tessio.Verifier.OpenId4Vp.EcdhEsJweEncryptor.Encrypt(parameters, recipientJwkJson),
+        });
+    }
+
     /// <summary>Releases the ephemeral issuer keys and certificates.</summary>
     public void Dispose()
     {
