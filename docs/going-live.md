@@ -546,6 +546,25 @@ Why not the alternatives:
 
 On a single instance whose requests need not survive a restart, the in-memory default is correct and needs no configuration.
 
+**The Digital Credentials API (Annex C) has its own response key, and you hold it.** `Iso18013AnnexC.CreateRequest` mints one per request and returns its private half as `ResponseKeyPkcs8`, which you store with the session until the answer arrives. So that another instance or this one after a restart can open that answer, pass in a derived key instead. Store only its salt beside the `EncryptionInfo` bytes and derive the key again at the response:
+
+```csharp
+var salt = RandomNumberGenerator.GetBytes(32);                    // at least ResponseKeyDerivation.MinimumSaltLength
+using (var derived = ResponseKeyDerivation.Derive(master, salt))
+using (var responseKey = ECDiffieHellman.Create(derived.ExportParameters(includePrivateParameters: true)))
+{
+    var request = Iso18013AnnexC.CreateRequest(docType, nameSpace, elements, zkRequest: null, responseKey);
+    // Store salt and request.EncryptionInfo with the session; send request.DeviceRequest and EncryptionInfo.
+}
+
+// At the response, on any instance:
+using var again = ResponseKeyDerivation.Derive(master, storedSalt);
+using var key = ECDiffieHellman.Create(again.ExportParameters(includePrivateParameters: true));
+var opened = Iso18013AnnexC.OpenResponse(encryptedResponse, key.ExportPkcs8PrivateKey(), storedEncryptionInfo, origin);
+```
+
+The same rules hold as for OpenID4VP above. Use a fresh salt per request, so that no two requests advertise one key. Give every instance the same master, and delete each salt once its request expires. One master can serve both transports: each key comes from its own random salt, so the two never derive the same key in practice. `CreateSignedRequest` takes a response key the same way.
+
 `ResponseMode.DirectPost` (cleartext form posts) is also supported, but encrypted responses are the profile default so stay on `DirectPostJwt` unless you have a reason not to.
 
 ## Requesting mdocs instead of SD-JWT VC
