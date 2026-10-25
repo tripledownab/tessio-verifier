@@ -19,17 +19,39 @@ internal static class WalletCallbackEndpoint
 
     public static async Task HandleAsync(HttpContext http, string prefix, JsonSerializerOptions serializerOptions)
     {
-        // SPEC: OpenID4VP 1.0 §8.2 — wallets POST application/x-www-form-urlencoded to response_uri.
-        if (!http.Request.HasFormContentType)
+        // Before anything is processed: the answer's redirect_uri is built from this origin, and a response
+        // processed for a request the endpoint then cannot answer would leave the session changed and the wallet
+        // with an error.
+        if (!RequestOrigin.TryGet(http.Request, out var origin))
         {
-            http.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await http.Response.WriteAsJsonAsync(
-                new { error = "invalid_request", message = "Expected an application/x-www-form-urlencoded wallet response." },
-                serializerOptions, http.RequestAborted).ConfigureAwait(false);
+            await RefuseAsync(http, "The request's host does not make a URI.", serializerOptions).ConfigureAwait(false);
             return;
         }
 
-        var form = await http.Request.ReadFormAsync(http.RequestAborted).ConfigureAwait(false);
+        // SPEC: OpenID4VP 1.0 §8.2 — wallets POST application/x-www-form-urlencoded to response_uri. Only that
+        // type reaches the form reader: HasFormContentType also admits multipart, which the response parser refuses
+        // anyway, so reading one would only expose the multipart reader to any caller.
+        if (!IsUrlEncodedForm(http.Request))
+        {
+            await RefuseAsync(http, "Expected an application/x-www-form-urlencoded wallet response.", serializerOptions)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        IFormCollection form;
+        try
+        {
+            form = await http.Request.ReadFormAsync(http.RequestAborted).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is InvalidDataException or NotSupportedException)
+        {
+            // The form reader refuses a body it cannot decode: InvalidDataException for a NUL in a name or value,
+            // NotSupportedException for a charset .NET disables (UTF-7). Only the framework's read runs inside this
+            // try, so either is the caller's input, answered as a bad request.
+            await RefuseAsync(http, "The wallet response form could not be read.", serializerOptions).ConfigureAwait(false);
+            return;
+        }
+
         var response = new Tessio.Verifier.OpenId4Vp.WalletResponseData
         {
             ContentType = http.Request.ContentType ?? "application/x-www-form-urlencoded",
@@ -62,7 +84,7 @@ internal static class WalletCallbackEndpoint
         };
 
         await http.Response.WriteAsJsonAsync(
-            error is null ? new { redirect_uri = RedirectUri(http, prefix, result) } : (object)new { error },
+            error is null ? new { redirect_uri = RedirectUri(origin, prefix, result) } : (object)new { error },
             serializerOptions, http.RequestAborted).ConfigureAwait(false);
     }
 
@@ -83,7 +105,18 @@ internal static class WalletCallbackEndpoint
     /// nothing, and shows the session as it stands. A wallet gets the same shape of answer in both flows.
     /// </para>
     /// </remarks>
-    private static string RedirectUri(HttpContext http, string prefix, CallbackResult result) =>
-        $"{http.Request.Scheme}://{http.Request.Host}{prefix}/{Uri.EscapeDataString(result.SessionId!)}/return"
+    private static string RedirectUri(string origin, string prefix, CallbackResult result) =>
+        $"{origin}{prefix}/{Uri.EscapeDataString(result.SessionId!)}/return"
         + $"#response_code={result.ResponseCode ?? SameDeviceSecrets.NewSecret()}";
+
+    private static bool IsUrlEncodedForm(HttpRequest request) =>
+        Microsoft.Net.Http.Headers.MediaTypeHeaderValue.TryParse(request.ContentType, out var type)
+        && type.MediaType.Equals("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A body that is not a wallet response form the endpoint can read: 400 <c>invalid_request</c>.</summary>
+    private static Task RefuseAsync(HttpContext http, string message, JsonSerializerOptions serializerOptions)
+    {
+        http.Response.StatusCode = StatusCodes.Status400BadRequest;
+        return http.Response.WriteAsJsonAsync(new { error = "invalid_request", message }, serializerOptions, http.RequestAborted);
+    }
 }

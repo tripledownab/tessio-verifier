@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -68,6 +69,12 @@ internal static class SameDeviceEndpoints
         var session = await SessionStartEndpoint.CreateSessionAsync(
             http, prefix, SameDeviceRequests.CallbackPath, (options, ct) => store.CreateBoundAsync(options, binding, ct))
             .ConfigureAwait(false);
+        if (session is null)
+        {
+            http.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
         if (!SameDeviceRequests.IsSameDevice(session.Request))
         {
             // The request builder dropped or rewrote the response_uri it was given, so the request would not
@@ -89,6 +96,12 @@ internal static class SameDeviceEndpoints
     {
         if (RefusedAsNotJson(http))
         {
+            return;
+        }
+
+        if (!JsonReaderCanDecode(http.Request))
+        {
+            http.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
             return;
         }
 
@@ -148,6 +161,34 @@ internal static class SameDeviceEndpoints
 
         http.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
         return true;
+    }
+
+    /// <summary>
+    /// Whether the JSON reader can decode the body's charset: none, or one <see cref="Encoding.GetEncoding(string)"/>
+    /// returns as written, which is how the reader picks its encoding.
+    /// </summary>
+    /// <remarks>
+    /// The reader throws for any other charset, unknown, disabled (UTF-7) or quoted alike, so a body in one is
+    /// refused before the read rather than caught around it, where an exception of the caller's could not be told
+    /// from one of ours. Only the redeem route reads its body, so only it asks.
+    /// </remarks>
+    private static bool JsonReaderCanDecode(HttpRequest request)
+    {
+        var charset = request.GetTypedHeaders().ContentType?.Charset ?? default;
+        if (!charset.HasValue)
+        {
+            return true;
+        }
+
+        try
+        {
+            Encoding.GetEncoding(charset.ToString());
+            return true;
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static string ResultName(SameDeviceRedemption redemption) => redemption switch

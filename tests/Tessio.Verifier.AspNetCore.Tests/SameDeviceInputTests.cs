@@ -70,6 +70,54 @@ public sealed class SameDeviceInputTests
         Assert.Equal(expected, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("application/json; charset=bogus")]
+    [InlineData("application/json; charset=utf-7")]
+    [InlineData("application/json; charset=\"utf-8\"")]
+    public async Task ARedemptionInACharsetTheJsonReaderCannotDecode_IsRefusedAsUnsupported(string contentType)
+    {
+        // ASP.NET Core's JSON reader throws for a charset Encoding.GetEncoding will not return as written: an
+        // unknown name, a disabled one, or a quoted value. So the content type is refused before the body is read.
+        var response = await RedeemAsync(contentType);
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("application/json")]
+    [InlineData("application/json; charset=utf-8")]
+    [InlineData("application/json; charset=UTF-8")]
+    [InlineData("application/json; charset=iso-8859-1")]
+    public async Task ARedemptionInACharsetTheJsonReaderDecodes_IsRead(string contentType)
+    {
+        // The control: these reach the reader and the redemption. The code matches nothing held, so it is not
+        // redeemed, but it was read.
+        var response = await RedeemAsync(contentType);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task StartingASameDeviceRequest_DoesNotJudgeTheCharsetOfABodyItNeverReads()
+    {
+        await using var host = new SameDeviceHost();
+        var content = new ByteArrayContent("{}"u8.ToArray());
+        content.Headers.TryAddWithoutValidation("Content-Type", "application/json; charset=bogus");
+
+        var response = await host.Client.PostAsync("/verify/same-device", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private static async Task<HttpResponseMessage> RedeemAsync(string contentType)
+    {
+        await using var host = new SameDeviceHost();
+        var session = await host.CreateCrossDeviceSessionAsync();
+        var content = new ByteArrayContent(Encoding.UTF8.GetBytes("{\"responseCode\":\"x\"}"));
+        content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+        return await host.Client.PostAsync($"/verify/{session.SessionId}/redeem", content);
+    }
+
     [Fact]
     public async Task ARedemptionCodeLongerThanAnyMinted_IsRefusedUnread()
     {

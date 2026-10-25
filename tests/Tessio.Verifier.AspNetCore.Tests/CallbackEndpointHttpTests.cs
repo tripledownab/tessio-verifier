@@ -116,6 +116,39 @@ public sealed class CallbackEndpointHttpTests : IAsyncDisposable
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("application/x-www-form-urlencoded", "vp_token%00=x&state=s")]
+    [InlineData("application/x-www-form-urlencoded", "vp_token=x&state=s%00")]
+    [InlineData("application/x-www-form-urlencoded; charset=utf-7", "vp_token=x&state=s")]
+    public async Task Callback_FormTheFrameworkCannotRead_Returns400(string contentType, string body)
+    {
+        // ASP.NET Core's form reader throws InvalidDataException for a NUL in a name or value, and
+        // NotSupportedException for a charset .NET disables. A body the reader cannot decode is the caller's error,
+        // answered as one.
+        var content = new ByteArrayContent(System.Text.Encoding.ASCII.GetBytes(body));
+        content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+        var response = await _client.PostAsync("/verify/callback", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("invalid_request", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("hello world no boundary here")]
+    [InlineData("--XX\r\nContent-Disposition: form-data; name=\"state\"\r\n\r\nabc")]
+    public async Task Callback_MultipartBody_Returns400Unread(string body)
+    {
+        // OpenID4VP 1.0 section 8.2: the wallet posts application/x-www-form-urlencoded. Multipart is refused on
+        // its content type, so the multipart reader never sees a stranger's body: these two make it throw.
+        var content = new ByteArrayContent(System.Text.Encoding.ASCII.GetBytes(body));
+        content.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=XX");
+
+        var response = await _client.PostAsync("/verify/callback", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("invalid_request", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
     public async ValueTask DisposeAsync()
     {
         _client.Dispose();
