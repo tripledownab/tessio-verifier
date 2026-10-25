@@ -17,6 +17,11 @@ internal static class SessionStartEndpoint
         var options = http.RequestServices.GetRequiredService<IOptions<VerifierOptions>>().Value;
         var store = http.RequestServices.GetRequiredService<ISessionStore>();
         var session = await CreateSessionAsync(http, prefix, WalletCallbackEndpoint.CallbackPath, store.CreateAsync).ConfigureAwait(false);
+        if (session is null)
+        {
+            http.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
 
         switch (options.Mode)
         {
@@ -50,12 +55,21 @@ internal static class SessionStartEndpoint
     /// same-device route, so the two cannot build their requests differently: they differ only in the
     /// <paramref name="callbackPath"/> the wallet posts to.
     /// </summary>
-    internal static async Task<VerificationSession> CreateSessionAsync(
+    /// <returns>
+    /// Null, with nothing created, when the request's own scheme and host make no URI
+    /// (<see cref="RequestOrigin"/>). The caller answers that as a bad request.
+    /// </returns>
+    internal static async Task<VerificationSession?> CreateSessionAsync(
         HttpContext http, string prefix, string callbackPath,
         Func<PresentationRequestOptions, CancellationToken, Task<VerificationSession>> create)
     {
         var options = http.RequestServices.GetRequiredService<IOptions<VerifierOptions>>().Value;
-        var responseUri = new Uri($"{http.Request.Scheme}://{http.Request.Host}{prefix}{callbackPath}");
+        if (!RequestOrigin.TryGet(http.Request, out var origin))
+        {
+            return null;
+        }
+
+        var responseUri = new Uri($"{origin}{prefix}{callbackPath}");
 
         // A FRESH key per request (HAIP 1.0 §5): reusing one is a correlation
         // handle and a single point of retrospective compromise. Held until the session expires; the
