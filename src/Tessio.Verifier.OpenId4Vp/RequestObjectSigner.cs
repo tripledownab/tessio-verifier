@@ -29,21 +29,24 @@ internal sealed class RequestObjectSigner
     /// <paramref name="chain"/> breaks a path rule, or a certificate in it or the key cannot be read. Also when the
     /// leaf does not hold the signing key's public half.
     /// </exception>
-    public RequestObjectSigner(SigningCredentials signingCredentials, IReadOnlyList<X509Certificate2>? chain, string parameterName)
+    public RequestObjectSigner(
+        SigningCredentials signingCredentials, IReadOnlyList<X509Certificate2>? chain, string parameterName,
+        bool allowSelfSignedSigner = false)
     {
         ArgumentNullException.ThrowIfNull(signingCredentials);
         _signingCredentials = signingCredentials;
-        _x5c = chain is null ? null : CheckChain(chain, signingCredentials.Key, parameterName);
+        _x5c = chain is null ? null : CheckChain(chain, signingCredentials.Key, parameterName, allowSelfSignedSigner);
     }
 
     /// <summary>The path rules, then that the leaf holds the signing key; returns the x5c values to send.</summary>
     // SPEC: RFC 7515 §4.1.6 — x5c is base64 (not base64url) DER, leaf certificate first.
-    private static string[] CheckChain(IReadOnlyList<X509Certificate2> chain, SecurityKey key, string parameterName)
+    private static string[] CheckChain(
+        IReadOnlyList<X509Certificate2> chain, SecurityKey key, string parameterName, bool allowSelfSignedSigner)
     {
         var path = chain.ToArray();
         try
         {
-            ReaderCertificatePath.Check(path, parameterName, "x5c");
+            ReaderCertificatePath.Check(path, parameterName, "x5c", allowSelfSignedSigner);
 
             // Only an ECDsaSecurityKey's public half can be read here. With the remote-signing pattern of
             // going-live.md that is the public half the caller declared, not the key that actually signs;

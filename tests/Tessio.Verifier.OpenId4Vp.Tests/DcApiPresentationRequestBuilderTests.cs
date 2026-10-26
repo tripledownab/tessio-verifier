@@ -173,6 +173,31 @@ public sealed class DcApiPresentationRequestBuilderTests : IDisposable
     }
 
     [Fact]
+    public void ASelfSignedSigner_IsRefusedUnlessAllowed_AndThenSignsARequestNamingItsHash()
+    {
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var certificateRequest = new CertificateRequest("CN=sandbox signer", key, System.Security.Cryptography.HashAlgorithmName.SHA256);
+        certificateRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
+        var options = new PresentationRequestBuilderOptions
+        {
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(key), SecurityAlgorithms.EcdsaSha256),
+            SigningCertificateChain = [certificate],
+        };
+
+        Assert.Throws<ArgumentException>(() => new DcApiPresentationRequestBuilder(options));
+
+        options.AllowSelfSignedSigningCertificate = true;
+        var request = new DcApiPresentationRequestBuilder(options).Build(Unsigned() with
+        {
+            ClientId = ClientIdentifier.X509Hash(certificate),
+        });
+        var jws = (string)JsonNode.Parse(request.DataJson)!["request"]!;
+        var x5c = JsonDocument.Parse(Base64UrlEncoder.Decode(jws.Split('.')[0])).RootElement.GetProperty("x5c");
+        Assert.Equal(Convert.ToBase64String(certificate.RawData), x5c[0].GetString());
+    }
+
+    [Fact]
     public void ASignedRequest_FromABuilderWithoutSigningOptions_IsRefused()
     {
         Assert.Throws<InvalidOperationException>(() => new DcApiPresentationRequestBuilder().Build(SignedOptions()));
