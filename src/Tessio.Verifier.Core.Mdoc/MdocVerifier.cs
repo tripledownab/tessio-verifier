@@ -166,11 +166,7 @@ public sealed partial class MdocVerifier
             _trustListResolver, resolution.Issuer, resolution.CertificateChain, ct).ConfigureAwait(false);
         if (!trust.Trusted)
         {
-            errors.Add(trustFailure ?? new VerificationError
-            {
-                Code = MdocErrorCodes.IssuerUntrusted,
-                Message = trust.Reason ?? "The Document Signer does not chain to a trusted IACA root.",
-            });
+            errors.Add(trustFailure ?? TrustSeam.Refusal(trust, "The Document Signer does not chain to a trusted IACA root."));
         }
 
         // SPEC: draft-ietf-oauth-status-list-20 section 8.3, the status is evaluated only for a credential

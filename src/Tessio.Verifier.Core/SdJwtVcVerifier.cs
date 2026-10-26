@@ -430,11 +430,8 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         TrustAnchorThumbprint = trust.TrustAnchorThumbprint,
     };
 
-    private static VerificationError Untrusted(IssuerTrustStatus trust, string issuer) => new()
-    {
-        Code = ErrorCodes.IssuerUntrusted,
-        Message = trust.Reason ?? $"Issuer '{issuer}' does not chain to a trusted list.",
-    };
+    private static VerificationError Untrusted(IssuerTrustStatus trust, string issuer) =>
+        TrustSeam.Refusal(trust, $"Issuer '{issuer}' does not chain to a trusted list.");
 
     private static VerificationResult Invalid(VerificationError error, IssuerInfo? issuer = null) =>
         Invalid([error], issuer);

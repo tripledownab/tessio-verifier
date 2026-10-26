@@ -181,6 +181,23 @@ public sealed class ZkVerificationTests : IDisposable
     }
 
     [Fact]
+    public async Task A_lapsed_trust_list_is_reported_as_the_list_before_the_proof()
+    {
+        var zk = new StandInProofVerifier();
+
+        var result = await Verify(AvZkResponses.Build(), zk, trust: new LapsedListResolver());
+
+        Assert.Equal(MdocErrorCodes.TrustListExpired, Assert.Single(result.Errors).Code);
+        Assert.Empty(zk.Requests);
+    }
+
+    private sealed class LapsedListResolver : ITrustListResolver
+    {
+        public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default) =>
+            Task.FromResult(new IssuerTrustStatus { Trusted = false, Reason = "the list lapsed", TrustListExpired = true });
+    }
+
+    [Fact]
     public async Task Without_a_session_transcript_the_proof_cannot_be_checked()
     {
         var zk = new StandInProofVerifier();

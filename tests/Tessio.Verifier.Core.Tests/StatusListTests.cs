@@ -226,6 +226,27 @@ public class StatusListTests
         Assert.DoesNotContain("https://someone-else.example/.well-known/jwt-vc-issuer", http.Requested);
     }
 
+    // The status list signer is a party of its own with its own chain, so its list can lapse while the
+    // credential's issuer stays trusted. The refusal then names the list, as it does for the issuer.
+    [Fact]
+    public async Task AStatusListSigner_RefusedBecauseItsListLapsed_IsReportedAsTheList()
+    {
+        using var builder = CredentialWithStatus(idx: 0);
+        using var otherSigner = new TestCredentialBuilder { Issuer = "https://someone-else.example" };
+        var token = otherSigner.BuildStatusListToken(StatusUri, bits: 1, statuses: [0]);
+        var trust = new FakeTrustListResolver { ListExpired = true };
+        trust.Untrusted.Add("https://someone-else.example");
+
+        var (verifier, _) = VerifierFor(builder, token, trust: trust);
+
+        var result = await verifier.VerifyAsync(
+            new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() }, Context());
+
+        var codes = result.Errors.Select(e => e.Code).ToList();
+        Assert.Contains(ErrorCodes.TrustListExpired, codes);
+        Assert.DoesNotContain(ErrorCodes.StatusInvalid, codes);
+    }
+
     // SPEC: draft-ietf-oauth-status-list-18 section 1: "The Status Issuer can be either the Issuer or an
     // entity that has been authorized by the Issuer to issue Status List Tokens." The issuer authorises
     // by putting that uri inside the credential it signs, so a different BUT TRUSTED signer serving that

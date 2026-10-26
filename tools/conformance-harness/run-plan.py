@@ -96,7 +96,7 @@ EXPECTED_CODE = {
 # negative module still rejects under a wrong anchor, usually with its own code beside this one, so without the
 # check it reads as a pass on a configuration that would refuse every good credential. The same list as
 # configCodes in Pages.cs, which warns on the evidence page.
-TRUST_CODES = ("issuer_untrusted", "issuer_trust_unresolvable", "issuer_key_unresolvable")
+TRUST_CODES = ("issuer_untrusted", "issuer_trust_unresolvable", "issuer_key_unresolvable", "trust_list_expired")
 
 MODULE_VARIANT = {"client_id_prefix": "x509_hash", "request_method": "request_uri_signed", "vp_profile": "haip"}
 

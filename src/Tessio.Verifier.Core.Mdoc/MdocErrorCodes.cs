@@ -27,6 +27,9 @@ public static class MdocErrorCodes
     /// <summary>The trust seam could not answer, so the issuer was neither trusted nor refused (shared with Core).</summary>
     public const string IssuerTrustUnresolvable = ErrorCodes.IssuerTrustUnresolvable;
 
+    /// <summary>The trust list that would vouch for the issuer is no longer current (shared with Core).</summary>
+    public const string TrustListExpired = ErrorCodes.TrustListExpired;
+
     /// <summary>The MSO validity window has passed (shared with Core).</summary>
     public const string CredentialExpired = ErrorCodes.CredentialExpired;
 

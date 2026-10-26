@@ -37,6 +37,23 @@ internal static class TrustSeam
     }
 
     /// <summary>
+    /// The code for a refusal: <see cref="ErrorCodes.TrustListExpired"/> when the resolver says the refusal is
+    /// the list's own, <paramref name="otherwise"/> when it is not. The one place a refusal's code is decided,
+    /// so a lapsed list reads the same whoever was asked about: a credential's issuer, a status list signer or
+    /// an MSO revocation list signer. Callers reach it only for a refusal: on a trusted verdict the flag means
+    /// nothing, because <see cref="IssuerTrustStatus.Trusted"/> keeps the meaning its contract froze.
+    /// </summary>
+    public static string RefusalCode(IssuerTrustStatus trust, string otherwise) =>
+        trust.TrustListExpired ? ErrorCodes.TrustListExpired : otherwise;
+
+    /// <summary>The error for an issuer the resolver refused, with the resolver's reason when it gave one.</summary>
+    public static VerificationError Refusal(IssuerTrustStatus trust, string fallbackMessage) => new()
+    {
+        Code = RefusalCode(trust, ErrorCodes.IssuerUntrusted),
+        Message = trust.Reason ?? fallbackMessage,
+    };
+
+    /// <summary>
     /// Whether an exception from a resolver means it could not decide: a failed request, an I/O error, a
     /// timeout including one the resolver imposed on itself, or a resolver that is not in a state to
     /// answer, such as a trust list not yet loaded.

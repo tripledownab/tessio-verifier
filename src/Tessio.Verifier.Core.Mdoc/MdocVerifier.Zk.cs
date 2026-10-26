@@ -85,11 +85,7 @@ public sealed partial class MdocVerifier
         var issuer = IssuerOf(signer.Subject, trust);
         if (!trust.Trusted)
         {
-            var error = trustFailure ?? new VerificationError
-            {
-                Code = MdocErrorCodes.IssuerUntrusted,
-                Message = trust.Reason ?? "The document signer does not chain to a trusted IACA root.",
-            };
+            var error = trustFailure ?? TrustSeam.Refusal(trust, "The document signer does not chain to a trusted IACA root.");
             return VerificationResult.Invalid(error, issuer) with { CredentialType = document.DocType };
         }
 

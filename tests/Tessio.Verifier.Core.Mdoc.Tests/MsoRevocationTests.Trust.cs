@@ -177,6 +177,18 @@ public sealed partial class MsoRevocationTests
     }
 
     [Fact]
+    public async Task ARevocationListSigner_RefusedBecauseItsListLapsed_IsReportedAsTheList()
+    {
+        _builder.X5ChainWithoutIssuer = true;
+        _builder.MsoStatus = RevocationListBuilder.StatusListReference(0, ListUri);
+        _http.Serve(ListUri, _list.StatusList(ListUri, bits: 1, 0));
+
+        AssertRefused(
+            await VerifyAsync(Verifier(trust: new RefusesAllButTheDocumentSigner(_builder.DsCertificate, listExpired: true))),
+            ErrorCodes.TrustListExpired);
+    }
+
+    [Fact]
     public async Task AnUntrustedListServedOnce_DoesNotStandInForTheGenuineOne()
     {
         using var other = new MdocTestBuilder("CN=Test Other IACA");
@@ -368,15 +380,19 @@ public sealed partial class MsoRevocationTests
     }
 
     /// <summary>Trusts only the Document Signer's chain, but names the same anchor for every chain.</summary>
-    private sealed class RefusesAllButTheDocumentSigner(X509Certificate2 documentSigner) : ITrustListResolver
+    private sealed class RefusesAllButTheDocumentSigner(X509Certificate2 documentSigner, bool listExpired = false) : ITrustListResolver
     {
-        public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default) =>
-            Task.FromResult(new IssuerTrustStatus
+        public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default)
+        {
+            var trusted = x5c[0].Span.SequenceEqual(documentSigner.RawData);
+            return Task.FromResult(new IssuerTrustStatus
             {
-                Trusted = x5c[0].Span.SequenceEqual(documentSigner.RawData),
+                Trusted = trusted,
                 TrustListSource = "test",
                 TrustAnchorThumbprint = "AA",
+                TrustListExpired = !trusted && listExpired,
             });
+        }
     }
 
     /// <summary>A clock the test moves.</summary>
