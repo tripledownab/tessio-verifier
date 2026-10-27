@@ -49,6 +49,14 @@ public static class ErrorCodes
     public const string TransactionDataAlgUnsupported = "transaction_data_alg_unsupported";
 
     /// <summary>
+    /// The issuer was refused because the trust list that would vouch for it is no longer current, so the
+    /// list, not the issuer, is the cause. Reported when the resolver sets
+    /// <c>IssuerTrustStatus.TrustListExpired</c>, which it does for a list past its next update (ETSI TS 119 612
+    /// V2.4.1 section 5.3.15) and may do for a closed one.
+    /// </summary>
+    public const string TrustListExpired = "trust_list_expired";
+
+    /// <summary>
     /// The trust seam could not answer, for example because a trust list it reads is unreachable. The
     /// issuer was neither trusted nor refused, so the credential fails closed with this instead.
     /// </summary>

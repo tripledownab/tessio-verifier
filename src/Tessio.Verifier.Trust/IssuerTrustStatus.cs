@@ -5,8 +5,8 @@ namespace Tessio.Verifier.Trust;
 /// </summary>
 /// <remarks>
 /// FROZEN contract (contracts-v0). Forward-compatible: new optional inputs may be added as init-only
-/// properties, which is how <see cref="TrustAnchorSubject"/> and <see cref="TrustAnchorThumbprint"/>
-/// arrived. No existing member changes.
+/// properties, which is how <see cref="TrustAnchorSubject"/>, <see cref="TrustAnchorThumbprint"/> and
+/// <see cref="TrustListExpired"/> arrived. No existing member changes.
 /// </remarks>
 public sealed record IssuerTrustStatus
 {
@@ -51,4 +51,26 @@ public sealed record IssuerTrustStatus
     /// after the presentation, so the comparison it supports has to be one worth making.
     /// </remarks>
     public string? TrustAnchorThumbprint { get; init; }
+
+    /// <summary>
+    /// True when the refusal is because the trust list itself is no longer current, not because of the
+    /// issuer: its next update has passed, or its operator has closed it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// SPEC: ETSI TS 119 612 V2.4.1 section 5.3.15: "TL with a Next update occurring in the past shall be
+    /// discarded as expired". A resolver that follows it refuses every issuer on such a list, and this flag
+    /// lets the verifiers report <c>trust_list_expired</c> rather than <c>issuer_untrusted</c> (or
+    /// <c>status_invalid</c> for a status or revocation list signer), which would send the reader looking at
+    /// the party refused when the cause is the list's publisher.
+    /// </para>
+    /// <para>
+    /// A closed list is a different case in the same clause: its Next update is null, and its final version
+    /// marks every service "expired". Setting this flag for one too is the resolver's choice; the code then
+    /// names the list as the cause, which it is.
+    /// </para>
+    /// <para>Meaningful only when <see cref="Trusted"/> is false. Init-only and optional, so every existing
+    /// construction still compiles unchanged and still reports <c>issuer_untrusted</c>.</para>
+    /// </remarks>
+    public bool TrustListExpired { get; init; }
 }

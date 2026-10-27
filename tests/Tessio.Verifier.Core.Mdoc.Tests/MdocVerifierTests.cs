@@ -196,6 +196,27 @@ public sealed class MdocVerifierTests : IDisposable
         Assert.DoesNotContain(result.Errors, e => e.Code == MdocErrorCodes.IssuerUntrusted);
     }
 
+    /// <summary>
+    /// A refusal whose cause is the list (ETSI TS 119 612 V2.4.1 section 5.3.15) is reported as the list's,
+    /// not as an untrusted Document Signer.
+    /// </summary>
+    [Fact]
+    public async Task ALapsedTrustList_IsReportedAsTheList_NotAsTheIssuer()
+    {
+        var result = await new MdocVerifier(new LapsedListResolver()).VerifyAsync(Credential(_builder), Context());
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors, e => e.Code == MdocErrorCodes.TrustListExpired);
+        Assert.Equal("the list lapsed", error.Message);
+        Assert.DoesNotContain(result.Errors, e => e.Code == MdocErrorCodes.IssuerUntrusted);
+    }
+
+    private sealed class LapsedListResolver : ITrustListResolver
+    {
+        public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default) =>
+            Task.FromResult(new IssuerTrustStatus { Trusted = false, Reason = "the list lapsed", TrustListExpired = true });
+    }
+
     /// <summary>A cancellation the caller asked for is not a trust source failure, so it propagates.</summary>
     [Fact]
     public async Task ACallerCancellation_AtTheTrustSeam_StillPropagates()

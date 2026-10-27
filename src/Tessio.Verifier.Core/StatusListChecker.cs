@@ -226,7 +226,7 @@ internal sealed class StatusListChecker
             return
             [
                 Error(
-                    ErrorCodes.StatusInvalid,
+                    TrustSeam.RefusalCode(trust, ErrorCodes.StatusInvalid),
                     trust.Reason is null
                         ? $"The status list token's signer '{resolution.Issuer}' is not trusted."
                         : $"The status list token's signer is not trusted: {trust.Reason}"),

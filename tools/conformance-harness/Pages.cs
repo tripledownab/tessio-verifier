@@ -161,7 +161,7 @@ internal static class Pages
         // No module tests trust or key resolution, so any of these means our configuration is wrong, even
         // when the module's own code sits beside it. run-plan.py's TRUST_CODES is the same list.
         string[] configCodes =
-            [ErrorCodes.IssuerUntrusted, ErrorCodes.IssuerTrustUnresolvable, ErrorCodes.IssuerKeyUnresolvable];
+            [ErrorCodes.IssuerUntrusted, ErrorCodes.IssuerTrustUnresolvable, ErrorCodes.IssuerKeyUnresolvable, ErrorCodes.TrustListExpired];
         var trustNote = result is { IsValid: false } && result.Errors.Any(e => configCodes.Contains(e.Code))
             ? """
               <p class="warn"><strong>The issuer was not trusted or its key not resolved.</strong> No module

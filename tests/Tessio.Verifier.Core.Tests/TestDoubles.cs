@@ -29,6 +29,9 @@ internal sealed class FakeTrustListResolver : ITrustListResolver
     /// </summary>
     public (string Subject, string Thumbprint)? Anchor { get; set; }
 
+    /// <summary>Whether a refusal says the list itself has lapsed (<see cref="IssuerTrustStatus.TrustListExpired"/>).</summary>
+    public bool ListExpired { get; set; }
+
     public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default)
     {
         SeenIssuer = issuer;
@@ -45,6 +48,7 @@ internal sealed class FakeTrustListResolver : ITrustListResolver
             TrustAnchorSubject = trusted ? Anchor?.Subject : null,
             TrustAnchorThumbprint = trusted ? Anchor?.Thumbprint : null,
             Reason = trusted ? null : "issuer not on the test trust list",
+            TrustListExpired = !trusted && ListExpired,
         });
     }
 }

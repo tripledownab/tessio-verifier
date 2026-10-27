@@ -162,7 +162,7 @@ internal static class MsoRevocationTrust
 
         if (!trust.Trusted)
         {
-            return Error(ErrorCodes.StatusInvalid, $"The MSO revocation list's chain is not trusted: {trust.Reason}");
+            return Error(TrustSeam.RefusalCode(trust, ErrorCodes.StatusInvalid), $"The MSO revocation list's chain is not trusted: {trust.Reason}");
         }
 
         return string.Equals(trust.TrustAnchorThumbprint, anchor, StringComparison.OrdinalIgnoreCase)
