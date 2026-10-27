@@ -192,7 +192,17 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         }
 
         // 8. Payload reconstruction per RFC 9901 §7.1 (throws on MUST-reject violations).
-        var payload = (JsonObject)JsonNode.Parse(Base64UrlEncoder.Decode(issuerJwt.EncodedPayload))!;
+        JsonObject payload;
+        try
+        {
+            payload = (JsonObject)StrictJson.Parse(Base64UrlEncoder.DecodeBytes(issuerJwt.EncodedPayload))!;
+        }
+        catch (JsonException)
+        {
+            throw new SdJwtProcessingException(
+                ErrorCodes.StructureInvalid, $"The issuer-signed payload is not JSON with {StrictJson.Accepts}.");
+        }
+
         var vctIsPlain = payload.ContainsKey("vct");
         var processed = DisclosureProcessor.Process(payload, presentation.Disclosures);
 
@@ -314,12 +324,12 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
     {
         var now = _clock.GetUtcNow();
 
-        if (ReadUnixTime(processed, "exp") is { } exp && now - _options.ClockSkew >= exp)
+        if (ReadUnixTime(processed, "exp", errors) is { } exp && now - _options.ClockSkew >= exp)
         {
             errors.Add(new VerificationError { Code = ErrorCodes.CredentialExpired, Message = $"The credential expired at {exp:O}." });
         }
 
-        if (ReadUnixTime(processed, "nbf") is { } nbf && now + _options.ClockSkew < nbf)
+        if (ReadUnixTime(processed, "nbf", errors) is { } nbf && now + _options.ClockSkew < nbf)
         {
             errors.Add(new VerificationError { Code = ErrorCodes.CredentialNotYetValid, Message = $"The credential is not valid before {nbf:O}." });
         }
@@ -403,17 +413,25 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         return claims;
     }
 
-    private static DateTimeOffset? ReadUnixTime(JsonObject payload, string claim)
+    // SPEC: RFC 7519 §4.1.4 and §4.1.5, "Its value MUST be a number containing a NumericDate value."
+    // Anything else present is refused rather than skipped, since skipping an exp is never expiring.
+    private static DateTimeOffset? ReadUnixTime(JsonObject payload, string claim, List<VerificationError> errors)
     {
-        if (!payload.TryGetPropertyValue(claim, out var node) || node?.GetValueKind() != JsonValueKind.Number)
+        if (!payload.TryGetPropertyValue(claim, out var node))
         {
+            return null;
+        }
+
+        if (node?.GetValueKind() != JsonValueKind.Number)
+        {
+            errors.Add(new VerificationError { Code = ErrorCodes.StructureInvalid, Message = $"The {claim} claim is not a NumericDate." });
             return null;
         }
 
         var element = node.GetValue<JsonElement>();
         return element.TryGetInt64(out var seconds)
-            ? DateTimeOffset.FromUnixTimeSeconds(seconds)
-            : DateTimeOffset.FromUnixTimeSeconds((long)element.GetDouble());
+            ? UnixTime.FromSeconds(seconds)
+            : UnixTime.FromSeconds(element.GetDouble());
     }
 
     private static IssuerInfo IssuerInfoFrom(IssuerKeyResolution resolution, IssuerTrustStatus trust) => new()

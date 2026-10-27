@@ -191,6 +191,23 @@ public class StatusListTests
         Assert.Contains(result.Errors, e => e.Code == "status_unresolvable");
     }
 
+    // An exp outside the calendar reads as its nearer end, so far behind is expired and far ahead is not.
+    // Both used to throw out of the verifier.
+    [Theory]
+    [InlineData(-99999999999999, false)]
+    [InlineData(99999999999999, true)]
+    public async Task StatusListExpBeyondTheCalendar_ReadsAsTheNearerEnd(long exp, bool valid)
+    {
+        using var builder = CredentialWithStatus(idx: 0);
+        var statusList = builder.BuildStatusListToken(StatusUri, bits: 1, statuses: [0], exp: exp);
+        var (verifier, _) = VerifierFor(builder, statusList);
+
+        var result = await verifier.VerifyAsync(
+            new PresentedCredential { Format = "dc+sd-jwt", RawValue = builder.Build() }, Context());
+
+        Assert.Equal(valid, result.IsValid);
+    }
+
     // A status list token is believed for TWO independent reasons, so each gets its own test and they
     // are broken one at a time. SubMismatch_IsRejected above breaks the BINDING: a token that does not
     // name the uri the issuer put inside the credential it signed. The pair below breaks, and then does

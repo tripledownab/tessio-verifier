@@ -82,7 +82,7 @@ internal static class KeyBindingVerifier
         }
         else if (long.TryParse(iatClaim.Value, out var iatSeconds))
         {
-            var iat = DateTimeOffset.FromUnixTimeSeconds(iatSeconds);
+            var iat = UnixTime.FromSeconds(iatSeconds);
             var oldest = maxAge == Timeout.InfiniteTimeSpan ? DateTimeOffset.MinValue : now - maxAge - clockSkew;
             if (iat < oldest)
             {

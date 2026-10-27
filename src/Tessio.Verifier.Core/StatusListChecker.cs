@@ -93,7 +93,7 @@ internal sealed class StatusListChecker
             : null;
         var idx = statusList?.TryGetPropertyValue("idx", out var idxNode) == true
                   && idxNode?.GetValueKind() == JsonValueKind.Number
-            ? idxNode.GetValue<long>()
+            ? (idxNode.GetValue<JsonElement>().TryGetInt64(out var idxValue) ? idxValue : -1)
             : -1;
         var uri = statusList?.TryGetPropertyValue("uri", out var uriNode) == true
                   && uriNode?.GetValueKind() == JsonValueKind.String
@@ -270,7 +270,7 @@ internal sealed class StatusListChecker
         if (token.TryGetClaim("exp", out var expClaim)
             && long.TryParse(expClaim.Value, System.Globalization.CultureInfo.InvariantCulture, out var expSeconds))
         {
-            expiresAt = DateTimeOffset.FromUnixTimeSeconds(expSeconds);
+            expiresAt = UnixTime.FromSeconds(expSeconds);
             if (_clock.GetUtcNow() - _clockSkew >= expiresAt)
             {
                 return [Error(ErrorCodes.StatusUnresolvable, "The status list token is expired; current status is unknown.")];
