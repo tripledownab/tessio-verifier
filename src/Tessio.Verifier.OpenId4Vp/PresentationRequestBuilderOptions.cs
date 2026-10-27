@@ -28,7 +28,9 @@ public sealed class PresentationRequestBuilderOptions
     /// <see cref="SignedPresentationRequestBuilder"/> checks the chain once, when it is created, and
     /// refuses it with an <see cref="ArgumentException"/> when: it holds a null entry; any certificate
     /// in it names itself as its issuer (a root, or a self-signed signer); a certificate is not issued
-    /// by the one after it; or the first certificate is a CA. Names are compared by their encoded bytes.
+    /// by the one after it; or the first certificate is a CA (the self-issued and CA
+    /// rules give way for a lone certificate when <see cref="AllowSelfSignedSigningCertificate"/> is set). Names are
+    /// compared by their encoded bytes.
     /// So a path whose names differ only in case, spacing or string type is refused as unlinked, and a
     /// self-signed certificate whose issuer is encoded differently from its subject is not recognised
     /// as one; nor can an anchor that is not itself a root be recognised. When
@@ -54,6 +56,19 @@ public sealed class PresentationRequestBuilderOptions
     /// </para>
     /// </remarks>
     public IReadOnlyList<X509Certificate2>? SigningCertificateChain { get; set; }
+
+    /// <summary>
+    /// Accepts a <see cref="SigningCertificateChain"/> of exactly one certificate that is self-signed or a CA,
+    /// which the rules above otherwise refuse. For a test environment whose wallet trusts one published
+    /// self-signed signing certificate, such as Google Wallet's sandbox for relying parties. False by default.
+    /// </summary>
+    /// <remarks>
+    /// HAIP 1.0 section 5 says the certificate signing the request "MUST NOT be self-signed" and that the trust
+    /// anchor "MUST NOT be included in the x5c JOSE header", and a lone self-signed certificate is both. A request
+    /// signed this way is not HAIP conformant, and a production wallet will not trust it. A longer chain keeps every
+    /// rule, and the check that the certificate holds the signing key still runs.
+    /// </remarks>
+    public bool AllowSelfSignedSigningCertificate { get; set; }
 
     /// <summary>
     /// When set, requests are delivered by reference: the wallet fetches the signed JAR from

@@ -36,7 +36,12 @@ internal static class ReaderCertificatePath
     /// <param name="path">The path, reader certificate first.</param>
     /// <param name="parameterName">The caller's parameter or option the path came from.</param>
     /// <param name="header">The header the path travels in, for the messages: <c>x5chain</c> or <c>x5c</c>.</param>
-    internal static void Check(IReadOnlyList<X509Certificate2> path, string parameterName, string header)
+    /// <param name="allowSelfSignedSigner">
+    /// Lets a path of exactly one certificate through the self-issued and CA rules, for a test environment whose
+    /// wallet trusts one published self-signed signing certificate. A longer path keeps every rule.
+    /// </param>
+    internal static void Check(
+        IReadOnlyList<X509Certificate2> path, string parameterName, string header, bool allowSelfSignedSigner = false)
     {
         if (path.Count == 0)
         {
@@ -53,8 +58,9 @@ internal static class ReaderCertificatePath
         // support a path through one. Anything above the reader certificate that is not self-issued
         // may still be the anchor a wallet holds, which no certificate can say about itself; that one
         // is the caller's to leave out.
+        var selfSignedSigner = allowSelfSignedSigner && path.Count == 1;
         var selfIssued = path.FirstOrDefault(c => SameEncoding(c.SubjectName, c.IssuerName));
-        if (selfIssued is not null)
+        if (selfIssued is not null && !selfSignedSigner)
         {
             throw new ArgumentException(
                 $"The certificate path holds a self-issued certificate ({selfIssued.Subject}), one naming itself as its "
@@ -74,7 +80,7 @@ internal static class ReaderCertificatePath
             }
         }
 
-        if (path[0].Extensions.OfType<X509BasicConstraintsExtension>().Any(c => c.CertificateAuthority))
+        if (!selfSignedSigner && path[0].Extensions.OfType<X509BasicConstraintsExtension>().Any(c => c.CertificateAuthority))
         {
             throw new ArgumentException(
                 $"The reader certificate ({path[0].Subject}) is a CA certificate. A request is signed with an "

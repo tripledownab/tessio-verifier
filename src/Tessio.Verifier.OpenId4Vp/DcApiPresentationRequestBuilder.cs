@@ -52,7 +52,8 @@ public sealed class DcApiPresentationRequestBuilder
         _signer = new RequestObjectSigner(
             signing.SigningCredentials,
             signing.SigningCertificateChain,
-            $"{nameof(signing)}.{nameof(signing.SigningCertificateChain)}");
+            $"{nameof(signing)}.{nameof(signing.SigningCertificateChain)}",
+            signing.AllowSelfSignedSigningCertificate);
         _clock = signing.Clock ?? TimeProvider.System;
         _defaultLifetime = signing.DefaultRequestLifetime;
     }

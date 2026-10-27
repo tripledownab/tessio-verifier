@@ -68,6 +68,53 @@ public sealed class SignedRequestChainTests : IDisposable
         Refused([selfSigned], "self-issued certificate (CN=verifier.example)", key);
     }
 
+    private static X509Certificate2 SelfSignedCa(ECDsa key)
+    {
+        var request = new CertificateRequest("CN=sandbox signer", key, HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(1));
+    }
+
+    [Fact]
+    public async Task A_lone_self_signed_ca_signer_is_accepted_only_when_asked_and_is_sent_in_x5c()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var certificate = SelfSignedCa(key);
+        var options = new PresentationRequestBuilderOptions
+        {
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(key), SecurityAlgorithms.EcdsaSha256),
+            SigningCertificateChain = [certificate],
+        };
+
+        Assert.Throws<ArgumentException>(() => new SignedPresentationRequestBuilder(options));
+
+        options.AllowSelfSignedSigningCertificate = true;
+        var request = await new SignedPresentationRequestBuilder(options).BuildAsync(Options());
+        Assert.Equal([Convert.ToBase64String(certificate.RawData)], X5c(request.SignedRequestObject!));
+    }
+
+    [Fact]
+    public void The_self_signed_allowance_does_not_cover_a_longer_path_or_a_key_the_certificate_lacks()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var certificate = SelfSignedCa(key);
+        PresentationRequestBuilderOptions With(IReadOnlyList<X509Certificate2> chain, ECDsa signing) => new()
+        {
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(signing), SecurityAlgorithms.EcdsaSha256),
+            SigningCertificateChain = chain,
+            AllowSelfSignedSigningCertificate = true,
+        };
+
+        // Two certificates: the allowance is for a lone signer. The same certificate twice links to itself, so
+        // only the self-issued rule can be what refuses it.
+        var longer = Assert.Throws<ArgumentException>(() => new SignedPresentationRequestBuilder(With([certificate, certificate], key)));
+        Assert.Contains("self-issued certificate (CN=sandbox signer)", longer.Message, StringComparison.Ordinal);
+        // The certificate must still hold the signing key.
+        using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var ex = Assert.Throws<ArgumentException>(() => new SignedPresentationRequestBuilder(With([certificate], other)));
+        Assert.Contains("does not hold the public half", ex.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Refuses_a_chain_whose_next_certificate_is_not_the_issuer()
     {

@@ -34,7 +34,8 @@ public sealed class SignedPresentationRequestBuilder : IPresentationRequestBuild
         _signer = new RequestObjectSigner(
             options.SigningCredentials,
             options.SigningCertificateChain,
-            $"{nameof(options)}.{nameof(options.SigningCertificateChain)}");
+            $"{nameof(options)}.{nameof(options.SigningCertificateChain)}",
+            options.AllowSelfSignedSigningCertificate);
     }
 
     /// <inheritdoc />
