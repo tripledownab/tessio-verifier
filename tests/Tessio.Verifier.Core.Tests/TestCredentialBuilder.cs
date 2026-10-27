@@ -47,6 +47,12 @@ internal sealed class TestCredentialBuilder : IDisposable
     /// <summary>Raw disclosure strings appended on top of the generated ones (e.g. unreferenced ones).</summary>
     public List<string> ExtraDisclosures { get; } = [];
 
+    /// <summary>Rewrites the serialized issuer payload before signing, for shapes a dictionary cannot hold (a repeated key).</summary>
+    public Func<string, string>? RewritePayloadJson { get; set; }
+
+    /// <summary>Rewrites the serialized KB-JWT payload before signing, for an iat no DateTimeOffset holds.</summary>
+    public Func<string, string>? RewriteKbPayloadJson { get; set; }
+
     /// <summary>Extra raw digest strings injected into the top-level _sd array.</summary>
     public List<string> ExtraSdDigests { get; } = [];
 
@@ -220,7 +226,7 @@ internal sealed class TestCredentialBuilder : IDisposable
         disclosures.AddRange(ExtraDisclosures);
 
         var issuerJwt = SignJwt(
-            JsonSerializer.Serialize(payload),
+            RewritePayloadJson?.Invoke(JsonSerializer.Serialize(payload)) ?? JsonSerializer.Serialize(payload),
             new ECDsaSecurityKey(_issuerEcdsa),
             Typ,
             Certificate is { } cert ? new List<string> { Convert.ToBase64String(cert.RawData) } : null);
@@ -252,7 +258,7 @@ internal sealed class TestCredentialBuilder : IDisposable
             kbClaims["transaction_data_hashes_alg"] = TransactionDataHashesAlg;
         }
 
-        var kbPayload = JsonSerializer.Serialize(kbClaims);
+        var kbPayload = RewriteKbPayloadJson?.Invoke(JsonSerializer.Serialize(kbClaims)) ?? JsonSerializer.Serialize(kbClaims);
 
         return withoutKb + SignJwt(kbPayload, new ECDsaSecurityKey(_holderEcdsa), "kb+jwt", x5c: null);
     }

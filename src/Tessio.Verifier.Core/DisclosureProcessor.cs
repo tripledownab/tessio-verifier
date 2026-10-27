@@ -89,12 +89,12 @@ internal static class DisclosureProcessor
         JsonNode? node;
         try
         {
-            node = JsonNode.Parse(Base64UrlEncoder.Decode(disclosure));
+            node = StrictJson.Parse(Base64UrlEncoder.DecodeBytes(disclosure));
         }
         catch (Exception e) when (e is JsonException or FormatException)
         {
             throw new SdJwtProcessingException(
-                ErrorCodes.DisclosureInvalid, "A disclosure is not base64url-encoded JSON.");
+                ErrorCodes.DisclosureInvalid, $"A disclosure is not base64url-encoded JSON with {StrictJson.Accepts}.");
         }
 
         // SPEC: RFC 9901 §4.2.1/§4.2.2 — [salt, name, value] for object properties,
