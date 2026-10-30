@@ -387,24 +387,58 @@ public sealed partial class MsoRevocationTests : IDisposable
     }
 
     [Fact]
-    public async Task AListWithoutExp_IsRefused()
+    public async Task AListWithoutExp_IsRefused_NamingExp()
     {
         // SPEC: EAA-6.2.10.1-08, "the exp claim shall be present", which the draft only RECOMMENDS.
         _list.ExpiresAt = null;
-        _builder.MsoStatus = RevocationListBuilder.StatusListReference(0, ListUri);
-        _http.Serve(ListUri, _list.StatusList(ListUri, bits: 1, 0));
 
-        AssertRefused(await VerifyAsync(), ErrorCodes.StatusInvalid);
+        await AssertMissingClaimsNamed("The MSO revocation list lacks the required exp claim.");
     }
 
     [Fact]
-    public async Task AListWithoutIat_IsRefused()
+    public async Task AListWithoutIat_IsRefused_NamingIat()
     {
         _list.IssuedAt = null;
+
+        await AssertMissingClaimsNamed("The MSO revocation list lacks the required iat claim.");
+    }
+
+    [Fact]
+    public async Task AListWithoutSub_IsRefused_NamingSub()
+    {
+        _list.OmitSubject = true;
+
+        await AssertMissingClaimsNamed("The MSO revocation list lacks the required sub claim.");
+    }
+
+    [Fact]
+    public async Task AListWithoutTwoClaims_IsRefused_NamingBoth()
+    {
+        _list.OmitSubject = true;
+        _list.ExpiresAt = null;
+
+        await AssertMissingClaimsNamed("The MSO revocation list lacks the required sub and exp claims.");
+    }
+
+    [Fact]
+    public async Task AListWithoutAllThree_IsRefused_NamingEach()
+    {
+        _list.OmitSubject = true;
+        _list.IssuedAt = null;
+        _list.ExpiresAt = null;
+
+        await AssertMissingClaimsNamed("The MSO revocation list lacks the required sub, iat and exp claims.");
+    }
+
+    private async Task AssertMissingClaimsNamed(string message)
+    {
         _builder.MsoStatus = RevocationListBuilder.StatusListReference(0, ListUri);
         _http.Serve(ListUri, _list.StatusList(ListUri, bits: 1, 0));
 
-        AssertRefused(await VerifyAsync(), ErrorCodes.StatusInvalid);
+        var result = await VerifyAsync();
+
+        Assert.False(result.IsValid);
+        Assert.True(result.Errors.Any(e => e.Code == ErrorCodes.StatusInvalid && e.Message == message), Codes(result));
     }
 
     [Fact]
