@@ -55,6 +55,9 @@ internal sealed class RevocationListBuilder : IDisposable
     /// <summary>The <c>sub</c> claim; the list's uri when null.</summary>
     public string? Subject { get; set; }
 
+    /// <summary>Leave the <c>sub</c> claim out.</summary>
+    public bool OmitSubject { get; set; }
+
     /// <summary>The <c>exp</c> claim; omitted when null.</summary>
     public DateTimeOffset? ExpiresAt { get; set; } = DateTimeOffset.UtcNow.AddDays(1);
 
@@ -190,8 +193,12 @@ internal sealed class RevocationListBuilder : IDisposable
         // Indefinite length, so the knobs can add and drop claims without counting them.
         var claims = new CborWriter(CborConformanceMode.Lax);
         claims.WriteStartMap(null);
-        claims.WriteInt64(2);
-        claims.WriteTextString(Subject ?? uri);
+        if (!OmitSubject)
+        {
+            claims.WriteInt64(2);
+            claims.WriteTextString(Subject ?? uri);
+        }
+
         if (IssuedAt is { } iat)
         {
             claims.WriteInt64(6);

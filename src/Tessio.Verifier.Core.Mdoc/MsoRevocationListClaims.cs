@@ -69,10 +69,11 @@ internal static class MsoRevocationListClaims
         reader.ReadEndMap();
 
         // SPEC: draft-ietf-oauth-status-list-20 section 5.2, sub and iat REQUIRED; EAA-6.2.10.1-08, "the exp
-        // claim shall be present", stricter than the draft's RECOMMENDED.
+        // claim shall be present", stricter than the draft's RECOMMENDED. Each absent claim is named, so the
+        // refusal says which claims the list's issuer has to add.
         if (subject is null || iat is null || exp is null)
         {
-            throw new MsoRevocationListToken.InvalidListException("The MSO revocation list lacks one of the required sub, iat and exp claims.");
+            throw new MsoRevocationListToken.InvalidListException(LacksClaims(subject is null, iat is null, exp is null));
         }
 
         if (kind == RevocationListKind.StatusList)
@@ -150,6 +151,14 @@ internal static class MsoRevocationListClaims
 
         reader.ReadEndMap();
         return identifiers ?? throw new MsoRevocationListToken.InvalidListException("The identifier list claim carries no identifiers map.");
+    }
+
+    private static string LacksClaims(bool sub, bool iat, bool exp)
+    {
+        var missing = new[] { sub ? "sub" : null, iat ? "iat" : null, exp ? "exp" : null }.OfType<string>().ToArray();
+        return missing.Length == 1
+            ? $"The MSO revocation list lacks the required {missing[0]} claim."
+            : $"The MSO revocation list lacks the required {string.Join(", ", missing[..^1])} and {missing[^1]} claims.";
     }
 
     private static DateTimeOffset? NotBefore(long? nbf) => nbf is { } seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
