@@ -68,22 +68,22 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Trust": "[0.20.5, )"
+          "Tessio.Verifier.Trust": "[0.28.0, )"
         }
       },
       "tessio.verifier.core.mdoc": {
         "type": "Project",
         "dependencies": {
           "System.Security.Cryptography.Cose": "[10.0.13, )",
-          "Tessio.Verifier.Core": "[0.20.5, )"
+          "Tessio.Verifier.Core": "[0.28.0, )"
         }
       },
       "tessio.verifier.openid4vp": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Core": "[0.20.5, )",
-          "Tessio.Verifier.Trust": "[0.20.5, )"
+          "Tessio.Verifier.Core": "[0.28.0, )",
+          "Tessio.Verifier.Trust": "[0.28.0, )"
         }
       },
       "tessio.verifier.trust": {
@@ -158,8 +158,8 @@
       },
       "System.Formats.Cbor": {
         "type": "Transitive",
-        "resolved": "10.0.13",
-        "contentHash": "WdxppUxfamltxOsieYg3gJCJW+lB/udiWrya4UCUg0DjTr/w07E4XoivqS35xoM5kVfMyyXEkRgPBRb24H+fWA=="
+        "resolved": "10.0.14",
+        "contentHash": "eHnlBHHk6ft/5TsuZPtz9xgxKFIILf3nA+yKVZaKmJ7GCHpz8nd4cjnMys5NQF3PvBpWcb0u01LNR2jX9jrRFw=="
       },
       "System.Security.Cryptography.Cose": {
         "type": "Transitive",
@@ -174,23 +174,23 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Trust": "[0.20.5, )"
+          "Tessio.Verifier.Trust": "[0.28.0, )"
         }
       },
       "tessio.verifier.core.mdoc": {
         "type": "Project",
         "dependencies": {
-          "System.Formats.Cbor": "[10.0.13, )",
+          "System.Formats.Cbor": "[10.0.14, )",
           "System.Security.Cryptography.Cose": "[10.0.13, )",
-          "Tessio.Verifier.Core": "[0.20.5, )"
+          "Tessio.Verifier.Core": "[0.28.0, )"
         }
       },
       "tessio.verifier.openid4vp": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Core": "[0.20.5, )",
-          "Tessio.Verifier.Trust": "[0.20.5, )"
+          "Tessio.Verifier.Core": "[0.28.0, )",
+          "Tessio.Verifier.Trust": "[0.28.0, )"
         }
       },
       "tessio.verifier.trust": {
