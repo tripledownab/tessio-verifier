@@ -41,7 +41,13 @@ public class TrustSeamFailureTests
     [Fact]
     public async Task X5cRoute_WithTheTrustSourceDown_FailsClosed_AndKeepsItsOtherErrors()
     {
-        using var builder = new TestCredentialBuilder { KbNonce = "wrong-nonce" };
+        // Its other errors are the ones read from the credential alone: with trust unresolved, its key binding
+        // is not checked, as for any issuer not trusted.
+        using var builder = new TestCredentialBuilder
+        {
+            Exp = DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeSeconds(),
+            KbNonce = "wrong-nonce",
+        };
         builder.UseCertificate();
 
         var result = await new SdJwtVcVerifier(new FailingTrustListResolver())
@@ -49,7 +55,8 @@ public class TrustSeamFailureTests
 
         var codes = result.Errors.Select(e => e.Code).ToList();
         Assert.Contains("issuer_trust_unresolvable", codes);
-        Assert.Contains("nonce_mismatch", codes);
+        Assert.Contains("credential_expired", codes);
+        Assert.DoesNotContain("nonce_mismatch", codes);
         Assert.DoesNotContain("issuer_untrusted", codes);
         Assert.False(result.IsValid);
     }

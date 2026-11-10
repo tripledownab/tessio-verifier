@@ -14,9 +14,12 @@ namespace Tessio.Verifier.Core;
 /// <remarks>
 /// Structural violations (malformed credential, failed signature, RFC 9901 MUST-reject rules) yield a
 /// single-error invalid result; policy failures (expiry, nonce/audience, trust, vct) are accumulated
-/// so callers see every problem at once. Nothing the credential names is fetched for an untrusted
-/// issuer: its status list is never requested, and on the metadata route trust is decided before the key
-/// is, so that credential fails with the trust error alone. All cryptography is delegated to
+/// so callers see every problem at once. For an untrusted issuer the credential's own statements go no
+/// further than its issuer signature: its key binding is not checked, so its holder key is never built,
+/// and its status list is never requested. On the metadata route trust is decided before the key is
+/// fetched, so that credential fails with the trust error alone; on the X.509 route the signature is
+/// checked against the chain the credential carries or names, since that chain is what trust is judged
+/// on. All cryptography is delegated to
 /// Microsoft.IdentityModel and <c>System.Security.Cryptography</c> — nothing custom.
 /// </remarks>
 public sealed class SdJwtVcVerifier : ICredentialVerifier
@@ -160,7 +163,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         // 6. On the metadata route, issuer trust BEFORE the key is fetched. The key lives on the host
         // the credential names, so only an issuer the deployment trusts has it requested. The seam is
         // asked with iss and an empty chain, which it can answer from its own configuration. On the x5c
-        // route the key is already in hand, so trust is asked below, after the checks that need no fetch.
+        // route the key is already in hand, so trust is asked below, before key binding.
         // An x5u is fetched below before trust is known, because trust on the X.509 route is judged on the
         // chain it returns. Its fetch has the same bounds as every other, and the same address check on the
         // default client.
@@ -212,19 +215,27 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         var vctIsPlain = payload.ContainsKey("vct");
         var processed = DisclosureProcessor.Process(payload, presentation.Disclosures);
 
-        // 9. Policy checks, accumulated so the caller sees every failure at once.
+        // 9. Policy checks, accumulated so the caller sees every failure at once. One reading of the clock for
+        // all of them, taken before the trust seam, so however long the seam takes to answer, the credential's
+        // validity and the KB-JWT's freshness are judged at the moment the presentation arrived.
+        var now = _clock.GetUtcNow();
         var errors = new List<VerificationError>();
         var credentialType = ReadVct(processed);
         CheckVct(credentialType, vctIsPlain, context, errors);
-        CheckTimeClaims(processed, errors);
-        await CheckKeyBindingAsync(presentation, processed, context, transactionData, errors, ct).ConfigureAwait(false);
+        CheckTimeClaims(processed, now, errors);
 
-        // Issuer trust on the x5c route: after every check that needs nothing but the credential, and before
-        // the status list, which is fetched only for a trusted credential that passed them all.
+        // Issuer trust on the x5c route: before key binding and the status list, which both act on what the
+        // credential names (its holder key, its status uri). An untrusted credential binds nothing, so its
+        // key binding is not checked, and its holder key is never built.
         if (trust is null)
         {
             (trust, trustFailure) = await TrustSeam.ResolveAsync(
                 _trustListResolver, resolution.Issuer, resolution.CertificateChain, ct).ConfigureAwait(false);
+        }
+
+        if (trust.Trusted)
+        {
+            await CheckKeyBindingAsync(presentation, processed, context, transactionData, now, errors, ct).ConfigureAwait(false);
         }
 
         var issuerInfo = IssuerInfoFrom(resolution, trust);
@@ -348,10 +359,8 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
             ? $"'{accepted[0]}'"
             : $"one of {string.Join(", ", accepted.Select(static value => $"'{value}'"))}";
 
-    private void CheckTimeClaims(JsonObject processed, List<VerificationError> errors)
+    private void CheckTimeClaims(JsonObject processed, DateTimeOffset now, List<VerificationError> errors)
     {
-        var now = _clock.GetUtcNow();
-
         if (ReadUnixTime(processed, "exp", errors) is { } exp && now - _options.ClockSkew >= exp)
         {
             errors.Add(new VerificationError { Code = ErrorCodes.CredentialExpired, Message = $"The credential expired at {exp:O}." });
@@ -368,6 +377,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
         JsonObject processed,
         VerificationContext context,
         TransactionDataExpectation? transactionData,
+        DateTimeOffset now,
         List<VerificationError> errors,
         CancellationToken ct)
     {
@@ -424,7 +434,7 @@ public sealed class SdJwtVcVerifier : ICredentialVerifier
 
         errors.AddRange(await KeyBindingVerifier.VerifyAsync(
             presentation.KbJwt, holderKey, context, presentation.PresentationWithoutKbJwt,
-            _clock.GetUtcNow(), _options.MaxKeyBindingAge, _options.ClockSkew, ct, transactionData).ConfigureAwait(false));
+            now, _options.MaxKeyBindingAge, _options.ClockSkew, ct, transactionData).ConfigureAwait(false));
     }
 
     private static Dictionary<string, object> ExtractClaims(JsonObject processed)

@@ -92,10 +92,10 @@ public class SdJwtHostileJsonTests
         using var holder = System.Security.Cryptography.RSA.Create(2048);
         using var other = System.Security.Cryptography.RSA.Create(2048);
 
+        // From a trusted issuer: an untrusted credential's key binding is not checked, so its holder key never
+        // reaches a signature check at all.
         using var first = new TestCredentialBuilder { HolderRsa = other, RewritePayloadJson = HolderJwk(other, holder, "X5C") };
-        using var firstCertificate = first.UseCertificate();
-        await new SdJwtVcVerifier(new FakeTrustListResolver(trusted: false), httpClient: new HttpClient(new FakeHttpHandler()))
-            .VerifyAsync(new PresentedCredential { Format = "dc+sd-jwt", RawValue = first.Build() }, Context(), null);
+        await VerifyAsync(first);
 
         using var second = new TestCredentialBuilder { HolderRsa = other, RewritePayloadJson = HolderJwk(other, holder, certificateMember: null) };
         var result = await VerifyAsync(second);

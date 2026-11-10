@@ -281,6 +281,26 @@ public sealed class MdocVerifierTests : IDisposable
     }
 
     [Fact]
+    public async Task AnUntrustedDocumentSigner_HasItsDeviceAuthNotChecked_ATrustedOneDoes()
+    {
+        // The device key comes from the MSO, so an untrusted Document Signer's MSO binds nothing: its device
+        // authentication is not checked, and the device key is not used. The same broken device signature
+        // under a trusted signer is refused for it.
+        using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var anotherIssuer = new MdocTestBuilder();
+        _builder.DeviceSignerOverride = other;
+        var untrusted = new MdocVerifier(new StaticTrustListResolver(
+            [_builder.DsCertificate.Subject], source: "mdoc-test", trustAnchors: [anotherIssuer.IacaCertificate]));
+
+        var refused = await untrusted.VerifyAsync(Credential(_builder), Context());
+        var trusted = await VerifierFor(_builder).VerifyAsync(Credential(_builder), Context());
+
+        Assert.Contains(refused.Errors, e => e.Code == MdocErrorCodes.IssuerUntrusted);
+        Assert.DoesNotContain(refused.Errors, e => e.Code == MdocErrorCodes.DeviceAuthInvalid);
+        Assert.Contains(trusted.Errors, e => e.Code == MdocErrorCodes.DeviceAuthInvalid);
+    }
+
+    [Fact]
     public async Task WrongSignerKey_FailsSignatureCheck()
     {
         using var wrongKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -373,12 +393,18 @@ public sealed class MdocVerifierTests : IDisposable
     [InlineData(true)]
     public async Task TrustSourceDown_FailsClosed_WithoutThrowing(bool notReady)
     {
+        // A broken device signature too: with trust unresolved, device authentication is not checked, as for
+        // any Document Signer not trusted.
+        using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        _builder.DeviceSignerOverride = other;
+
         var result = await new MdocVerifier(new ThrowingResolver(notReady)).VerifyAsync(Credential(_builder), Context());
 
         Assert.False(result.IsValid);
         var error = Assert.Single(result.Errors, e => e.Code == MdocErrorCodes.IssuerTrustUnresolvable);
         Assert.Contains("trust source unreachable", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(result.Errors, e => e.Code == MdocErrorCodes.IssuerUntrusted);
+        Assert.DoesNotContain(result.Errors, e => e.Code == MdocErrorCodes.DeviceAuthInvalid);
     }
 
     /// <summary>
