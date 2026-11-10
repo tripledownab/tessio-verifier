@@ -12,7 +12,9 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// <remarks>
 /// Device authentication verifies the holder's signature over the OpenID4VP session transcript
 /// (Annex B.2.6.1), built from the context's client_id, nonce, encryption key thumbprint and
-/// response_uri. Required by default (<see cref="MdocVerifierOptions.RequireDeviceAuth"/>).
+/// response_uri. Required by default (<see cref="MdocVerifierOptions.RequireDeviceAuth"/>). It is checked
+/// only for a Document Signer the trust seam accepts: the device key comes from the MSO, so an untrusted
+/// one binds nothing and its device key is not used.
 /// <para>
 /// An MSO that carries a <c>status</c> element has its revocation checked, through a status list or an
 /// identifier list, unless <see cref="MdocVerifierOptions.CheckStatus"/> is off.
@@ -164,11 +166,17 @@ public sealed partial class MdocVerifier
         }
 
         errors.AddRange(DigestVerifier.Verify(document, mso));
-        errors.AddRange(VerifyDeviceAuth(document, mso, context));
 
+        // Trust before device authentication, which builds and uses the holder's device key from the MSO. An
+        // untrusted Document Signer's MSO binds nothing, so its device key is not used and its device
+        // authentication is not checked, as for the SD-JWT VC holder key and the zero knowledge path.
         var (trust, trustFailure) = await TrustSeam.ResolveAsync(
             _trustListResolver, resolution.Issuer, resolution.CertificateChain, ct).ConfigureAwait(false);
-        if (!trust.Trusted)
+        if (trust.Trusted)
+        {
+            errors.AddRange(VerifyDeviceAuth(document, mso, context));
+        }
+        else
         {
             errors.Add(trustFailure ?? TrustSeam.Refusal(trust, "The Document Signer does not chain to a trusted IACA root."));
         }

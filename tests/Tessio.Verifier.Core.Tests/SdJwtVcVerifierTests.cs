@@ -414,13 +414,92 @@ public class SdJwtVcVerifierTests
         };
         builder.UseCertificate();
 
-        var result = await new SdJwtVcVerifier(new FakeTrustListResolver(trusted: false))
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver())
             .VerifyAsync(Credential(builder.Build()), Context());
 
         var codes = result.Errors.Select(e => e.Code).ToList();
         Assert.Contains("credential_expired", codes);
         Assert.Contains("nonce_mismatch", codes);
+    }
+
+    /// <remarks>
+    /// An untrusted issuer's credential binds nothing, so its key binding is not checked and its holder key
+    /// is never built; the checks that read only the credential still accumulate beside the trust error.
+    /// </remarks>
+    [Fact]
+    public async Task UntrustedIssuer_OnTheX5cRoute_ReportsItsOtherFailures_ButNotItsKeyBinding()
+    {
+        using var builder = new TestCredentialBuilder
+        {
+            Exp = DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeSeconds(),
+            KbNonce = "wrong-nonce",
+        };
+        builder.UseCertificate();
+
+        var result = await new SdJwtVcVerifier(new FakeTrustListResolver(trusted: false))
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        var codes = result.Errors.Select(e => e.Code).ToList();
+        Assert.Contains("credential_expired", codes);
         Assert.Contains("issuer_untrusted", codes);
+        Assert.DoesNotContain("nonce_mismatch", codes);
+    }
+
+    [Fact]
+    public async Task ASlowTrustSource_DoesNotAgeTheKeyBinding()
+    {
+        // The KB-JWT's freshness is judged at the moment the presentation arrived, not after the trust seam
+        // answered: a seam that takes longer than the freshness window must not make a fresh KB-JWT stale.
+        var arrived = DateTimeOffset.UtcNow;
+        var clock = new MovableClock(arrived);
+        using var builder = new TestCredentialBuilder { KbIatOverride = arrived.AddMinutes(-2) };
+        builder.UseCertificate();
+
+        var result = await new SdJwtVcVerifier(new SlowTrustListResolver(clock, TimeSpan.FromMinutes(10)), clock: clock)
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    }
+
+    private sealed class MovableClock(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = now;
+
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    /// <summary>A trusting seam that takes <paramref name="delay"/> to answer, on the clock the verifier reads.</summary>
+    private sealed class SlowTrustListResolver(MovableClock clock, TimeSpan delay) : ITrustListResolver
+    {
+        public Task<IssuerTrustStatus> ResolveAsync(string issuer, ReadOnlyMemory<byte>[] x5c, CancellationToken ct = default)
+        {
+            clock.Now += delay;
+            return new FakeTrustListResolver().ResolveAsync(issuer, x5c, ct);
+        }
+    }
+
+    [Fact]
+    public async Task UntrustedIssuer_OnTheX5cRoute_DoesNotReadItsHolderKey()
+    {
+        // A cnf.jwk that is no JWK at all would be confirmation_key_missing if the holder key were read.
+        using var builder = new TestCredentialBuilder
+        {
+            RewritePayloadJson = json =>
+            {
+                var payload = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+                payload["cnf"] = new System.Text.Json.Nodes.JsonObject { ["jwk"] = new System.Text.Json.Nodes.JsonObject { ["kty"] = "none" } };
+                return payload.ToJsonString();
+            },
+        };
+        builder.UseCertificate();
+
+        var untrusted = await new SdJwtVcVerifier(new FakeTrustListResolver(trusted: false))
+            .VerifyAsync(Credential(builder.Build()), Context());
+        var trusted = await new SdJwtVcVerifier(new FakeTrustListResolver())
+            .VerifyAsync(Credential(builder.Build()), Context());
+
+        Assert.Equal(["issuer_untrusted"], untrusted.Errors.Select(e => e.Code));
+        Assert.Contains(trusted.Errors, e => e.Code == "confirmation_key_missing");
     }
 
     // ---- Trust before any fetch ---------------------------------------------------------------
@@ -531,7 +610,7 @@ public class SdJwtVcVerifierTests
     [Fact]
     public async Task UntrustedIssuer_OnTheX5cRoute_DoesNotFetchTheStatusList()
     {
-        using var builder = new TestCredentialBuilder { KbNonce = "wrong-nonce" };
+        using var builder = new TestCredentialBuilder { Exp = DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeSeconds() };
         builder.UseCertificate();
         builder.Status = (0, "https://issuer.example/statuslists/1");
         var http = new FakeHttpHandler();
@@ -542,7 +621,7 @@ public class SdJwtVcVerifierTests
         Assert.Empty(http.Requested);
         var codes = result.Errors.Select(e => e.Code).ToList();
         Assert.Contains("issuer_untrusted", codes);
-        Assert.Contains("nonce_mismatch", codes);
+        Assert.Contains("credential_expired", codes);
         Assert.DoesNotContain(codes, code => code.StartsWith("status_", StringComparison.Ordinal));
     }
 
