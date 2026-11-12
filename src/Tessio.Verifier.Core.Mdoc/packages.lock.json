@@ -4,17 +4,17 @@
     "net10.0": {
       "System.Formats.Cbor": {
         "type": "Direct",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "eHnlBHHk6ft/5TsuZPtz9xgxKFIILf3nA+yKVZaKmJ7GCHpz8nd4cjnMys5NQF3PvBpWcb0u01LNR2jX9jrRFw=="
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "8EBB814RXFnm/Klsuil8A6r+n6zvz4L/rQ1ROamxDZDt8lIjUl0tbSGlsYzea1jr/4V3Q6TNQbWfU/C8tjwPDQ=="
       },
       "System.Security.Cryptography.Cose": {
         "type": "Direct",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "lYxCFQ7udvcSID67wRHcr4k2XspfmzRejkhjuRc4NixnIdqcO4PpVJg3nGzm/wCvnoo8eBaGjuBATcQykFtCyw==",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "jLvMZbs5Ki8Yt9tZ+9xoSeG1LLL3qDVnM1puyyRYAyu9qpEyojy6DYBtpTDI+ymcCmTD0/5JyCF6Q51DztVu2w==",
         "dependencies": {
-          "System.Formats.Cbor": "10.0.14"
+          "System.Formats.Cbor": "10.0.15"
         }
       },
       "Microsoft.Bcl.Cryptography": {
@@ -70,7 +70,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Trust": "[0.28.4, )"
+          "Tessio.Verifier.Trust": "[0.30.2, )"
         }
       },
       "tessio.verifier.trust": {
@@ -80,26 +80,26 @@
     "net8.0": {
       "System.Formats.Cbor": {
         "type": "Direct",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "eHnlBHHk6ft/5TsuZPtz9xgxKFIILf3nA+yKVZaKmJ7GCHpz8nd4cjnMys5NQF3PvBpWcb0u01LNR2jX9jrRFw=="
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "8EBB814RXFnm/Klsuil8A6r+n6zvz4L/rQ1ROamxDZDt8lIjUl0tbSGlsYzea1jr/4V3Q6TNQbWfU/C8tjwPDQ=="
       },
       "System.Security.Cryptography.Cose": {
         "type": "Direct",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "lYxCFQ7udvcSID67wRHcr4k2XspfmzRejkhjuRc4NixnIdqcO4PpVJg3nGzm/wCvnoo8eBaGjuBATcQykFtCyw==",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "jLvMZbs5Ki8Yt9tZ+9xoSeG1LLL3qDVnM1puyyRYAyu9qpEyojy6DYBtpTDI+ymcCmTD0/5JyCF6Q51DztVu2w==",
         "dependencies": {
-          "Microsoft.Bcl.Cryptography": "10.0.14",
-          "System.Formats.Cbor": "10.0.14"
+          "Microsoft.Bcl.Cryptography": "10.0.15",
+          "System.Formats.Cbor": "10.0.15"
         }
       },
       "Microsoft.Bcl.Cryptography": {
         "type": "Transitive",
-        "resolved": "10.0.14",
-        "contentHash": "FiQloJinjQXRpkeHgihmbKnPD8DxJQTmwro5Qa5yHxNULxrIPy9HCEOx1U8F5AwL5WVkAccSI0veFM/iYrttUg==",
+        "resolved": "10.0.15",
+        "contentHash": "hJw6ERV3MBPjI/nhGPAUQMLBhc0xu2UPxcUuKPgrhsGiV0uKEcZknXICvo14PL+v37U9SdZFCUYo19qbkvLg3A==",
         "dependencies": {
-          "System.Formats.Asn1": "10.0.14"
+          "System.Formats.Asn1": "10.0.15"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
@@ -148,14 +148,14 @@
       },
       "System.Formats.Asn1": {
         "type": "Transitive",
-        "resolved": "10.0.14",
-        "contentHash": "PpCyuuHlcc9Xbs/0lfGZGr3ohlYpyhj7/dA+K3DZe7NSY9WxuLXXCitUq5cVah6Ujgi4Bp8gI7x46fFy6FiTUw=="
+        "resolved": "10.0.15",
+        "contentHash": "v74r4sIPf6jj80nBIISv4duxjrEvuyAOPQFHb7EePO7elvjfjGsdMpG8lbTm1nG+osyvXLg80A9qsygaTfsjrQ=="
       },
       "tessio.verifier.core": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Trust": "[0.28.4, )"
+          "Tessio.Verifier.Trust": "[0.30.2, )"
         }
       },
       "tessio.verifier.trust": {
