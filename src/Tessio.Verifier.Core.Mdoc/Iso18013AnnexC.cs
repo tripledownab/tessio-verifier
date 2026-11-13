@@ -292,8 +292,6 @@ public static class Iso18013AnnexC
     /// The transcript is the plain one, whose second element is null. A wallet reached over the
     /// Digital Credentials API was observed on 2026-08-27 to derive its keys and sign device
     /// authentication over exactly that, and to produce an undecryptable response otherwise.
-    /// Some implementations instead derive over a variant carrying the EncryptionParameters, which
-    /// this does NOT use; the observed exchange is what governs here.
     /// </remarks>
     /// <param name="encryptedResponse">The wallet's response, decoded from base64url.</param>
     /// <param name="responseKeyPkcs8">The stored <see cref="Iso18013AnnexCRequest.ResponseKeyPkcs8"/>.</param>
