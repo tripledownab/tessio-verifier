@@ -66,10 +66,9 @@ public static class SessionTranscriptBuilder
     /// <param name="encryptionInfo">The encoded EncryptionInfo, byte for byte as sent.</param>
     /// <param name="origin">The request's Origin, without the <c>origin:</c> prefix.</param>
     /// <remarks>
-    /// The second element is null. Some implementations instead place the request's
-    /// EncryptionParameters there, tag-24 wrapped, and derive the response's HPKE keys over that;
-    /// a wallet reached over the Digital Credentials API was observed on 2026-08-27 using the form
-    /// built here, for both the response encryption and the device signature.
+    /// The second element is null. A wallet reached over the Digital Credentials API was observed
+    /// on 2026-08-27 using the form built here, for both the response encryption and the device
+    /// signature.
     /// </remarks>
     // SPEC (shape): the profile's published request example prints
     //   SessionTranscript = [null, null, ["dcapi", h'...']]
