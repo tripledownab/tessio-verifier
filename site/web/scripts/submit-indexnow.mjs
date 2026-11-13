@@ -3,8 +3,10 @@
  * Submit this site's sitemap URLs to IndexNow, which feeds Bing, Yandex, Seznam and Naver.
  * Google does not use IndexNow: it is covered by Search Console and the sitemap in robots.txt.
  *
- * Runs after a successful Pages deploy, not as a postbuild step, because it reads the LIVE
- * sitemap. Submitting before the deploy lands would announce the previous build's URLs.
+ * Nothing in this repository calls it now that the site is served from its image rather than
+ * GitHub Pages. It reads the LIVE sitemap, so whatever runs it has to run once a new image is
+ * actually serving, not when the image is built: submitting earlier would announce the previous
+ * build's URLs.
  *
  * Never fails the caller. A search-engine ping is not worth breaking a deploy over, so every
  * failure is a warning and the exit code stays 0.
