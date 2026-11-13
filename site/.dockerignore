@@ -1,0 +1,5 @@
+# What belongs here: keeping the site image's build context to the two things its Dockerfile copies.
+# The context is site/, which also holds the Astro sources, the DocFX project and node_modules.
+*
+!Caddyfile.web
+!web/dist

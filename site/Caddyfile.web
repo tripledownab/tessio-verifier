@@ -1,0 +1,25 @@
+# What belongs here: how a URL maps to a built file inside the site image, and the response headers the
+# site was published with before it was served from a container. TLS, the host name and security
+# headers belong to the proxy in front of the container.
+:80 {
+	encode zstd gzip
+	root * /srv
+
+	# Ten minutes of caching, as the previous host sent, so a new release is visible soon after it is
+	# served. The CORS header keeps any cross-origin reader of these public files working.
+	header {
+		Cache-Control "max-age=600"
+		Access-Control-Allow-Origin "*"
+	}
+
+	# A page is reachable with or without .html, as the previous host allowed. A directory is served
+	# from its index.html. Requested without its trailing slash, it is redirected to the slash.
+	try_files {path} {path}.html
+	file_server
+
+	# The site has no 404 page of its own, so a missing page says so in words rather than with an
+	# empty body.
+	handle_errors {
+		respond "{err.status_code} {err.status_text}"
+	}
+}

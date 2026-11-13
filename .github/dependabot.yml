@@ -31,6 +31,16 @@ updates:
           - minor
           - patch
 
+  # The site image's base. Its FROM is pinned as a full version tag plus digest, so only a reviewed
+  # merge moves it; this proposes newer patch and minor releases. A major is a migration of its own.
+  - package-ecosystem: docker
+    directory: /site
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
   # Marketing site (Astro).
   - package-ecosystem: npm
     directory: /site/web
