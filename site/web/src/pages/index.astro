@@ -1,5 +1,14 @@
 ---
+import { execSync } from 'node:child_process';
 import Base from '../layouts/Base.astro';
+
+// The released version, read at build time from the newest v* tag reachable from the commit being
+// built, leaving out prereleases (a hyphen, as in v0.2.0-preview.1), which the install command
+// below would not fetch. Typing it in by hand let this page say 0.9.1 for many releases. A build
+// without the tags (a shallow clone) fails here rather than publishing a guess.
+const released = execSync("git describe --tags --abbrev=0 --match 'v*' --exclude '*-*'", {
+  encoding: 'utf8',
+}).trim();
 
 const installCmd = 'dotnet add package Tessio.Verifier.AspNetCore';
 
@@ -92,7 +101,7 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
           class="px-3 py-1.5 rounded-md text-white text-xs font-medium"
           style="background-color: var(--color-accent);"
         >
-          v0.9.1 on NuGet
+          {released} on NuGet
         </a>
       </nav>
     </div>
@@ -217,7 +226,7 @@ const repoUrl = 'https://github.com/tripledownab/tessio-verifier';
         <p class="text-xs font-medium uppercase tracking-widest mb-3" style="color: var(--color-accent);">
           Status
         </p>
-        <h3 class="text-2xl font-bold tracking-tight mb-3">v0.9.1 is on NuGet, and it passes the OIDF HAIP plans in both formats</h3>
+        <h3 class="text-2xl font-bold tracking-tight mb-3">{released} is on NuGet, and it passes the OIDF HAIP plans in both formats</h3>
         <p class="text-base leading-relaxed mb-4" style="color: var(--color-text-muted);">
           Install the package and the quickstart above runs end to end. Both OpenID Foundation HAIP
           verifier plans pass on this release, SD-JWT VC and ISO mdoc, run against the Foundation's own

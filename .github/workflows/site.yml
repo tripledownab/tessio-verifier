@@ -10,6 +10,11 @@ on:
       - 'src/**'
       - 'docs/**'
       - '.github/workflows/site.yml'
+  # A finished release rebuilds main, because the landing page names the newest release tag. On the
+  # release's completion rather than its tag push, so this rebuild waits until the package is pushed.
+  workflow_run:
+    workflows: [release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -17,17 +22,35 @@ permissions:
   pages: write
   id-token: write
 
-# One deploy pipeline at a time; a newer push supersedes a stale in-flight build
-# (actions/deploy-pages switches atomically, so cancellation cannot half-deploy).
+# One run per branch at a time, queued rather than cancelled. Every run on main publishes the image's
+# latest tag. Queued, the run a finished release starts cannot be stopped by an earlier push to main,
+# and it cannot be overtaken by one either. Only the newest waiting run is kept. Per branch, so a
+# dispatch on another branch cannot replace a waiting run on main. A failed release's run builds
+# nothing, so it gets a group of its own rather than replacing a waiting run that would. Re-running
+# an older run rebuilds its older commit and republishes that as latest.
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: site-${{ github.ref }}${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && '-skipped' || '' }}
+  cancel-in-progress: false
 
 jobs:
   build:
+    # A release that failed publishes nothing new, so there is nothing to rebuild for.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    # packages: write for the site image below. Granted here rather than for the whole workflow, so the
+    # deploy job does not get it.
+    permissions:
+      contents: read
+      pages: write
+      packages: write
     steps:
+      # fetch-depth: 0 because the landing page reads the newest release from the v* tags. A
+      # workflow_run event checks out main, the default branch. No persisted git credential, since the
+      # builds below run third-party code.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up .NET (8 + 10 — global.json pins driver)
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -81,6 +104,20 @@ jobs:
       - name: Add the DocFX pages to the sitemap
         run: node scripts/add-docs-to-sitemap.mjs dist https://verifier.tessio.eu
         working-directory: site/web
+
+      # The same output as an image that serves itself, for hosting it outside GitHub Pages. Pushed from
+      # main only, never from another branch's dispatch. Besides latest, each run gets a tag of its own:
+      # two runs on one commit can name different releases, so the commit alone does not pin content.
+      - name: Publish the site image
+        if: github.ref == 'refs/heads/main'
+        env:
+          IMAGE: ghcr.io/tripledownab/tessio-verifier-site
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker build -t "$IMAGE:latest" -t "$IMAGE:$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" site
+          docker push --all-tags "$IMAGE"
 
       - name: Configure Pages (auto-enable if not already)
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
