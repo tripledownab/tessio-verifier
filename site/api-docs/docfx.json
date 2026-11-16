@@ -42,7 +42,7 @@
       "// _appTitle": "The SITE name, not a page description. DocFX renders <title>{page} | {_appTitle}</title>, so setting this to what the docs index page is already called produced 'Tessio.Verifier API reference | Tessio.Verifier API reference' on that one page.",
       "_appName": "Tessio.Verifier",
       "_appTitle": "Tessio.Verifier",
-      "_appFooter": "Apache-2.0 · Triple Down AB · <a href=\"/\">tessio.verifier home</a>",
+      "_appFooter": "Apache-2.0 · Triple Down AB · <a href=\"/\">tessio.verifier home</a> · <a href=\"https://tessio.eu/privacy/\">Privacy</a>",
       "_enableSearch": true,
       "_disableContribution": true,
       "_appLogoPath": "logo.svg",
