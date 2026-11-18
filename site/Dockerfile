@@ -4,6 +4,6 @@
 # name are the job of whatever proxy fronts the container. Build context is site/.
 # web/public/6859f82b21abec5c7b846a95f86d0d1a.txt is the site's IndexNow key, served as is: search
 # engines fetch it to verify the pings sent when the site changes. Keep it, though nothing here reads it.
-FROM caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+FROM caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
 COPY Caddyfile.web /etc/caddy/Caddyfile
 COPY web/dist /srv
