@@ -1,0 +1,57 @@
+name: dependabot-waits
+
+# Fails when a Dependabot update has waited unmerged more than a week, counting any pull request it
+# replaced, and tells a person by assigning the open one and mentioning them on it.
+# tools/dependabot-waits/check.sh says why and how. Several repositories carry this file, the same in each.
+#
+# A workflow of its own, on a schedule, so it runs whether or not anything merged, and builds nothing.
+
+on:
+  schedule:
+    # Tuesday 05:41 UTC: after a weekly Dependabot run on Monday has opened or refreshed its pull
+    # requests, and off the top of the hour, when GitHub's scheduler delays or drops runs.
+    - cron: '41 5 * * 2'
+  workflow_dispatch:
+  # A change to the check is tested on its pull request, and dry-runs against the real list.
+  pull_request:
+    paths:
+      - 'tools/dependabot-waits/**'
+      - '.github/workflows/dependabot-waits.yml'
+
+permissions:
+  contents: read
+  # Assigning and commenting on a pull request.
+  pull-requests: write
+  issues: write
+
+# Queued rather than replaced: with the default, a pending scheduled run is cancelled when another run of
+# this workflow arrives, and the next try is a week later.
+concurrency:
+  group: dependabot-waits
+  queue: max
+
+jobs:
+  check:
+    # GitHub's own runner in every repository, never a variable: in a public repository a pull request
+    # from a fork runs this job, and it must not reach a self-hosted machine. It is one short job a week.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Pinned by commit, as public repositories here pin every action; the token is not kept on disk,
+      # because the steps below pass it to gh themselves.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Test the check
+        if: github.event_name == 'pull_request'
+        run: tools/dependabot-waits/test.sh
+      - name: Check for a Dependabot update left waiting
+        # On a pull request it reports and does not block: the open pull requests are the repository's
+        # state, not the change under test, and the tests above are what the change must pass.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          # Acts only from main. Anywhere else it prints what it would do.
+          MODE: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'report' || 'dry-run' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: tools/dependabot-waits/check.sh
