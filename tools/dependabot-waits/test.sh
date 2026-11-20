@@ -16,6 +16,8 @@ echo "gh $*" >>"$STUB_LOG"
 case "$1 $2" in
   "pr list") [ -n "${STUB_LIST_FAILS:-}" ] && exit 1; printf '%s' "$STUB_PRS" ;;
 esac
+# STUB_FAIL_ON, when set, is a pattern: any api call whose arguments match it fails.
+if [ "$1" = api ] && [ -n "${STUB_FAIL_ON:-}" ] && [[ "$*" == *$STUB_FAIL_ON* ]]; then exit 1; fi
 EOF
 chmod +x "$T/bin/gh"
 export PATH="$T/bin:$PATH" GITHUB_REPOSITORY=owner/repo STUB_LOG="$T/log"
@@ -66,15 +68,15 @@ comment() { printf 'api -X POST repos/owner/repo/issues/%s/comments -f body=@tdw
 run "no pull requests" 0 report '[]' '!api'
 run "a fresh open pull request" 0 report "[$(open 1 $D $NEW)]" '!api'
 run "exactly the limit is not too long" 0 report "[$(open 1 $D $EDGE)]" '!api'
-run "opened Monday night, flagged the Tuesday after next" 1 report "[$(open 2 $G $MONDAY)]" \
+run "opened Monday night, flagged the Tuesday after next" 0 report "[$(open 2 $G $MONDAY)]" \
     "$(comment 2) .*waited 7 days"
-run "a long wait and unassigned: assigned, commented on, fails" 1 report "[$(open 3 $G $OLD)]" \
+run "a long wait and unassigned: assigned, commented on, fails" 0 report "[$(open 3 $G $OLD)]" \
     "$(assign 3)" "$(comment 3) .*waited 18 days"
-run "a group's wait counts the pull request it replaced" 1 report \
+run "a group's wait counts the pull request it replaced" 0 report \
     "[$(open 4 $G2 $NEW),$(closed 3 $G $OLD $NEW)]" "$(comment 4) .*waited 18 days"
-run "a dependency's wait counts the version it replaced" 1 report \
+run "a dependency's wait counts the version it replaced" 0 report \
     "[$(open 8 $D2 $NEW_10S),$(closed 7 $D $OLD $NEW)]" "$(comment 8) .*waited 18 days"
-run "a replacement chain counts back to its first" 1 report \
+run "a replacement chain counts back to its first" 0 report \
     "[$(open 9 $D2 $NEW),$(closed 8 $D $MID $NEW),$(closed 7 $D $OLD $MID)]" "$(comment 9) .*waited 18 days"
 run "a pull request a person closed ends the wait" 0 report \
     "[$(open 8 $D2 $NEW),$(closed 7 $D $OLD $EDGE)]" '!api'
@@ -85,27 +87,27 @@ run "a merge restarts the wait for the replacements after it" 0 report \
     "[$(open 5 $G2 $NEW),$(closed 4 $G $EDGE $NEW),$(merged 3 $G $OLD $EDGE)]" "!api"
 run "one dependency's old wait does not age another's" 0 report \
     "[$(open 8 $D $NEW),$(closed 3 $G $OLD $NEW)]" '!api'
-run "another dependency's merge does not end a wait" 1 report \
+run "another dependency's merge does not end a wait" 0 report \
     "[$(open 8 $D $OLD),$(merged 3 $G $OLD $MID)]" "$(comment 8)" '!issues/3/'
 run "a long wait with nothing open has nothing to comment on" 0 report "[$(closed 3 $G $OLD $MID)]" '!api'
-run "already assigned: commented on only" 1 report "[$(open 3 $G $OLD '{"login":"tdwd"}')]" \
+run "already assigned: commented on only" 0 report "[$(open 3 $G $OLD '{"login":"tdwd"}')]" \
     '!issues/3/assignees' "$(comment 3)"
-run "every waiting dependency is commented on" 1 report \
+run "every waiting dependency is commented on" 0 report \
     "[$(open 7 $G $OLD),$(open 8 $D $OLD)]" "$(comment 7)" "$(comment 8)"
 run "multi-package pull requests are never chained" 0 report \
     "[$(open 6 $M2 $NEW),$(closed 5 $M $OLD $NEW)]" '!api'
-run "a multi-package pull request's own wait is still flagged" 1 report "[$(open 6 $M $OLD)]" \
+run "a multi-package pull request's own wait is still flagged" 0 report "[$(open 6 $M $OLD)]" \
     "$(comment 6) .*waited 18 days"
-run "a v-prefixed version is one dependency" 1 report \
+run "a v-prefixed version is one dependency" 0 report \
     "[$(open 5 dependabot/docker_compose/compose/example/app-v1.33.1 $NEW),$(closed 4 dependabot/docker_compose/compose/example/app-v1.32.0 $OLD $NEW)]" \
     "$(comment 5) .*waited 18 days"
-run "a version with a tag suffix is one dependency" 1 report \
+run "a version with a tag suffix is one dependency" 0 report \
     "[$(open 5 dependabot/docker/web/server-2.11.9-alpine $NEW),$(closed 4 dependabot/docker/web/server-2.11.8-alpine $OLD $NEW)]" \
     "$(comment 5) .*waited 18 days"
-run "a group hash starting with a letter is one group" 1 report \
+run "a group hash starting with a letter is one group" 0 report \
     "[$(open 5 dependabot/github_actions/actions-e40781d787 $NEW),$(closed 4 dependabot/github_actions/actions-a298f52aab $OLD $NEW)]" \
     "$(comment 5) .*waited 18 days"
-run "a hyphen inside a dependency's name is part of it" 1 report \
+run "a hyphen inside a dependency's name is part of it" 0 report \
     "[$(open 5 dependabot/github_actions/actions/attest-build-provenance-1.4.1 $NEW),$(closed 4 dependabot/github_actions/actions/attest-build-provenance-1.4.0 $OLD $NEW)]" \
     "$(comment 5) .*waited 18 days"
 run "a digit after a hyphen inside a name is part of it" 0 report \
@@ -114,8 +116,13 @@ run "dependencies sharing a first word are separate" 0 report \
     "[$(open 5 dependabot/github_actions/actions/attest-build-provenance-1.4.1 $NEW),$(closed 4 dependabot/github_actions/actions/attest-sbom-2.0.0 $OLD $NEW)]" '!api'
 run "a dependency whose name extends another's is its own" 0 report \
     "[$(open 5 dependabot/npm_and_yarn/web/tailwindcss/vite-4.3.5 $NEW),$(closed 4 dependabot/npm_and_yarn/web/tailwindcss-4.3.5 $OLD $NEW)]" '!api'
-run "dry-run changes nothing but still fails" 1 dry-run "[$(open 3 $G $OLD)]" '!api'
+run "dry-run changes nothing" 0 dry-run "[$(open 3 $G $OLD)]" '!api'
 STUB_LIST_FAILS=1 run "a list that fails fails the run" 1 report '[]' '!api'
+STUB_FAIL_ON=/comments run "a comment that fails fails the run" 1 report "[$(open 3 $G $OLD)]" "$(assign 3)"
+STUB_FAIL_ON=/assignees run "an assignment that fails fails the run, and the comment is still made" 1 report \
+    "[$(open 3 $G $OLD)]" "$(comment 3)"
+STUB_FAIL_ON=issues/7/comments run "one failed comment does not stop the others" 1 report \
+    "[$(open 7 $G $OLD),$(open 8 $D $OLD)]" "$(comment 8)"
 
 echo "$pass passed, $fail failed"
 [ $fail = 0 ]

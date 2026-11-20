@@ -31,10 +31,14 @@
 # request replaced by a multi-package one is not followed, so that wait is under-counted.
 #
 # When a wait passes MAX_DAYS and a pull request of it is open, that pull request is assigned to
-# $ASSIGNEE and commented on with an @mention, and the run fails. A run each Tuesday flags a wait 7 to 14
-# days after it began. A failed scheduled run notifies the workflow's creator or whoever last edited its
-# cron line, not necessarily a person who reads them, and GitHub can ignore an assignment silently, so
-# the @mention is what reaches a person. The comment repeats each week until the wait ends.
+# $ASSIGNEE and commented on with an @mention, which is what reaches a person. A run each Tuesday flags a
+# wait 7 to 14 days after it began, and the comment repeats each week until the wait ends.
+#
+# THE RUN PASSES WHEN IT HAS TOLD SOMEONE, and fails only when it could not: the list could not be read,
+# or a call to assign or comment failed. A scheduled run's result lands on main's latest commit, so failing
+# for every wait painted main red in every repository with one, and its notification reaches only the
+# workflow's creator or whoever last edited its cron line. A red run therefore means the alert did not get
+# through, which is the one case nobody else would hear about.
 set -uo pipefail
 
 MAX_DAYS=7
@@ -81,16 +85,17 @@ if [ -z "$stale" ]; then
     exit 0
 fi
 
-# Fails whatever the calls below do: the wait is the finding, and a call that also failed adds its own
-# error line. Plain REST calls, which need only the token's issues or pull-requests write.
+# Plain REST calls, which need only the token's issues or pull-requests write. A wait is a warning; a call
+# that failed is an error and fails the run, once every pull request has been tried.
+failed=0
 while read -r number days assigned; do
-    echo "::error::#$number: this update has waited $days days unmerged."
+    echo "::warning::#$number: this update has waited $days days unmerged."
     [ "$MODE" = report ] || { echo "dry-run: would assign #$number to $ASSIGNEE and comment"; continue; }
     if [ "$assigned" != true ]; then
         gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$number/assignees" -f "assignees[]=$ASSIGNEE" >/dev/null \
-            || echo "::error::could not assign #$number"
+            || { echo "::error::could not assign #$number"; failed=1; }
     fi
     gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$number/comments" -f body="@$ASSIGNEE this update has waited $days days unmerged, counting any pull request this one replaced, so it is not in use yet. Merge this, or close it if it conflicts, main has moved past it or the update is not wanted, so the next Dependabot run can propose what is current.${RUN_URL:+ ([check]($RUN_URL))}" >/dev/null \
-        || echo "::error::could not comment on #$number"
+        || { echo "::error::could not comment on #$number"; failed=1; }
 done <<<"$stale"
-exit 1
+exit $failed

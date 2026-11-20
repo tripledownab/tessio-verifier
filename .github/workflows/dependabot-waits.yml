@@ -1,7 +1,8 @@
 name: dependabot-waits
 
-# Fails when a Dependabot update has waited unmerged more than a week, counting any pull request it
-# replaced, and tells a person by assigning the open one and mentioning them on it.
+# When a Dependabot update has waited unmerged more than a week, counting any pull request it replaced,
+# tells a person by assigning the open one and mentioning them on it. Passes once it has told them, and
+# fails only when it could not, because its result lands on main's latest commit.
 # tools/dependabot-waits/check.sh says why and how. Several repositories carry this file, the same in each.
 #
 # A workflow of its own, on a schedule, so it runs whether or not anything merged, and builds nothing.
