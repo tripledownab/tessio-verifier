@@ -2,7 +2,9 @@ name: dependabot-waits
 
 # When a Dependabot update has waited unmerged more than a week, counting any pull request it replaced,
 # tells a person by assigning the open one and mentioning them on it. Passes once it has told them, and
-# fails only when it could not, because its result lands on main's latest commit.
+# fails only when it could not, because its result lands on main's latest commit. Each run on main, other
+# than a pull request's, ends with an Uptime Kuma heartbeat, which is how a failed or missing run reaches a
+# person.
 # tools/dependabot-waits/check.sh says why and how. Several repositories carry this file, the same in each.
 #
 # A workflow of its own, on a schedule, so it runs whether or not anything merged, and builds nothing.
@@ -55,4 +57,7 @@ jobs:
           MODE: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'report' || 'dry-run' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # This repository's "dependabot-waits" Uptime Kuma push URL, added by hand as a repository secret.
+          # Handed over on MODE's terms, so a pull request run of this file as it stands gets an empty one.
+          DEPENDABOT_WAITS_HEARTBEAT_URL: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.DEPENDABOT_WAITS_HEARTBEAT_URL || '' }}
         run: tools/dependabot-waits/check.sh

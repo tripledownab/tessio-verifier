@@ -20,6 +20,13 @@ esac
 if [ "$1" = api ] && [ -n "${STUB_FAIL_ON:-}" ] && [[ "$*" == *$STUB_FAIL_ON* ]]; then exit 1; fi
 EOF
 chmod +x "$T/bin/gh"
+# The heartbeat's curl logs its call and fails when STUB_CURL_FAILS is set. Nothing leaves the machine.
+cat >"$T/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "curl $*" >>"$STUB_LOG"
+[ -z "${STUB_CURL_FAILS:-}" ]
+EOF
+chmod +x "$T/bin/curl"
 export PATH="$T/bin:$PATH" GITHUB_REPOSITORY=owner/repo STUB_LOG="$T/log"
 # A Tuesday at 05:41 UTC, a scheduled run's time, so the ages below are exact.
 NOW=$(date -u -d 2026-11-17T05:41:00Z +%s); export NOW
@@ -52,9 +59,15 @@ pass=0; fail=0
 run() {
     local name=$1 want=$2 mode=$3 prs=$4; shift 4
     : >"$STUB_LOG"
-    STUB_PRS=$prs MODE=$mode "$HERE/check.sh" >"$T/out" 2>&1; local got=$?
+    local url=${BEAT_URL-https://beat.test/push}
+    STUB_PRS=$prs MODE=$mode DEPENDABOT_WAITS_HEARTBEAT_URL="$url" \
+        "$HERE/check.sh" >"$T/out" 2>&1; local got=$?
     local ok=1
     [ "$got" = "$want" ] || { ok=0; echo "  exit $got, wanted $want"; }
+    # Every run, whatever else it checks: one push from a report run that has a URL, none otherwise.
+    local beats; beats=$(grep -c '^curl ' "$STUB_LOG")
+    local want_beats=0; [ "$mode" = report ] && [ -n "$url" ] && want_beats=1
+    [ "$beats" = "$want_beats" ] || { ok=0; echo "  $beats heartbeat pushes, wanted $want_beats"; }
     for p in "$@"; do
         if [ "${p#!}" != "$p" ]; then grep -qE -- "${p#!}" "$STUB_LOG" && { ok=0; echo "  log has: ${p#!}"; }
         else grep -qE -- "$p" "$STUB_LOG" || { ok=0; echo "  log lacks: $p"; }; fi
@@ -123,6 +136,23 @@ STUB_FAIL_ON=/assignees run "an assignment that fails fails the run, and the com
     "[$(open 3 $G $OLD)]" "$(comment 3)"
 STUB_FAIL_ON=issues/7/comments run "one failed comment does not stop the others" 1 report \
     "[$(open 7 $G $OLD),$(open 8 $D $OLD)]" "$(comment 8)"
+
+# The heartbeat. UP and DOWN match the push curl makes; the URL comes last on its command line.
+UP='curl .*status=up .*msg=OK https://beat.test/push$'
+DOWN='curl .*status=down .*msg=dependabot-waits ran, and an alert did not get through: '
+run "nothing waiting: the heartbeat goes up" 0 report '[]' "$UP" '!status=down'
+run "alerts delivered: the heartbeat goes up" 0 report "[$(open 3 $G $OLD)]" "$(comment 3)" "$UP"
+STUB_FAIL_ON=/comments run "a failed comment: the heartbeat goes down and says so" 1 report \
+    "[$(open 3 $G $OLD)]" "${DOWN}could not comment on #3" '!status=up'
+STUB_LIST_FAILS=1 run "a list that fails: the heartbeat goes down and says so" 1 report '[]' \
+    "${DOWN}could not list pull requests"
+run "a list that cannot be read: the heartbeat goes down and says so" 1 report 'not json' \
+    "${DOWN}could not read the pull request list" '!status=up'
+BEAT_URL='https://beat.test/push?status=up&msg=OK&ping=' \
+    run "a URL copied with Kuma's query: the query is dropped" 0 report '[]' "$UP" '!push\?'
+BEAT_URL='' run "no heartbeat URL fails the run and pushes nothing" 1 report '[]' '!curl'
+STUB_CURL_FAILS=1 run "a heartbeat that does not answer fails the run" 1 report '[]' "$UP"
+run "a dry run never pushes" 0 dry-run "[$(open 3 $G $OLD)]" '!curl'
 
 echo "$pass passed, $fail failed"
 [ $fail = 0 ]
