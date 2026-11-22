@@ -36,9 +36,16 @@
 #
 # THE RUN PASSES WHEN IT HAS TOLD SOMEONE, and fails only when it could not: the list could not be read,
 # or a call to assign or comment failed. A scheduled run's result lands on main's latest commit, so failing
-# for every wait painted main red in every repository with one, and its notification reaches only the
-# workflow's creator or whoever last edited its cron line. A red run therefore means the alert did not get
-# through, which is the one case nobody else would hear about.
+# for every wait painted main red in every repository with one. A red run therefore means the alert did not
+# get through.
+#
+# THE HEARTBEAT is how a person hears of that, because a failed run's notification reaches only the
+# workflow's creator or whoever last edited its cron line. Every report run ends by pushing to this
+# repository's Uptime Kuma push monitor. It pushes status=up when every alert got through, whether or not
+# anything was waiting. Otherwise it pushes status=down with what failed, and the monitor alerts at once.
+# It also goes down when its interval passes with no push at all, which is what a schedule GitHub dropped
+# or a job that never started looks like. A restart of Kuma starts that interval over, so silence can take
+# up to twice the interval to show. Without the push URL a report run fails. A dry run never pushes.
 set -uo pipefail
 
 MAX_DAYS=7
@@ -53,10 +60,40 @@ SUFFIX='-(v?[[:digit:]][[:alnum:]._+]*(-[[:alpha:]][[:alnum:].]*)?|[[:xdigit:]]{
 # still leaves little room for a person's close to pass as one.
 REPLACED_WITHIN=120
 NOW="${NOW:-$(date -u +%s)}"
+# The down push carries what failed in its query string, cut to this many characters before the run's
+# link is added. The full list is in the job's log as ::error:: lines.
+BEAT_MSG_MAX=300
+
+failed=0
+failures=""
+problem() { echo "::error::$1"; failed=1; failures+="${failures:+; }$1"; }
+
+# Every exit comes through here, so the heartbeat reports the run whatever stopped it.
+finish() {
+    if [ "$MODE" = report ]; then
+        # Any query is dropped: Kuma's admin shows the push URL with ?status=up&msg=OK&ping= on it, and a
+        # second status from curl -G makes Kuma read every push as down.
+        local url=${DEPENDABOT_WAITS_HEARTBEAT_URL:-}
+        url=${url%%\?*}
+        if [ -z "$url" ]; then
+            echo "::error::DEPENDABOT_WAITS_HEARTBEAT_URL is not set, so the heartbeat was not sent"; failed=1
+        elif [ "$failed" = 0 ]; then
+            curl -fsS --max-time 15 --retry 2 -o /dev/null -G --data-urlencode status=up \
+                --data-urlencode msg=OK "$url" \
+                || { echo "::error::the heartbeat did not answer"; failed=1; }
+        else
+            curl -fsS --max-time 15 --retry 2 -o /dev/null -G --data-urlencode status=down \
+                --data-urlencode "msg=dependabot-waits ran, and an alert did not get through: ${failures:0:$BEAT_MSG_MAX} ${RUN_URL:-}" \
+                "$url" \
+                || echo "::error::the heartbeat's down push did not answer either"
+        fi
+    fi
+    exit $failed
+}
 
 listed=$(gh pr list --repo "$GITHUB_REPOSITORY" --author app/dependabot --state all --limit 500 \
     --json number,headRefName,createdAt,closedAt,mergedAt,state,assignees) \
-    || { echo "::error::could not list pull requests"; exit 1; }
+    || { problem "could not list pull requests"; finish; }
 
 # One line per open pull request whose wait is too long: number, whole days waited, whether $ASSIGNEE is
 # already assigned. Each dependency's or group's pull requests are walked oldest first, carrying the
@@ -78,24 +115,23 @@ stale=$(jq -r --arg sfx "$SUFFIX" --arg who "$ASSIGNEE" --argjson max "$MAX_DAYS
     | select(($now - .since) > $max * 86400)
     | "\(.p.number) \((($now - .since) / 86400) | floor) \([.p.assignees[].login] | index($who) != null)"
     ' <<<"$listed") \
-    || { echo "::error::could not read the pull request list"; exit 1; }
+    || { problem "could not read the pull request list"; finish; }
 
 if [ -z "$stale" ]; then
     echo "No Dependabot update has waited unmerged more than $MAX_DAYS days with a pull request open."
-    exit 0
+    finish
 fi
 
 # Plain REST calls, which need only the token's issues or pull-requests write. A wait is a warning; a call
 # that failed is an error and fails the run, once every pull request has been tried.
-failed=0
 while read -r number days assigned; do
     echo "::warning::#$number: this update has waited $days days unmerged."
     [ "$MODE" = report ] || { echo "dry-run: would assign #$number to $ASSIGNEE and comment"; continue; }
     if [ "$assigned" != true ]; then
         gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$number/assignees" -f "assignees[]=$ASSIGNEE" >/dev/null \
-            || { echo "::error::could not assign #$number"; failed=1; }
+            || problem "could not assign #$number"
     fi
     gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$number/comments" -f body="@$ASSIGNEE this update has waited $days days unmerged, counting any pull request this one replaced, so it is not in use yet. Merge this, or close it if it conflicts, main has moved past it or the update is not wanted, so the next Dependabot run can propose what is current.${RUN_URL:+ ([check]($RUN_URL))}" >/dev/null \
-        || { echo "::error::could not comment on #$number"; failed=1; }
+        || problem "could not comment on #$number"
 done <<<"$stale"
-exit $failed
+finish
