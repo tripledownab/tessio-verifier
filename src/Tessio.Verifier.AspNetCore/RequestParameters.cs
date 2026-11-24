@@ -268,7 +268,14 @@ internal static class RequestParameters
     /// The RFC 7638 thumbprint of the encryption JWK this request advertised, from its <c>kid</c>. Null
     /// when the request advertised no key.
     /// </summary>
-    public static byte[]? TryGetEncryptionKeyThumbprint(PresentationRequest request)
+    public static byte[]? TryGetEncryptionKeyThumbprint(PresentationRequest request) =>
+        TryGetEncryptionKeyId(request) is { } kid ? Base64UrlEncoder.DecodeBytes(kid) : null;
+
+    /// <summary>
+    /// The <c>kid</c> of the encryption JWK this request advertised, which names the key in the
+    /// <see cref="ResponseEncryptionKeyStore"/>. Null when the request advertised no key or the key has no kid.
+    /// </summary>
+    internal static string? TryGetEncryptionKeyId(PresentationRequest request)
     {
         if (TryGetEncryptionJwkJson(request) is not { } jwkJson)
         {
@@ -277,7 +284,7 @@ internal static class RequestParameters
 
         using var jwk = JsonDocument.Parse(jwkJson);
         return jwk.RootElement.TryGetProperty("kid", out var kid) && kid.GetString() is { Length: > 0 } value
-            ? Base64UrlEncoder.DecodeBytes(value)
+            ? value
             : null;
     }
 
