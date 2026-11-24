@@ -66,6 +66,20 @@ public sealed class MdocVerifierOptions
     public bool ResolveX5u { get; set; }
 
     /// <summary>
+    /// Checks a <c>deviceMac</c> instead of refusing it. Off by default: an mdoc that authenticates with
+    /// <c>deviceMac</c> then fails with <see cref="MdocErrorCodes.DeviceAuthInvalid"/>, with a message saying this
+    /// option is off. On, it is checked with <see cref="MdocVerificationContext.MacKeySource"/>, and refused
+    /// without one.
+    /// </summary>
+    /// <remarks>
+    /// A deviceMac is keyed with the reader's private key, so whoever holds that key can make one for any device
+    /// key. Accepting it makes the secrecy of the reader key part of holder binding, which a
+    /// <c>deviceSignature</c> never depends on. Turn this on where that key, and anything it is derived from, is
+    /// guarded as such.
+    /// </remarks>
+    public bool AcceptDeviceMac { get; set; }
+
+    /// <summary>
     /// Checks the proofs of zero knowledge presentations. Off by default: without one, a response made only of
     /// zero knowledge presentations fails with <see cref="MdocErrorCodes.ZkPresentationUnsupported"/>. With one,
     /// such a presentation is verified. Its timestamp must then lie within <see cref="ClockSkew"/> of the

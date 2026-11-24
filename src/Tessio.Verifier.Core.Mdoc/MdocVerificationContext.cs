@@ -41,8 +41,8 @@ public sealed record MdocVerificationContext
 
     /// <summary>
     /// The reader's key, for a presentation that authenticates with <c>deviceMac</c> rather than
-    /// <c>deviceSignature</c>. Null refuses every <c>deviceMac</c>. The caller owns it and disposes it once the
-    /// verification has finished.
+    /// <c>deviceSignature</c>. Read only when <see cref="MdocVerifierOptions.AcceptDeviceMac"/> is on; null then
+    /// refuses every <c>deviceMac</c>. The caller owns it and disposes it once the verification has finished.
     /// </summary>
     public MdocMacKeySource? MacKeySource { get; init; }
 

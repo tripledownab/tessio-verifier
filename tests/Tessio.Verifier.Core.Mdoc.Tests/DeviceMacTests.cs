@@ -86,6 +86,24 @@ public sealed class DeviceMacTests
     }
 
     [Fact]
+    public async Task FullPipeline_OptedInWithoutAReaderKey_RefusesTheDeviceMac()
+    {
+        var result = await VerifyAsync(Iso18013AnnexDVectors.DeviceResponse, macKeys: null);
+
+        AssertRefused(result, "reader key");
+    }
+
+    [Fact]
+    public async Task FullPipeline_WithTheOptionOff_RefusesTheDeviceMac_EvenWithTheReaderKey()
+    {
+        using var source = MdocMacKeySource.FromPrivateKey(Iso18013AnnexDVectors.ReaderKey);
+
+        var result = await VerifyAsync(Iso18013AnnexDVectors.DeviceResponse, source, acceptDeviceMac: false);
+
+        AssertRefused(result, "AcceptDeviceMac");
+    }
+
+    [Fact]
     public async Task FullPipeline_AnotherReaderKey_FailsTheMac()
     {
         using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -220,7 +238,8 @@ public sealed class DeviceMacTests
         return Convert.FromHexString(string.Concat(hex.AsSpan(0, at), to, hex.AsSpan(at + from.Length)));
     }
 
-    private static async Task<VerificationResult> VerifyAsync(byte[] deviceResponse, MdocMacKeySource? macKeys)
+    private static async Task<VerificationResult> VerifyAsync(
+        byte[] deviceResponse, MdocMacKeySource? macKeys, bool acceptDeviceMac = true)
     {
 #if NET9_0_OR_GREATER
         using var dsCert = X509CertificateLoader.LoadCertificate(Iso18013AnnexDVectors.DsCertificate);
@@ -230,7 +249,8 @@ public sealed class DeviceMacTests
         var clock = new AnnexDClock();
         var verifier = new MdocVerifier(
             new StaticTrustListResolver([dsCert.Subject], source: "iso-annex-d", trustAnchors: [dsCert], clock: clock),
-            clock: clock);
+            new MdocVerifierOptions { AcceptDeviceMac = acceptDeviceMac },
+            clock);
 
         return await verifier.VerifyAsync(
             new PresentedCredential

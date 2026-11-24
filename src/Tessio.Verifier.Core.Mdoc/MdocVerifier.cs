@@ -226,7 +226,7 @@ public sealed partial class MdocVerifier
 
         if (context.SessionTranscript is { } externalTranscript)
         {
-            return DeviceAuthVerifier.Verify(document, mso, externalTranscript, context.MacKeySource);
+            return DeviceAuthVerifier.Verify(document, mso, externalTranscript, context.MacKeySource, _options.AcceptDeviceMac);
         }
 
         if (context.ClientId is null || context.Nonce is null || context.ResponseUri is null)
@@ -241,7 +241,7 @@ public sealed partial class MdocVerifier
 
         var sessionTranscript = SessionTranscriptBuilder.Build(
             context.ClientId, context.Nonce, context.EncryptionKeyThumbprint, context.ResponseUri);
-        return DeviceAuthVerifier.Verify(document, mso, sessionTranscript, context.MacKeySource);
+        return DeviceAuthVerifier.Verify(document, mso, sessionTranscript, context.MacKeySource, _options.AcceptDeviceMac);
     }
 
     // The trust details are carried through on BOTH verdicts, not only the passing one. A refused

@@ -208,10 +208,10 @@ public sealed class DeviceAuthTests : IDisposable
     }
 
     [Fact]
-    public async Task DeviceMac_WithoutAReaderKey_IsRefused()
+    public async Task DeviceMac_ByDefault_IsRefused()
     {
-        // A deviceMac is checked only with the reader key the request published (DeviceMacTests); a context
-        // without one refuses it, whatever its bytes.
+        // A deviceMac is checked only when MdocVerifierOptions.AcceptDeviceMac is on (DeviceMacTests); a default
+        // verifier refuses it, whatever its bytes.
         _builder.UseDeviceMac = true;
 
         var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), Context());
@@ -219,7 +219,7 @@ public sealed class DeviceAuthTests : IDisposable
         Assert.False(result.IsValid);
         var error = Assert.Single(result.Errors, e => e.Code == MdocErrorCodes.DeviceAuthInvalid);
         Assert.Contains("deviceMac", error.Message, StringComparison.Ordinal);
-        Assert.Contains("reader key", error.Message, StringComparison.Ordinal);
+        Assert.Contains("AcceptDeviceMac", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

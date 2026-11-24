@@ -15,7 +15,8 @@ namespace Tessio.Verifier.AspNetCore.Tests;
 /// A deviceMac through each route's own key lookup: the redirect route finds the reader key in the
 /// <see cref="ResponseEncryptionKeyStore"/> by the session's kid, and the Digital Credentials API route uses the
 /// key its caller decrypted with. The MAC itself is proved against the published ISO/IEC 18013-5 Annex D example
-/// (Core.Mdoc's DeviceMacTests); these prove the right key reaches it.
+/// (Core.Mdoc's DeviceMacTests); these prove the right key reaches it. Each host opts in
+/// (<see cref="MdocVerifierOptions.AcceptDeviceMac"/>), as a deployment must.
 /// </summary>
 public sealed class DeviceMacRoundTripTests : IDisposable
 {
@@ -31,11 +32,16 @@ public sealed class DeviceMacRoundTripTests : IDisposable
     private readonly ECDsa _dcKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly ServiceProvider _provider;
 
+    /// <summary>The mdoc verifier a host registers to accept deviceMac; AddTessioVerifier's own refuses it.</summary>
+    private static MdocVerifier AcceptingDeviceMac(IServiceProvider sp) => new(
+        sp.GetRequiredService<ITrustListResolver>(), new MdocVerifierOptions { AcceptDeviceMac = true }, TimeProvider.System);
+
     public DeviceMacRoundTripTests()
     {
         var services = new ServiceCollection();
         services.AddSingleton<ITrustListResolver>(_ => new StaticTrustListResolver(
             [_wallet.MdocIssuerId], "test", [_wallet.MdocIacaCertificate]));
+        services.AddSingleton(AcceptingDeviceMac);
         services.AddTessioVerifier(options =>
         {
             options.Mode = VerifierMode.Mock;
@@ -116,6 +122,7 @@ public sealed class DeviceMacRoundTripTests : IDisposable
         services.AddSingleton(broken);
         services.AddSingleton<ITrustListResolver>(_ => new StaticTrustListResolver(
             [_wallet.MdocIssuerId], "test", [_wallet.MdocIacaCertificate]));
+        services.AddSingleton(AcceptingDeviceMac);
         services.AddTessioVerifier(options =>
         {
             options.Mode = VerifierMode.Mock;
