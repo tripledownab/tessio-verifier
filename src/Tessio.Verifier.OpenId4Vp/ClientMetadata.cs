@@ -23,6 +23,10 @@ public static class ClientMetadata
     // verifiers that must accept every value on it.
     private const string Es256 = "ES256";
 
+    // SPEC: OpenID4VP 1.0 Appendix B.2.2, Table 2: -65537 is "HMAC 256/256 using ECDH with Curve P-256", the
+    // deviceMac a verifier can check against the P-256 response encryption key it published.
+    private const int DeviceMacP256 = -65537;
+
     /// <summary>
     /// Builds <c>client_metadata</c> for a request in the given credential format.
     /// </summary>
@@ -46,6 +50,12 @@ public static class ClientMetadata
     /// Members to add, such as a wallet's own relying party metadata. Each value is copied. A member this builder
     /// writes itself cannot be replaced from here, so a caller cannot weaken what the standard members advertise.
     /// </param>
+    /// <param name="advertiseDeviceMac">
+    /// Lists <c>-65537</c>, a deviceMac keyed to the response encryption key, in an mdoc request's
+    /// <c>deviceauth_alg_values</c>. Only where <paramref name="responseEncryptionJwk"/> is given, because that is
+    /// the key the MAC is agreed with; without one it is left out. Set it only for a verifier with
+    /// <c>MdocVerifierOptions.AcceptDeviceMac</c> on, or wallets will send MACs it refuses.
+    /// </param>
     /// <returns>The <c>client_metadata</c> JSON.</returns>
     /// <exception cref="ArgumentException">A name in <paramref name="additionalMembers"/> is one this builder writes.</exception>
     // SPEC: OpenID4VP 1.0 §5.1: "Other metadata parameters MUST be ignored unless a profile of this specification
@@ -55,10 +65,13 @@ public static class ClientMetadata
     public static string Build(
         string credentialFormat,
         JsonObject? responseEncryptionJwk,
-        IReadOnlyDictionary<string, JsonNode?>? additionalMembers)
+        IReadOnlyDictionary<string, JsonNode?>? additionalMembers,
+        bool advertiseDeviceMac = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(credentialFormat);
-        return WithAdditionalMembers(Standard(VpFormatsSupported(credentialFormat), responseEncryptionJwk), additionalMembers);
+        return WithAdditionalMembers(
+            Standard(VpFormatsSupported(credentialFormat, advertiseDeviceMac && responseEncryptionJwk is not null), responseEncryptionJwk),
+            additionalMembers);
     }
 
     private static string WithAdditionalMembers(
@@ -86,7 +99,8 @@ public static class ClientMetadata
     /// </summary>
     /// <param name="credentialFormats">The formats the query names, at least one: <c>dc+sd-jwt</c>, <c>mso_mdoc</c> or both.</param>
     /// <param name="responseEncryptionJwk">The public half of the response-encryption key, or null.</param>
-    /// <param name="additionalMembers">Members to add, as for <see cref="Build(string, JsonObject?, IReadOnlyDictionary{string, JsonNode?}?)"/>.</param>
+    /// <param name="additionalMembers">Members to add, as for <see cref="Build(string, JsonObject?, IReadOnlyDictionary{string, JsonNode?}?, bool)"/>.</param>
+    /// <param name="advertiseDeviceMac">Lists <c>-65537</c> for mdoc, as for <see cref="Build(string, JsonObject?, IReadOnlyDictionary{string, JsonNode?}?, bool)"/>.</param>
     /// <returns>The <c>client_metadata</c> JSON.</returns>
     /// <exception cref="ArgumentException">
     /// No format is given, a format is neither of the two, or a name in <paramref name="additionalMembers"/> is one
@@ -102,7 +116,8 @@ public static class ClientMetadata
     public static string BuildForFormats(
         IReadOnlyList<string> credentialFormats,
         JsonObject? responseEncryptionJwk = null,
-        IReadOnlyDictionary<string, JsonNode?>? additionalMembers = null)
+        IReadOnlyDictionary<string, JsonNode?>? additionalMembers = null,
+        bool advertiseDeviceMac = false)
     {
         ArgumentNullException.ThrowIfNull(credentialFormats);
         if (credentialFormats.Count == 0)
@@ -122,7 +137,7 @@ public static class ClientMetadata
 
             if (!formats.ContainsKey(format))
             {
-                formats[format] = VpFormatsSupported(format)[format]!.DeepClone();
+                formats[format] = VpFormatsSupported(format, advertiseDeviceMac && responseEncryptionJwk is not null)[format]!.DeepClone();
             }
         }
 
@@ -163,15 +178,16 @@ public static class ClientMetadata
         return metadata;
     }
 
-    /// <summary>The signature algorithms we accept, keyed by credential format.</summary>
-    private static JsonObject VpFormatsSupported(string credentialFormat) =>
+    /// <summary>The algorithms we accept, keyed by credential format; for mdoc device auth, the MAC as well when asked.</summary>
+    private static JsonObject VpFormatsSupported(string credentialFormat, bool deviceMac = false) =>
         credentialFormat == "mso_mdoc"
             ? new JsonObject
             {
                 ["mso_mdoc"] = new JsonObject
                 {
                     ["issuerauth_alg_values"] = AlgValues(CoseAlgorithms.Advertised),
-                    ["deviceauth_alg_values"] = AlgValues(CoseAlgorithms.Advertised),
+                    ["deviceauth_alg_values"] = AlgValues(
+                        deviceMac ? [.. CoseAlgorithms.Advertised, DeviceMacP256] : CoseAlgorithms.Advertised),
                 },
             }
             : new JsonObject
