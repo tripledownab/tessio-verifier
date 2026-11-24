@@ -12,7 +12,7 @@ namespace Tessio.Verifier.AspNetCore;
 /// a Document Signer certificate and a device key, and device-signs the OpenID4VP session
 /// transcript, so the full mdoc verification pipeline runs offline.
 /// </summary>
-internal sealed class MockMdocIssuer : IDisposable
+internal sealed partial class MockMdocIssuer : IDisposable
 {
     private readonly ECDsa _iacaKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly ECDsa _dsKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -63,14 +63,16 @@ internal sealed class MockMdocIssuer : IDisposable
     /// <summary>
     /// The same DeviceResponse with the device signature over caller-supplied transcript bytes, for
     /// transports whose transcript is not the OpenID4VP redirect form, such as ISO/IEC 18013-7
-    /// Annex C over the Digital Credentials API.
+    /// Annex C over the Digital Credentials API. With <paramref name="macReaderKey"/> the device authenticates
+    /// with a deviceMac keyed to that reader public key instead of a signature.
     /// </summary>
     public string IssueDeviceResponseOverTranscript(
         IEnumerable<string> claimNames,
         string docType,
         string mdocNamespace,
         byte[] sessionTranscript,
-        IReadOnlyDictionary<string, object>? claimValues = null)
+        IReadOnlyDictionary<string, object>? claimValues = null,
+        ECParameters? macReaderKey = null)
     {
         List<byte[]> encodedItems = [];
         List<byte[]> digests = [];
@@ -109,7 +111,7 @@ internal sealed class MockMdocIssuer : IDisposable
         w.WriteTextString("issuerAuth");
         w.WriteEncodedValue(issuerAuth);
         w.WriteEndMap();
-        WriteDeviceSigned(w, docType, sessionTranscript);
+        WriteDeviceSigned(w, docType, sessionTranscript, macReaderKey);
         w.WriteEndMap();
         w.WriteEndArray();
         w.WriteTextString("status");
@@ -118,7 +120,7 @@ internal sealed class MockMdocIssuer : IDisposable
         return Base64UrlEncoder.Encode(w.Encode());
     }
 
-    private void WriteDeviceSigned(CborWriter w, string docType, byte[] sessionTranscript)
+    private void WriteDeviceSigned(CborWriter w, string docType, byte[] sessionTranscript, ECParameters? macReaderKey)
     {
         var emptyMap = new CborWriter(CborConformanceMode.Lax);
         emptyMap.WriteStartMap(0);
@@ -130,7 +132,6 @@ internal sealed class MockMdocIssuer : IDisposable
 
         var deviceAuthBytes = SessionTranscriptBuilder.BuildDeviceAuthenticationBytes(
             sessionTranscript, docType, encodedNameSpaces);
-        var signature = CoseSign1Message.SignDetached(deviceAuthBytes, new CoseSigner(_deviceKey, HashAlgorithmName.SHA256));
 
         w.WriteTextString("deviceSigned");
         w.WriteStartMap(2);
@@ -138,8 +139,18 @@ internal sealed class MockMdocIssuer : IDisposable
         w.WriteEncodedValue(encodedNameSpaces);
         w.WriteTextString("deviceAuth");
         w.WriteStartMap(1);
-        w.WriteTextString("deviceSignature");
-        w.WriteEncodedValue(signature);
+        if (macReaderKey is { } readerKey)
+        {
+            w.WriteTextString("deviceMac");
+            w.WriteEncodedValue(DeviceMac(readerKey, sessionTranscript, deviceAuthBytes));
+        }
+        else
+        {
+            w.WriteTextString("deviceSignature");
+            w.WriteEncodedValue(
+                CoseSign1Message.SignDetached(deviceAuthBytes, new CoseSigner(_deviceKey, HashAlgorithmName.SHA256)));
+        }
+
         w.WriteEndMap();
         w.WriteEndMap();
     }

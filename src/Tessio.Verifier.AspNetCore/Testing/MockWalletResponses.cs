@@ -18,7 +18,7 @@ namespace Tessio.Verifier.AspNetCore.Testing;
 /// verification will correctly reject it as untrusted.
 /// </para>
 /// </remarks>
-public sealed class MockWalletResponses : IDisposable
+public sealed partial class MockWalletResponses : IDisposable
 {
     /// <summary>
     /// docType of the EU age-verification attestation, the mdoc-only credential purpose-built for age

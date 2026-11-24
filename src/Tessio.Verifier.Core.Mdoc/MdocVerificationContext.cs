@@ -40,6 +40,13 @@ public sealed record MdocVerificationContext
     public byte[]? SessionTranscript { get; init; }
 
     /// <summary>
+    /// The reader's key, for a presentation that authenticates with <c>deviceMac</c> rather than
+    /// <c>deviceSignature</c>. Null refuses every <c>deviceMac</c>. The caller owns it and disposes it once the
+    /// verification has finished.
+    /// </summary>
+    public MdocMacKeySource? MacKeySource { get; init; }
+
+    /// <summary>
     /// The zero knowledge request the presentation answers, or null. When it is set, a zero knowledge presentation
     /// must name one of the circuits it offered. Any other is refused before its proof is checked, even one the
     /// proof verifier accepts. Pass the same <see cref="Mdoc.ZkRequest"/> the request was built with. Null leaves

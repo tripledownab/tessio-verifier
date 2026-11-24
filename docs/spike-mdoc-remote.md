@@ -48,7 +48,7 @@ Mock mdoc issuer for the offline pipeline (real IACA chain, real device key), sp
 ## Risks and open questions
 
 - **Handover byte-exactness** is the main interop risk. Annex B.2.6 of the final spec must be implemented against its exact CBOR, and validated against a reference implementation early, not last.
-- **deviceMac**: 18013-5 allows MAC-based device auth (ECDH-derived EMacKey) as an alternative to signatures. Start with `deviceSignature` (what remote wallet implementations use), add MAC only if interop demands it.
+- **deviceMac**: 18013-5 allows MAC-based device auth (ECDH-derived EMacKey) as an alternative to signatures. Start with `deviceSignature` (what remote wallet implementations use), add MAC only if interop demands it. (Since added, for OpenID4VP with an encrypted response: see `MdocMacKeySource`.)
 - **Non-canonical CBOR from wallets**: read leniently, compute digests over the received bytes (the spec hashes the transported `IssuerSignedItemBytes`, so re-encoding is neither needed nor safe).
 - Multiple documents per response and the ISO 23220 doctype family: design the parser for a list from day one, ship single-document verification first.
 

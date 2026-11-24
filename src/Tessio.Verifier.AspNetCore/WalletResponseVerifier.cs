@@ -123,16 +123,20 @@ public sealed partial class WalletResponseVerifier : IWalletResponseVerifier
     /// Verifies an already-parsed response. Used by the built-in callback endpoint, which parses first to
     /// correlate the session by <c>state</c>. Derives every expectation from the session's request.
     /// </summary>
-    internal Task<VerificationResult> VerifyParsedAsync(
-        VerificationSession session, ParsedWalletResponse response, CancellationToken ct) =>
-        VerifyAgainstAsync(() => Expectations.For(session), response, ct);
+    internal async Task<VerificationResult> VerifyParsedAsync(
+        VerificationSession session, ParsedWalletResponse response, CancellationToken ct)
+    {
+        using var macKeys = MacKeysFor(session, response);
+        return await VerifyAgainstAsync(() => Expectations.For(session), response, macKeys, ct).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Checks a parsed response against the expectations <paramref name="expectationsOf"/> builds from its request,
-    /// which is called only after a wallet error has been answered.
+    /// which is called only after a wallet error has been answered. <paramref name="macKeys"/> is the request's
+    /// reader key for an mdoc that authenticates with deviceMac, or null.
     /// </summary>
     private async Task<VerificationResult> VerifyAgainstAsync(
-        Func<Expectations> expectationsOf, ParsedWalletResponse response, CancellationToken ct)
+        Func<Expectations> expectationsOf, ParsedWalletResponse response, MdocMacKeySource? macKeys, CancellationToken ct)
     {
         // A wallet's error response is its answer, and there is nothing to verify in it. Without this it would
         // fall through to "no credentials" below, which misdescribes it.
@@ -221,7 +225,7 @@ public sealed partial class WalletResponseVerifier : IWalletResponseVerifier
             // Null reads the first Credential Query, which is the only one when there are no rules.
             var queryId = rules is null ? null : credential.CredentialQueryId;
             var isMdoc = string.Equals(credential.Format, MdocVerifier.Format, StringComparison.Ordinal);
-            var mdocContext = isMdoc ? expected.Mdoc(queryId) : null;
+            var mdocContext = isMdoc ? expected.Mdoc(queryId) with { MacKeySource = macKeys } : null;
             var vctValues = isMdoc ? null : expected.VctValues(queryId);
 
             // The type is checked at the point of use, for the format this presentation is routed by. A null

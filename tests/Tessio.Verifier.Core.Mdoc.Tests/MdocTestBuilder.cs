@@ -256,7 +256,7 @@ internal sealed class MdocTestBuilder : IDisposable
         w.WriteTextString("deviceAuth");
         w.WriteStartMap(1);
         w.WriteTextString(UseDeviceMac ? "deviceMac" : "deviceSignature");
-        w.WriteEncodedValue(signature); // for the MAC case only presence matters; the verifier rejects it first
+        w.WriteEncodedValue(signature); // for the MAC case only presence matters: without a reader key it is refused first
         w.WriteEndMap();
         w.WriteEndMap();
     }

@@ -127,7 +127,10 @@ public sealed partial class WalletResponseVerifier
                 : "The request asked for a cleartext (dc_api) response and the wallet answered encrypted.");
         }
 
-        return await VerifyAgainstAsync(() => ExpectationsFor(request, origin, askedForEncryption), parsed, ct)
+        // The key the response was encrypted to is the reader key a deviceMac is keyed with, and the caller holds it
+        // for the length of this call. A cleartext request published no key, so a deviceMac answering it is refused.
+        using var macKeys = askedForEncryption && HasMdoc(parsed) ? MacKeysFrom(responseDecryptionKey) : null;
+        return await VerifyAgainstAsync(() => ExpectationsFor(request, origin, askedForEncryption), parsed, macKeys, ct)
             .ConfigureAwait(false);
     }
 

@@ -6,7 +6,8 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// <summary>
 /// Verifies the holder's device authentication: the <c>deviceSignature</c> COSE_Sign1 whose
 /// detached payload is <c>DeviceAuthenticationBytes</c> over the session transcript, verified with
-/// the device key pinned in the MSO. This is the mdoc analogue of the KB-JWT: it proves the wallet
+/// the device key pinned in the MSO, or the <c>deviceMac</c> over the same bytes
+/// (<see cref="DeviceMacVerifier"/>). This is the mdoc analogue of the KB-JWT: it proves the wallet
 /// that responded holds the key the issuer bound the credential to, for exactly this request.
 /// </summary>
 // SPEC: ISO/IEC 18013-5 §9.1.3.4 —
@@ -18,22 +19,22 @@ internal static class DeviceAuthVerifier
     private static readonly int[] UnderstoodLabels = [1];
 
     public static List<VerificationError> Verify(
-        ParsedDocument document, MobileSecurityObject mso, byte[] sessionTranscript)
+        ParsedDocument document, MobileSecurityObject mso, byte[] sessionTranscript, MdocMacKeySource? macKeys)
     {
         if (document.DeviceSigned is not { } deviceSigned)
         {
             return [Error("The document carries no deviceSigned structure; device authentication is required.")];
         }
 
-        if (deviceSigned.DeviceSignature is null)
-        {
-            return [Error(deviceSigned.DeviceMac is null
-                ? "The document carries no deviceSignature."
-                : "MAC-based device authentication (deviceMac) is not supported; use deviceSignature.")];
-        }
-
         var deviceAuthenticationBytes = SessionTranscriptBuilder.BuildDeviceAuthenticationBytes(
             sessionTranscript, document.DocType, deviceSigned.EncodedNameSpacesBytes);
+
+        if (deviceSigned.DeviceSignature is null)
+        {
+            return deviceSigned.DeviceMac is { } deviceMac
+                ? DeviceMacVerifier.Verify(deviceMac, mso, sessionTranscript, deviceAuthenticationBytes, macKeys)
+                : [Error("The document carries neither a deviceSignature nor a deviceMac.")];
+        }
 
         if (CoseSign1Verification.Decode(deviceSigned.DeviceSignature, out var problem) is not { } message)
         {

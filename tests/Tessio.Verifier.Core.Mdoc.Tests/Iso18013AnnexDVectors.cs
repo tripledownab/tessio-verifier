@@ -5,7 +5,7 @@ namespace Tessio.Verifier.Core.Mdoc.Tests;
 /// Signer certificate, and a signed mdoc request with the session transcript it is signed over,
 /// byte for byte as published by the specification (reproduced in the OpenWallet Foundation
 /// multipaz test vectors). Externally produced bytes: our parser, digest computation, issuerAuth
-/// verification and readerAuth construction must agree with them. NEVER regenerate.
+/// verification, readerAuth construction and deviceMac check must agree with them. NEVER regenerate.
 /// </summary>
 internal static class Iso18013AnnexDVectors
 {
@@ -148,6 +148,32 @@ internal static class Iso18013AnnexDVectors
         6e642e7766612e6e616e57030101032302001324fec9a70b97ac9684a4e326176ef5b981c5e8533e5f00298cfccbc35e
         700a6b020414
         """;
+
+    /// <summary>
+    /// Annex D.5.1 ephemeral reader key, private half included: the key the reader agrees the
+    /// deviceMac key with. Its public half is the EReaderKey inside the transcript above.
+    /// </summary>
+    public const string ReaderKeyDHex = "de3b4b9e5f72dd9b58406ae3091434da48a6f9fd010d88fcb0958e2cebec947c";
+
+    /// <inheritdoc cref="ReaderKeyDHex"/>
+    public const string ReaderKeyXHex = "60e3392385041f51403051f2415531cb56dd3f999c71687013aac6768bc8187e";
+
+    /// <inheritdoc cref="ReaderKeyDHex"/>
+    public const string ReaderKeyYHex = "e58deb8fdbe907f7dd5368245551a34796f7d2215c440c339bb0f7b67beccdfa";
+
+    /// <summary>
+    /// Annex D.5.3 intermediate value: the EMacKey the response's deviceMac is computed with, from the
+    /// reader key above, the MSO's device key and the transcript above.
+    /// </summary>
+    public const string EMacKeyHex = "dc2b9566fdaaae3c06baa40993cd0451aeba15e7677ef5305f6531f3533c35dd";
+
+    /// <summary>The reader key as P-256 parameters, private half included.</summary>
+    public static System.Security.Cryptography.ECParameters ReaderKey => new()
+    {
+        Curve = System.Security.Cryptography.ECCurve.NamedCurves.nistP256,
+        D = Convert.FromHexString(ReaderKeyDHex),
+        Q = new() { X = Convert.FromHexString(ReaderKeyXHex), Y = Convert.FromHexString(ReaderKeyYHex) },
+    };
 
     public static byte[] DeviceResponse => WrappedHex.Decode(DeviceResponseHex);
 
