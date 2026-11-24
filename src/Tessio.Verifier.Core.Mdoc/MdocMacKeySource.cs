@@ -8,8 +8,8 @@ namespace Tessio.Verifier.Core.Mdoc;
 /// <summary>
 /// The reader's side of MAC-based mdoc device authentication: holds the reader's P-256 private key and
 /// derives, for one device key and one session transcript, the key a <c>deviceMac</c> is checked with
-/// (EMacKey). Pass one in <see cref="MdocVerificationContext.MacKeySource"/> to accept <c>deviceMac</c>;
-/// without one it is refused.
+/// (EMacKey). A verifier with <see cref="MdocVerifierOptions.AcceptDeviceMac"/> on checks a <c>deviceMac</c> with
+/// the one in <see cref="MdocVerificationContext.MacKeySource"/>, and refuses it without one.
 /// </summary>
 /// <remarks>
 /// <para>

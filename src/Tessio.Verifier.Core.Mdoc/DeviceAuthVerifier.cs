@@ -18,8 +18,17 @@ internal static class DeviceAuthVerifier
     // The protected header label this verifier processes, alg, the only one a crit header may name.
     private static readonly int[] UnderstoodLabels = [1];
 
+    /// <param name="document">The presented document.</param>
+    /// <param name="mso">Its Mobile Security Object, which pins the device key.</param>
+    /// <param name="sessionTranscript">The transcript the device authenticated, bare rather than tag-24 wrapped.</param>
+    /// <param name="macKeys">The reader key for a deviceMac, or null.</param>
+    /// <param name="acceptDeviceMac">Whether a deviceMac is checked at all (<see cref="MdocVerifierOptions.AcceptDeviceMac"/>).</param>
     public static List<VerificationError> Verify(
-        ParsedDocument document, MobileSecurityObject mso, byte[] sessionTranscript, MdocMacKeySource? macKeys)
+        ParsedDocument document,
+        MobileSecurityObject mso,
+        byte[] sessionTranscript,
+        MdocMacKeySource? macKeys,
+        bool acceptDeviceMac)
     {
         if (document.DeviceSigned is not { } deviceSigned)
         {
@@ -31,9 +40,15 @@ internal static class DeviceAuthVerifier
 
         if (deviceSigned.DeviceSignature is null)
         {
-            return deviceSigned.DeviceMac is { } deviceMac
+            if (deviceSigned.DeviceMac is not { } deviceMac)
+            {
+                return [Error("The document carries neither a deviceSignature nor a deviceMac.")];
+            }
+
+            return acceptDeviceMac
                 ? DeviceMacVerifier.Verify(deviceMac, mso, sessionTranscript, deviceAuthenticationBytes, macKeys)
-                : [Error("The document carries neither a deviceSignature nor a deviceMac.")];
+                : [Error("The document authenticates with deviceMac, which this verifier does not accept "
+                    + "(MdocVerifierOptions.AcceptDeviceMac is off).")];
         }
 
         if (CoseSign1Verification.Decode(deviceSigned.DeviceSignature, out var problem) is not { } message)
