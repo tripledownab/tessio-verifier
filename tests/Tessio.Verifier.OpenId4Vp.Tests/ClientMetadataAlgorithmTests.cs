@@ -23,6 +23,46 @@ public sealed class ClientMetadataAlgorithmTests
         Assert.Equal([-7, -9], values);
     }
 
+    private static readonly JsonObject EncryptionJwk = new()
+    {
+        ["kty"] = "EC",
+        ["crv"] = "P-256",
+        ["x"] = "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+        ["y"] = "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
+        ["use"] = "enc",
+        ["alg"] = "ECDH-ES",
+        ["kid"] = "1",
+    };
+
+    private static int[] Values(string metadata, string member) =>
+        JsonNode.Parse(metadata)!["vp_formats_supported"]!["mso_mdoc"]![member]!.AsArray().Select(v => (int)v!).ToArray();
+
+    [Fact]
+    public void AnEncryptedMdocRequest_ThatAsks_AdvertisesTheDeviceMac_ForDeviceAuthOnly()
+    {
+        // SPEC: OpenID4VP 1.0 Appendix B.2.2, Table 2: -65537 is HMAC 256/256 using ECDH with P-256. It names a device
+        // authentication method, so it never joins issuerauth_alg_values.
+        var single = ClientMetadata.Build("mso_mdoc", EncryptionJwk, additionalMembers: null, advertiseDeviceMac: true);
+        var several = ClientMetadata.BuildForFormats(["mso_mdoc", "dc+sd-jwt"], EncryptionJwk, advertiseDeviceMac: true);
+
+        foreach (var metadata in new[] { single, several })
+        {
+            Assert.Equal([-7, -9, -65537], Values(metadata, "deviceauth_alg_values"));
+            Assert.Equal([-7, -9], Values(metadata, "issuerauth_alg_values"));
+        }
+    }
+
+    [Fact]
+    public void AnMdocRequest_DoesNotAdvertiseTheDeviceMac_UnlessAsked_OrWithoutAKeyToAgreeIt()
+    {
+        // Without a published key there is nothing a wallet could key a MAC to that this verifier holds.
+        Assert.Equal([-7, -9], Values(ClientMetadata.Build("mso_mdoc", EncryptionJwk), "deviceauth_alg_values"));
+        Assert.Equal([-7, -9], Values(
+            ClientMetadata.Build("mso_mdoc", null, additionalMembers: null, advertiseDeviceMac: true), "deviceauth_alg_values"));
+        Assert.Equal([-7, -9], Values(
+            ClientMetadata.BuildForFormats(["mso_mdoc"], null, advertiseDeviceMac: true), "deviceauth_alg_values"));
+    }
+
     [Fact]
     public void AnMdocRequest_AdvertisesTheListTheVerifiersOwn()
     {
