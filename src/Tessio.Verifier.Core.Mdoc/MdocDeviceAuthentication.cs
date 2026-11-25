@@ -13,9 +13,9 @@ public static class MdocDeviceAuthentication
     public const string Mac = "deviceMac";
 
     /// <summary>
-    /// Which member of a document's device authentication is checked, or null when it carried none: the signature when
-    /// there is one. The one statement of that rule, for both the check (DeviceAuthVerifier) and the method a passing
-    /// result reports.
+    /// Which member of a document's device authentication is checked, or null when it carried none. The parser
+    /// refuses a document carrying both, a member twice or deviceSigned twice, so there is at most one. The one
+    /// statement of that rule, for both the check (DeviceAuthVerifier) and the method a passing result reports.
     /// </summary>
     internal static string? Of(ParsedDocument document) => document.DeviceSigned switch
     {

@@ -158,7 +158,10 @@ internal static class DeviceResponseParser
                     (nameSpaces, issuerAuth) = ReadIssuerSigned(reader);
                     break;
                 case "deviceSigned":
-                    deviceSigned = ReadDeviceSigned(reader);
+                    // Once, like the deviceAuth members it holds: two would mean two device authentications, and
+                    // only one of them could be checked.
+                    deviceSigned = OnlyOnce(
+                        deviceSigned, "A document carries deviceSigned twice.", () => ReadDeviceSigned(reader));
                     break;
                 default:
                     reader.SkipValue();
@@ -284,6 +287,10 @@ internal static class DeviceResponseParser
         };
     }
 
+    /// <summary>Reads a map entry that may appear once, and refuses a second copy rather than choosing between them.</summary>
+    private static T OnlyOnce<T>(T? already, string refusal, Func<T> read) where T : class =>
+        already is null ? read() : throw new MdocProcessingException(MdocErrorCodes.StructureInvalid, refusal);
+
     private static ParsedDeviceSigned ReadDeviceSigned(CborReader reader)
     {
         byte[]? nameSpacesBytes = null;
@@ -305,10 +312,12 @@ internal static class DeviceResponseParser
                         switch (reader.ReadTextString())
                         {
                             case "deviceSignature":
-                                deviceSignature = reader.ReadEncodedValue().ToArray();
+                                deviceSignature = OnlyOnce(deviceSignature, "deviceAuth carries deviceSignature twice.",
+                                    () => reader.ReadEncodedValue().ToArray());
                                 break;
                             case "deviceMac":
-                                deviceMac = reader.ReadEncodedValue().ToArray();
+                                deviceMac = OnlyOnce(deviceMac, "deviceAuth carries deviceMac twice.",
+                                    () => reader.ReadEncodedValue().ToArray());
                                 break;
                             default:
                                 reader.SkipValue();
@@ -317,6 +326,17 @@ internal static class DeviceResponseParser
                     }
 
                     reader.ReadEndMap();
+
+                    // SPEC: ISO/IEC 18013-5, DeviceAuth = { "deviceSignature" : DeviceSignature // "deviceMac" :
+                    // DeviceMac }: one or the other. With both, whichever were checked, the other would be accepted
+                    // unchecked, so the document is refused rather than read. A member given twice is refused by
+                    // OnlyOnce for the same reason.
+                    if (deviceSignature is not null && deviceMac is not null)
+                    {
+                        throw new MdocProcessingException(MdocErrorCodes.StructureInvalid,
+                            "deviceAuth carries both a deviceSignature and a deviceMac; it must carry one.");
+                    }
+
                     break;
                 default:
                     reader.SkipValue();
