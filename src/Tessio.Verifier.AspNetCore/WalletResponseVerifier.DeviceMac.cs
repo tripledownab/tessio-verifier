@@ -37,9 +37,10 @@ public sealed partial class WalletResponseVerifier
         }
         catch (InvalidOperationException)
         {
-            // Two ways to get here, both meaning no usable key rather than a failed request: a stored salt that
-            // derives another key (ResponseEncryptionKeyStore.Get), and an ObjectDisposedException, which derives from
-            // InvalidOperationException, when the store evicted the key between the lookup and the copy.
+            // Three ways to get here, all meaning no usable key rather than a failed request: a stored salt that
+            // derives another key (ResponseEncryptionKeyStore.Get); a ResponseKeyGenerationUnavailableException, a
+            // subtype, when the salt's master generation is not held; and an ObjectDisposedException, also a subtype,
+            // when the store evicted the key between the lookup and the copy.
             return null;
         }
     }
