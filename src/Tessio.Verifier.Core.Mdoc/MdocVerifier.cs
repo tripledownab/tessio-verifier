@@ -213,6 +213,8 @@ public sealed partial class MdocVerifier
             Issuer = issuer,
             Errors = [],
             CredentialType = document.DocType,
+            // No errors, so the member Of names is the one DeviceAuthVerifier chose by the same rule and passed.
+            DeviceAuthentication = MdocDeviceAuthentication.Of(document),
         };
     }
 

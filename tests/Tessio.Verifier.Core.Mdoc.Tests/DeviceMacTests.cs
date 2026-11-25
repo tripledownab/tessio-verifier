@@ -83,6 +83,7 @@ public sealed class DeviceMacTests
         var result = await VerifyAsync(Iso18013AnnexDVectors.DeviceResponse, source);
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.Message)));
+        Assert.Equal(MdocDeviceAuthentication.Mac, result.DeviceAuthentication);
     }
 
     [Fact]
@@ -219,6 +220,7 @@ public sealed class DeviceMacTests
         var error = Assert.Single(result.Errors);
         Assert.Equal(MdocErrorCodes.DeviceAuthInvalid, error.Code);
         Assert.Contains(reason, error.Message, StringComparison.Ordinal);
+        Assert.Null(result.DeviceAuthentication);
     }
 
     private static async Task<VerificationResult> VerifyEditedAsync(string from, string to)

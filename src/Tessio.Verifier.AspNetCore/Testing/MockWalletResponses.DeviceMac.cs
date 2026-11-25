@@ -1,5 +1,5 @@
-// What belongs in this file: mdoc answers that authenticate with deviceMac, for this repository's own tests. They are
-// internal until a host needs them, so the public mock keeps one way to answer each request.
+// What belongs in this file: mdoc answers that authenticate with deviceMac, for a host's tests of what it does with
+// one (a host recording which device authentication verified, say) as much as for this repository's own.
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
@@ -14,7 +14,7 @@ public sealed partial class MockWalletResponses
     /// An encrypted <c>direct_post.jwt</c> answer to a redirect session whose mdoc authenticates with deviceMac,
     /// keyed to the encryption key the session's request published, as a wallet would key it.
     /// </summary>
-    internal WalletResponseData CreateEncryptedMdocMacResponse(
+    public WalletResponseData CreateEncryptedMdocMacResponse(
         VerificationSession session, string docType = EuAgeVerificationDocType, string? mdocNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -49,7 +49,7 @@ public sealed partial class MockWalletResponses
     /// An answer to a Digital Credentials API request whose mdoc authenticates with deviceMac. Keyed to the key the
     /// request published, or to <paramref name="readerKey"/> when given, for a request that published none.
     /// </summary>
-    internal string CreateDcApiMdocMacResponse(DcApiPresentationRequest request, string origin, ECParameters? readerKey = null)
+    public string CreateDcApiMdocMacResponse(DcApiPresentationRequest request, string origin, ECParameters? readerKey = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         var encrypted = RequestParameters.AsksForEncryptedResponse(request);

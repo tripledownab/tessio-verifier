@@ -38,20 +38,24 @@ internal static class DeviceAuthVerifier
         var deviceAuthenticationBytes = SessionTranscriptBuilder.BuildDeviceAuthenticationBytes(
             sessionTranscript, document.DocType, deviceSigned.EncodedNameSpacesBytes);
 
-        if (deviceSigned.DeviceSignature is null)
+        // Which member is checked is decided by MdocDeviceAuthentication.Of, the same rule a passing result reports
+        // the method by, so the two cannot disagree.
+        var method = MdocDeviceAuthentication.Of(document);
+        if (method is null)
         {
-            if (deviceSigned.DeviceMac is not { } deviceMac)
-            {
-                return [Error("The document carries neither a deviceSignature nor a deviceMac.")];
-            }
+            return [Error("The document carries neither a deviceSignature nor a deviceMac.")];
+        }
 
+        if (method == MdocDeviceAuthentication.Mac)
+        {
+            var deviceMac = deviceSigned.DeviceMac!;
             return acceptDeviceMac
                 ? DeviceMacVerifier.Verify(deviceMac, mso, sessionTranscript, deviceAuthenticationBytes, macKeys)
                 : [Error("The document authenticates with deviceMac, which this verifier does not accept "
                     + "(MdocVerifierOptions.AcceptDeviceMac is off).")];
         }
 
-        if (CoseSign1Verification.Decode(deviceSigned.DeviceSignature, out var problem) is not { } message)
+        if (CoseSign1Verification.Decode(deviceSigned.DeviceSignature!, out var problem) is not { } message)
         {
             return [Error($"The deviceSignature is not a valid COSE_Sign1: {problem}")];
         }

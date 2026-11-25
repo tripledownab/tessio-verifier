@@ -140,6 +140,7 @@ public sealed class DeviceAuthTests : IDisposable
         var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), Context());
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+        Assert.Equal(MdocDeviceAuthentication.Signature, result.DeviceAuthentication);
     }
 
     [Fact]
@@ -183,6 +184,8 @@ public sealed class DeviceAuthTests : IDisposable
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.Code == MdocErrorCodes.DeviceAuthInvalid);
+        // A signature that did not verify is not reported as the method used.
+        Assert.Null(result.DeviceAuthentication);
     }
 
     [Fact]
@@ -205,6 +208,8 @@ public sealed class DeviceAuthTests : IDisposable
             .VerifyAsync(Credential(_builder), Context());
 
         Assert.True(result.IsValid);
+        // Nothing authenticated the device, so the result does not claim a method.
+        Assert.Null(result.DeviceAuthentication);
     }
 
     [Fact]
