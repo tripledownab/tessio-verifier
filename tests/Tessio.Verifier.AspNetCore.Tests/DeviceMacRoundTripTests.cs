@@ -69,6 +69,7 @@ public sealed class DeviceMacRoundTripTests : IDisposable
         var result = await Verifier.VerifyAsync(session, _wallet.CreateEncryptedMdocMacResponse(session, MdlDocType, MdlNamespace));
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+        Assert.Equal(MdocDeviceAuthentication.Mac, result.DeviceAuthentication);
     }
 
     [Fact]
@@ -143,6 +144,7 @@ public sealed class DeviceMacRoundTripTests : IDisposable
             .VerifyParsedAsync(session, parsed, CancellationToken.None);
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+        Assert.Equal(MdocDeviceAuthentication.Signature, result.DeviceAuthentication);
     }
 
     [Fact]
@@ -168,6 +170,7 @@ public sealed class DeviceMacRoundTripTests : IDisposable
             request, Origin, _wallet.CreateDcApiMdocMacResponse(request, Origin), new ECDsaSecurityKey(_dcKey));
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Message}")));
+        Assert.Equal(MdocDeviceAuthentication.Mac, result.DeviceAuthentication);
     }
 
     [Fact]

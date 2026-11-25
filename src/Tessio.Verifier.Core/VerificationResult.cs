@@ -7,8 +7,8 @@ namespace Tessio.Verifier.Core;
 /// </summary>
 /// <remarks>
 /// FROZEN contract (contracts-v0). Forward-compatible: new optional inputs may be added as init-only
-/// properties, which is how <see cref="CredentialType"/>, <see cref="CredentialQueryId"/> and
-/// <see cref="VerifiedPresentations"/> arrived. No existing member changes.
+/// properties, which is how <see cref="CredentialType"/>, <see cref="CredentialQueryId"/>,
+/// <see cref="VerifiedPresentations"/> and <see cref="DeviceAuthentication"/> arrived. No existing member changes.
 /// </remarks>
 public sealed record VerificationResult
 {
@@ -97,6 +97,30 @@ public sealed record VerificationResult
     /// </para>
     /// </remarks>
     public IReadOnlyList<VerificationResult>? VerifiedPresentations { get; init; }
+
+    /// <summary>
+    /// For an mdoc that verified: which device authentication proved the holder's key, by its name in the
+    /// <c>DeviceAuth</c> structure, <c>"deviceSignature"</c> or <c>"deviceMac"</c> (the constants are in
+    /// <c>MdocDeviceAuthentication</c>). Null otherwise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// SPEC: ISO/IEC 18013-5, the mdoc response's <c>DeviceAuth</c>: <c>"deviceSignature" : DeviceSignature //
+    /// "deviceMac" : DeviceMac</c>, one or the other. Either one passes device authentication, and the rest of a
+    /// verified result looks the same whichever it was. They are not equally strong: a MAC is made with a key the
+    /// reader can also derive, so whoever holds the reader's private key could make one too. A caller that wants to
+    /// know which one a wallet used, to count them or to confirm a MAC was ever checked, reads it here.
+    /// </para>
+    /// <para>
+    /// Null on every failing result, for an SD-JWT VC, for a zero knowledge presentation, and for an mdoc that carried
+    /// no device authentication where the verifier did not require one. Null means "no device authentication
+    /// verified", never "a signature by default".
+    /// </para>
+    /// <para>
+    /// Init-only and optional, so every existing construction of this record still compiles and behaves as it did.
+    /// </para>
+    /// </remarks>
+    public string? DeviceAuthentication { get; init; }
 
     /// <summary>
     /// A passing result carrying the disclosed claims and resolved issuer. Convenience for tests and
