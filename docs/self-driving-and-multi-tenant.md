@@ -224,7 +224,8 @@ the `kid` the wallet echoes. Two tenants, and two in-flight requests of one tena
 
 By default the keys are held in memory, so a callback must reach the instance that issued the request. On
 more than one instance, build the store with `ResponseKeyDerivationOptions`: see [going-live.md](going-live.md)
-section 6. It derives each request's key from one master secret and stores only a per-request salt.
+section 6. It derives each request's key from one master secret and stores only a per-request salt. To replace
+the master on a schedule without failing requests in flight, build it with `ResponseKeyGenerationOptions` instead.
 
 ## 6. Completing sessions without a wallet
 

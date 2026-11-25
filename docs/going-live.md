@@ -704,7 +704,26 @@ Registering your own store replaces the default one. Implementing `IResponseKeyS
 
 **The master is the only long-lived secret, and it lives in process memory**, because the derivation runs there. Load it from your secret store at boot. A key that never leaves an HSM cannot serve as the master. The store copies it and zeroes its copy when disposed; the array you pass in is yours to clear.
 
-**Every instance that shares the salts must hold the same master.** A salt that derives a key with another `kid` means the master is not the one that created it, or the stored salt is corrupt. `Get` then throws `InvalidOperationException` rather than reporting an unknown key, so the callback fails with a server error instead of passing for an expired session or a replay. A `kid` that differs from an issued one only in letter case, which a salt store that ignores case would match, names no key and is refused as unknown. Rotating the master therefore fails the requests still in flight under the old one wherever their key has to be derived again, until they expire (`SessionLifetime`). An instance already holding a key keeps answering with it.
+**Every instance that shares the salts must hold the same master.** A salt that derives a key with another `kid` means the master is not the one that created it or the stored salt is corrupt. `Get` then throws `InvalidOperationException` rather than reporting an unknown key, so the callback fails with a server error instead of passing for an expired session or a replay. A `kid` that differs from an issued one only in letter case, which a salt store that ignores case would match, names no key and is refused as unknown. Rotating the master therefore fails the requests still in flight under the old one wherever their key has to be derived again, until they expire (`SessionLifetime`). An instance already holding a key keeps answering with it. To replace the master without failing them, use generations, below.
+
+**To replace the master on a schedule, give it generations.** Build the store with `ResponseKeyGenerationOptions` instead. Its `Masters` (`IResponseKeyMasters`, yours) names the newest generation and finds any generation by id; its `Salts` (`IResponseKeyGenerationSaltStore`, yours) stores each salt with the generation that made it. A new key derives from the newest generation. A response is opened with the generation its salt names, so a request made just before a new generation appears still completes after it.
+
+```csharp
+builder.Services.AddSingleton(sp => new ResponseEncryptionKeyStore(
+    sp.GetRequiredService<TimeProvider>(),
+    new ResponseKeyGenerationOptions
+    {
+        Masters = sp.GetRequiredService<IResponseKeyMasters>(),                // the newest and any by id
+        Salts = sp.GetRequiredService<IResponseKeyGenerationSaltStore>(),      // salt and generation, shared
+    }));
+```
+
+- A generation id is 1 to 64 characters of letters, digits, `.`, `_` and `-` (`ResponseKeyGenerationOptions.IsGenerationId`). The store checks the newest one at construction and refuses a stored one that is not an id.
+- One instance can start making keys with a new generation before another has read it, so `Find` must look again before it answers null for a generation it does not hold. Delete an old generation only once the generation that replaced it is older than your longest request lifetime: by then every salt made with the old one has expired.
+- A live salt whose generation is not held is a fault in how the masters are kept, not an unknown key. `Get` throws `ResponseKeyGenerationUnavailableException`, which names the generation, rather than reporting the key as unknown. An expired salt is still answered as no key, whether or not its generation is kept.
+- The store reads a master during the call that asked for it and keeps no reference to the array. Holding and clearing the masters is yours: clear them when the process stops, never while another thread may still be deriving with one.
+
+What replacing the master buys: a copied master derives only the keys of its own generation. Once that generation is no longer the newest it makes no new keys. Once its salts are deleted it opens no stored ones.
 
 **The key is not the only thing a request needs.** A request object the start endpoint stores for delivery by reference (§3) is held in memory by the instance that stored it, so a wallet that fetches its `request_uri` from another instance, or after a restart, finds nothing. The session must survive too (§5).
 

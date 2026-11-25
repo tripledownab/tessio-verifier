@@ -30,6 +30,11 @@ namespace Tessio.Verifier.AspNetCore;
 /// never generated. Failing loudly is deliberate: a silent fallback to a shared key would quietly
 /// reintroduce exactly the defect this type exists to remove.
 /// </para>
+/// <para>
+/// <b>Built with <see cref="ResponseKeyGenerationOptions"/></b>, the derivation is the same with a master that is
+/// replaced over time: each key derives from the newest generation and is found again with the generation stored
+/// beside its salt, so the master can change while requests are in flight.
+/// </para>
 /// </remarks>
 public sealed class ResponseEncryptionKeyStore : IDisposable
 {
@@ -49,6 +54,19 @@ public sealed class ResponseEncryptionKeyStore : IDisposable
     {
         _clock = clock;
         _derived = new DerivedResponseKeys(derivation);
+    }
+
+    /// <summary>
+    /// A store that derives each key from the newest master generation and finds it with the generation its salt
+    /// names, so the master can be replaced while requests are in flight.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">The options, their masters or their salt store is null.</exception>
+    /// <exception cref="ArgumentException">The newest master is shorter than <see cref="ResponseKeyDerivation.MinimumMasterLength"/> bytes or all zeros.</exception>
+    /// <exception cref="InvalidOperationException">The newest generation id is not a generation id.</exception>
+    public ResponseEncryptionKeyStore(TimeProvider clock, ResponseKeyGenerationOptions generations)
+    {
+        _clock = clock;
+        _derived = new DerivedResponseKeys(generations);
     }
 
     /// <summary>
@@ -93,7 +111,15 @@ public sealed class ResponseEncryptionKeyStore : IDisposable
     /// </remarks>
     /// <exception cref="InvalidOperationException">
     /// The salt stored for this <c>kid</c> is too short or derives a different key, so the master differs
-    /// from the one that created it, or the salt is corrupt.
+    /// from the one that created it. Also when the salt or its stored generation is corrupt.
+    /// </exception>
+    /// <exception cref="ResponseKeyGenerationUnavailableException">
+    /// Built with <see cref="ResponseKeyGenerationOptions"/>: the live salt names a master generation this instance
+    /// does not hold. A subtype of <see cref="InvalidOperationException"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// Built with <see cref="ResponseKeyGenerationOptions"/>: the master <see cref="IResponseKeyMasters.Find"/> returned
+    /// is shorter than <see cref="ResponseKeyDerivation.MinimumMasterLength"/> bytes or all zeros.
     /// </exception>
     /// <exception cref="ObjectDisposedException">The store derives keys and has been disposed.</exception>
     public ResponseEncryptionKeyProvider? Get(string? keyId)
