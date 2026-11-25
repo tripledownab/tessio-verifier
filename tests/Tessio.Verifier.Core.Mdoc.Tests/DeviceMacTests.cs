@@ -172,6 +172,62 @@ public sealed class DeviceMacTests
     }
 
     [Fact]
+    public async Task FullPipeline_ADeviceAuthCarryingBothMembers_IsRefused()
+    {
+        // ISO 18013-5's DeviceAuth is one member or the other. The vector's one-entry map (a1, "deviceMac") becomes two
+        // entries with a deviceSignature first. Its value is CBOR null: checked first, it would fail as a bad
+        // COSE_Sign1 under device authentication, so only the refusal of the pair gives a structure error.
+        using var source = MdocMacKeySource.FromPrivateKey(Iso18013AnnexDVectors.ReaderKey);
+
+        var result = await VerifyAsync(
+            Edit("a1696465766963654d6163", "a26f6465766963655369676e6174757265f6696465766963654d6163"), source);
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
+        Assert.Contains("both", error.Message, StringComparison.Ordinal);
+        Assert.Null(result.DeviceAuthentication);
+    }
+
+    [Fact]
+    public async Task FullPipeline_ADeviceAuthGivingTheMacTwice_IsRefused()
+    {
+        // A null deviceMac before the vector's real one. Without the refusal the real MAC would verify and the
+        // presentation pass, the first copy never read.
+        using var source = MdocMacKeySource.FromPrivateKey(Iso18013AnnexDVectors.ReaderKey);
+
+        var result = await VerifyAsync(
+            Edit("a1696465766963654d6163", "a2696465766963654d6163f6696465766963654d6163"), source);
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
+        Assert.Contains("twice", error.Message, StringComparison.Ordinal);
+        Assert.Null(result.DeviceAuthentication);
+    }
+
+    [Fact]
+    public async Task FullPipeline_ADocumentGivingDeviceSignedTwice_IsRefused()
+    {
+        // The document map grows from three entries to four (a3 to a4, before "docType"), and a decoy deviceSigned
+        // goes before the real one: empty nameSpaces and a deviceAuth holding only a null deviceSignature. Without the
+        // refusal the real MAC would verify and the presentation pass, the decoy's signature never read.
+        using var source = MdocMacKeySource.FromPrivateKey(Iso18013AnnexDVectors.ReaderKey);
+        const string DeviceSignedKey = "6c6465766963655369676e6564";
+        const string Decoy = DeviceSignedKey + "a2" + "6a6e616d65537061636573" + "d81841a0"
+            + "6a64657669636541757468" + "a1" + "6f6465766963655369676e6174757265" + "f6";
+
+        var result = await VerifyAsync(
+            Edit(("a367646f6354797065", "a467646f6354797065"), (DeviceSignedKey, Decoy + DeviceSignedKey)), source);
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
+        Assert.Contains("deviceSigned twice", error.Message, StringComparison.Ordinal);
+        Assert.Null(result.DeviceAuthentication);
+    }
+
+    [Fact]
     public async Task FullPipeline_ACritInTheUnprotectedHeader_IsRefused()
     {
         // Unprotected header {2: [1]}: crit naming alg, but in the bucket RFC 9052 section 3.1 forbids.
@@ -232,12 +288,20 @@ public sealed class DeviceMacTests
     // Convert.ToHexStringLower is .NET 9 and later; this suite also runs on .NET 8.
     private static string Hex(byte[] bytes) => Convert.ToHexString(bytes).ToLowerInvariant();
 
-    private static byte[] Edit(string from, string to)
+    private static byte[] Edit(string from, string to) => Edit((from, to));
+
+    /// <summary>The vector with each run replaced in turn; every run must occur exactly once when its turn comes.</summary>
+    private static byte[] Edit(params (string From, string To)[] edits)
     {
         var hex = Hex(Iso18013AnnexDVectors.DeviceResponse);
-        var at = hex.IndexOf(from, StringComparison.Ordinal);
-        Assert.True(at >= 0 && hex.IndexOf(from, at + 1, StringComparison.Ordinal) < 0, "the edited run must occur once");
-        return Convert.FromHexString(string.Concat(hex.AsSpan(0, at), to, hex.AsSpan(at + from.Length)));
+        foreach (var (from, to) in edits)
+        {
+            var at = hex.IndexOf(from, StringComparison.Ordinal);
+            Assert.True(at >= 0 && hex.IndexOf(from, at + 1, StringComparison.Ordinal) < 0, "the edited run must occur once");
+            hex = string.Concat(hex.AsSpan(0, at), to, hex.AsSpan(at + from.Length));
+        }
+
+        return Convert.FromHexString(hex);
     }
 
     private static async Task<VerificationResult> VerifyAsync(
