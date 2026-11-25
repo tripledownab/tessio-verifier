@@ -11,9 +11,9 @@ namespace Tessio.Verifier.AspNetCore;
 /// Replacing the master on a schedule bounds how long a copied master stays useful. Keep an old generation until
 /// every salt made with it has expired, then delete it: a key whose generation is gone cannot be derived again.
 /// The store reads a returned master during the call that asked for it and keeps no reference to the array, so
-/// the implementation may keep and reuse it. Do not clear an array another thread may still be deriving with; clear
-/// the masters when the process stops. Both members are synchronous because the store resolves keys inside a
-/// synchronous callback during response decryption.
+/// the implementation may keep and reuse it. Never clear an array another thread may still be deriving with,
+/// including at shutdown, when a request can still be running. Both members are synchronous because the store
+/// resolves keys inside a synchronous callback during response decryption.
 /// </remarks>
 public interface IResponseKeyMasters
 {

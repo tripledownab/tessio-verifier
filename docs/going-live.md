@@ -721,7 +721,7 @@ builder.Services.AddSingleton(sp => new ResponseEncryptionKeyStore(
 - A generation id is 1 to 64 characters of letters, digits, `.`, `_` and `-` (`ResponseKeyGenerationOptions.IsGenerationId`). The store checks the newest one at construction and refuses a stored one that is not an id.
 - One instance can start making keys with a new generation before another has read it, so `Find` must look again before it answers null for a generation it does not hold. Delete an old generation only once the generation that replaced it is older than your longest request lifetime: by then every salt made with the old one has expired.
 - A live salt whose generation is not held is a fault in how the masters are kept, not an unknown key. `Get` throws `ResponseKeyGenerationUnavailableException`, which names the generation, rather than reporting the key as unknown. An expired salt is still answered as no key, whether or not its generation is kept.
-- The store reads a master during the call that asked for it and keeps no reference to the array. Holding and clearing the masters is yours: clear them when the process stops, never while another thread may still be deriving with one.
+- The store reads a master during the call that asked for it and keeps no reference to the array. Holding the masters is yours. Never clear one another thread may still be deriving with. That includes shutdown, when a request can still be running.
 
 What replacing the master buys: a copied master derives only the keys of its own generation. Once that generation is no longer the newest it makes no new keys. Once its salts are deleted it opens no stored ones.
 
