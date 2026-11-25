@@ -208,6 +208,18 @@ public sealed class ZkVerificationTests : IDisposable
         Assert.Empty(zk.Requests);
     }
 
+    [Theory]
+    [MemberData(nameof(MdocVerifierTests.NotOneCborItem), MemberType = typeof(MdocVerifierTests))]
+    public async Task A_session_transcript_that_is_not_one_CBOR_item_is_refused_before_the_proof(string hex)
+    {
+        var zk = new StandInProofVerifier();
+
+        var result = await Verify(AvZkResponses.Build(), zk, transcript: Convert.FromHexString(hex));
+
+        Assert.Equal(MdocErrorCodes.DeviceAuthInvalid, Assert.Single(result.Errors).Code);
+        Assert.Empty(zk.Requests);
+    }
+
     [Fact]
     public async Task OpenID4VP_transcript_inputs_without_a_session_transcript_are_refused_before_the_proof()
     {
@@ -388,7 +400,8 @@ public sealed class ZkVerificationTests : IDisposable
         bool omitTranscript = false,
         bool openId4VpInputs = false,
         bool checkStatus = false,
-        ZkRequest? zkRequest = null)
+        ZkRequest? zkRequest = null,
+        byte[]? transcript = null)
     {
         var verifier = new MdocVerifier(
             trust ?? new StaticTrustListResolver([_signer.Subject], source: "av-example", trustAnchors: [_signer], clock: new Fixed(Now)),
@@ -397,7 +410,7 @@ public sealed class ZkVerificationTests : IDisposable
         var context = new MdocVerificationContext
         {
             ExpectedDocType = expectedDocType,
-            SessionTranscript = omitTranscript ? null : AvZkVectors.SessionTranscript,
+            SessionTranscript = omitTranscript ? null : transcript ?? AvZkVectors.SessionTranscript,
             ClientId = openId4VpInputs ? "x509_san_dns:verifier.example" : null,
             Nonce = openId4VpInputs ? "nonce" : null,
             ResponseUri = openId4VpInputs ? "https://verifier.example/response" : null,

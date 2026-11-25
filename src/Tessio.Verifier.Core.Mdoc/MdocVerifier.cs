@@ -1,3 +1,4 @@
+using System.Formats.Cbor;
 using Tessio.Verifier.Trust;
 
 namespace Tessio.Verifier.Core.Mdoc;
@@ -102,6 +103,12 @@ public sealed partial class MdocVerifier
         if (!string.Equals(credential.Format, Format, StringComparison.Ordinal))
         {
             return Failure(MdocErrorCodes.FormatUnsupported, $"Format '{credential.Format}' is not '{Format}'.");
+        }
+
+        if (context.SessionTranscript is { } external && !IsOneCborItem(external))
+        {
+            return Failure(MdocErrorCodes.DeviceAuthInvalid,
+                "The verification context's SessionTranscript is not one CBOR data item this verifier can read.");
         }
 
         var response = DeviceResponseParser.Parse(credential.RawValue);
@@ -274,6 +281,27 @@ public sealed partial class MdocVerifier
         }
 
         return claims;
+    }
+
+    // A caller's transcript is embedded as it is in DeviceAuthentication, where bytes that are not exactly one CBOR
+    // data item throw past the exceptions VerifyAsync turns into a result. Checked once, before either device
+    // authentication or a zero knowledge proof verifier sees it.
+    private static bool IsOneCborItem(byte[] cbor)
+    {
+        try
+        {
+            var reader = new CborReader(cbor, CborConformanceMode.Lax);
+            reader.SkipValue();
+            return reader.BytesRemaining == 0;
+        }
+        catch (CborContentException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static VerificationResult Failure(string code, string message) => VerificationResult.Invalid(

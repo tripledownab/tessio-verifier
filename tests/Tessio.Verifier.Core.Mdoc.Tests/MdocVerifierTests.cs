@@ -265,6 +265,32 @@ public sealed class MdocVerifierTests : IDisposable
         Assert.Contains(result.Errors, e => e.Code == MdocErrorCodes.DeviceAuthInvalid);
     }
 
+    // Bytes that are not exactly one CBOR data item. Each threw out of VerifyAsync before the check at its start.
+    public static TheoryData<string> NotOneCborItem => new()
+    {
+        "",           // nothing
+        "ff",         // a break with no indefinite-length item open
+        "83f6f6",     // an array of three holding two
+        "83f6f6f6f6", // an array of three, then a trailing item
+    };
+
+    [Theory]
+    [MemberData(nameof(NotOneCborItem))]
+    public async Task ExternalSessionTranscript_ThatIsNotOneCborItem_FailsWithAResult(string hex)
+    {
+        var context = new MdocVerificationContext
+        {
+            ExpectedDocType = MdocTestBuilder.DefaultDocType,
+            SessionTranscript = Convert.FromHexString(hex),
+        };
+
+        var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), context);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.DeviceAuthInvalid, error.Code);
+        Assert.Contains("is not one CBOR data item", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task SpoofedDocumentSigner_IsUntrusted()
     {
