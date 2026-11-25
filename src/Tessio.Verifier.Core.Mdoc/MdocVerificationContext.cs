@@ -36,6 +36,8 @@ public sealed record MdocVerificationContext
     /// exactly these bytes and none of the fields above are used to build one. Set it for
     /// presentations whose transcript this type cannot describe, such as ISO/IEC 18013-7 Annex C
     /// over the Digital Credentials API (<see cref="Iso18013AnnexCResponse.SessionTranscript"/>).
+    /// Bytes the verifier cannot read as exactly one CBOR data item fail the verification with
+    /// <see cref="MdocErrorCodes.DeviceAuthInvalid"/>, before the presentation is read.
     /// </summary>
     public byte[]? SessionTranscript { get; init; }
 
