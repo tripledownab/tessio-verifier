@@ -21,8 +21,9 @@ internal static class MsoRevocationListClaims
         HashSet<string>? identifiers = null;
         var sawStatusList = false;
 
-        // STRICT, so a repeated claim is refused rather than resolved by whichever copy came last.
-        var reader = new CborReader(claims, CborConformanceMode.Strict);
+        // Strict refuses text that is not UTF-8. MdocCbor refuses a claim given twice, also in two encodings,
+        // rather than resolve it by whichever copy came last.
+        var reader = MdocCbor.Reader(claims, CborConformanceMode.Strict);
         reader.ReadStartMap();
         while (reader.PeekState() != CborReaderState.EndMap)
         {

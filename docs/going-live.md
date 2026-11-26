@@ -524,7 +524,7 @@ a `VerificationResult.Errors[].Message` instead, and `TrustListExpired` decides 
 | `TrustListSource` | which list produced the verdict, **on a refusal as well as a pass**. A rejected presentation is the one a relying party has most reason to question, and "not trusted" without naming the list that was asked answers nothing. If your resolver consults several lists and none matched, null is the honest answer: no single list produced that refusal |
 | `TrustAnchorSubject` | the anchor that vouched for the key, for a human reading a record. Null wherever no certificate was involved, which is the identifier route, and null on a refusal unless you know which configured anchor was matched and rejected |
 | `TrustAnchorThumbprint` | that anchor's SHA-256 over its DER, uppercase hex, from `GetCertHashString(HashAlgorithmName.SHA256)`. This is the identity; a subject is not, because distinguished names are not unique |
-| `Reason` | why, when the verdict is false. It may quote what the presenter sent, such as certificate names; the library makes it one line on its way into a result, each character that could break a log line becoming U+FFFD, as it does every failure message in a result |
+| `Reason` | why, when the verdict is false. It may quote what the presenter sent, such as certificate names; on its way into a result the library makes it one line, each character that could break a log line becoming U+FFFD. It also cuts it with an ellipsis past a fixed length, as it does every failure message in a result |
 | `TrustListExpired` | true on a refusal whose cause is the list itself, not the issuer. The credential then fails with `trust_list_expired` instead of `issuer_untrusted`, or instead of `status_invalid` when the party you refused signed a status or revocation list, so whoever reads the result looks at the list's publisher, not the wallet's issuer. Set it for a list past its next update: ETSI TS 119 612 V2.4.1 section 5.3.15, "TL with a Next update occurring in the past shall be discarded as expired". Setting it for a closed list, whose next update is null, is your choice. The code is not secret: like every code, it reaches an anonymous caller of the session status resource, so it tells them your list has lapsed |
 
 **Two things to weigh before you populate them.** `source` is a label, not a location: the built-in
@@ -621,8 +621,9 @@ the JSON these endpoints serve, not on the object.
 **Values a result carries as data are the presenter's own.** `IssuerInfo.Identifier`, an `iss` or the
 subject of a presented certificate, and `VerificationResult.CredentialType` are kept exactly as presented,
 because you store and compare them. Failure messages, trust reasons, the messages of the exceptions the
-library throws and its own log lines are made one line, each character that could break a log line becoming U+FFFD; these two values are not, so do
-the same before writing them to a plain-text log.
+library throws and its own log lines are made one line, each character that could break a log line becoming U+FFFD.
+They are also cut with an ellipsis past a fixed length, since a presenter chooses how long a quoted value is. These two
+values are neither, so do the same before writing them to a plain-text log.
 
 ## 5. Share sessions across instances
 

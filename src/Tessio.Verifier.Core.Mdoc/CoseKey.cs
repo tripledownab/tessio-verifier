@@ -49,7 +49,7 @@ internal static class CoseKey
         // key path caught none of these, so a malformed key in a presented credential escaped untyped.
         try
         {
-            var reader = new CborReader(coseKey, CborConformanceMode.Lax);
+            var reader = MdocCbor.Reader(coseKey);
             reader.ReadStartMap();
             while (reader.PeekState() != CborReaderState.EndMap)
             {

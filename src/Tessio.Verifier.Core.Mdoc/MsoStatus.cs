@@ -46,8 +46,9 @@ internal static class MsoStatus
     {
         try
         {
-            // STRICT, so a duplicated key is refused rather than resolved by whichever copy came last.
-            var reader = new CborReader(encoded, CborConformanceMode.Strict);
+            // Strict refuses text that is not UTF-8. MdocCbor refuses a key given twice, also in two encodings,
+            // rather than resolve it by whichever copy came last.
+            var reader = MdocCbor.Reader(encoded, CborConformanceMode.Strict);
             List<RevocationListReference> references = [];
 
             // SPEC: EAA-6.2.10.1-17, Status = { ? 'identifier_list' : IdentifierListInfo,

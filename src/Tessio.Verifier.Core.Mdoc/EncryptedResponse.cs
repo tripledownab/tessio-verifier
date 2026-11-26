@@ -31,7 +31,7 @@ internal static class EncryptedResponse
         ArgumentNullException.ThrowIfNull(encryptedResponse);
         try
         {
-            var reader = new CborReader(encryptedResponse, CborConformanceMode.Lax);
+            var reader = MdocCbor.Reader(encryptedResponse);
             reader.ReadStartArray();
             var label = reader.ReadTextString();
             if (label != "dcapi")

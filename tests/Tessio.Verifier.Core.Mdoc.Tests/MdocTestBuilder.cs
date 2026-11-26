@@ -97,6 +97,12 @@ internal sealed class MdocTestBuilder : IDisposable
         ["age_over_18"] = true,
     };
 
+    /// <summary>
+    /// Items the issuer signs after <see cref="Claims"/>, each under a digest of its own. A name may repeat one in
+    /// Claims, to model an issuer that signed two values for one element.
+    /// </summary>
+    public List<(string Name, object? Value)> AlsoIssued { get; } = [];
+
     /// <summary>Mutates one encoded item after digest computation, to model tampering.</summary>
     public Func<byte[], string, byte[]>? TamperItem { get; set; }
 
@@ -178,7 +184,7 @@ internal sealed class MdocTestBuilder : IDisposable
         List<byte[]> encodedItems = [];
         List<byte[]> digests = [];
         long digestId = 0;
-        foreach (var (name, value) in Claims)
+        foreach (var (name, value) in Claims.Select(c => (c.Key, c.Value)).Concat(AlsoIssued))
         {
             var item = EncodeIssuerSignedItem(digestId++, name, value);
             digests.Add(Hash(item));

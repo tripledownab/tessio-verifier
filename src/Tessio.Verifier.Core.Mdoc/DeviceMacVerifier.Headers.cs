@@ -54,8 +54,10 @@ internal static partial class DeviceMacVerifier
     /// <exception cref="CborContentException">The map is malformed, repeats a label or has bytes after it.</exception>
     private static Dictionary<long, byte[]> IntegerLabels(byte[] encodedMap)
     {
-        // Strict refuses a repeated key, which RFC 9052 section 3 requires.
-        var reader = new CborReader(encodedMap, CborConformanceMode.Strict);
+        // MdocCbor refuses a repeated label, which RFC 9052 section 3 requires, also when its copies are encoded
+        // differently: Strict alone compares encodings and lets {1: 5, 1_0: -7} through. Strict is kept for text
+        // that is not UTF-8.
+        var reader = MdocCbor.Reader(encodedMap, CborConformanceMode.Strict);
         var labels = new Dictionary<long, byte[]>();
         reader.ReadStartMap();
         while (reader.PeekState() != CborReaderState.EndMap)

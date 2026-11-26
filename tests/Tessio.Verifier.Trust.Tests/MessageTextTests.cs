@@ -45,6 +45,45 @@ public sealed class MessageTextTests
         Assert.Same(clean, MessageText.OneLine(clean));
     }
 
+    [Fact]
+    public void OneLine_KeepsAMessageOfTheLimitWhole()
+    {
+        var message = new string('m', MessageText.MaxLength);
+        Assert.Same(message, MessageText.OneLine(message));
+    }
+
+    [Fact]
+    public void OneLine_CutsALongerMessageToTheLimit()
+    {
+        // A presenter chooses how long a quoted value is; 100 000 characters stands for any of them.
+        var cut = MessageText.OneLine("Element '" + new string('q', 100_000) + "' is refused.");
+
+        Assert.Equal(MessageText.MaxLength, cut.Length);
+        Assert.StartsWith("Element 'qqq", cut, StringComparison.Ordinal);
+        Assert.EndsWith("…", cut, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OneLine_NeverCutsASurrogatePairInHalf()
+    {
+        // An emoji, two UTF-16 units, placed so the cut would fall between them.
+        var message = new string('m', MessageText.MaxLength - 2) + "😀" + new string('m', 10);
+
+        var cut = MessageText.OneLine(message);
+
+        Assert.False(char.IsHighSurrogate(cut[^2]));
+        Assert.EndsWith("…", cut, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OneLine_CutsBeforeItReplaces_SoALongHostileMessageIsStillOneLine()
+    {
+        var cut = MessageText.OneLine(new string('x', 2000) + "\nforged line");
+
+        Assert.DoesNotContain('\n', cut);
+        Assert.Equal(MessageText.MaxLength, cut.Length);
+    }
+
     private static X500DistinguishedName Named(string commonName)
     {
         var name = new X500DistinguishedNameBuilder();

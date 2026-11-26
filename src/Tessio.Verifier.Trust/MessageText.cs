@@ -21,10 +21,14 @@ namespace Tessio.Verifier.Trust;
 /// message site quoting its own values would leave the next new site free to forget, and there are many.
 /// </para>
 /// <para>
-/// Each character that could break the line becomes U+FFFD, so the message keeps its length and still
-/// shows that something was there. That covers what <see cref="char.IsControl(char)"/> calls a control
-/// character, the C1 range included, and U+2028 and U+2029, which are not control characters to .NET
-/// but are line breaks to many log viewers and JSON consumers.
+/// Each character that could break the line becomes U+FFFD, so the message still shows that something was
+/// there. That covers what <see cref="char.IsControl(char)"/> calls a control character with the C1 range
+/// included. It covers U+2028 and U+2029 too: they are not control characters to .NET but are line breaks to
+/// many log viewers and JSON consumers.
+/// </para>
+/// <para>
+/// A message longer than <see cref="MessageText.MaxLength"/> is cut there. The presenter chooses the length of
+/// what a message quotes, so without a bound one presentation could put megabytes into a result and a log.
 /// </para>
 /// </remarks>
 internal static class MessageText
@@ -35,19 +39,37 @@ internal static class MessageText
     private const char LineSeparator = '\u2028';
     private const char ParagraphSeparator = '\u2029';
 
-    /// <summary><paramref name="message"/> with every character that could break the line replaced.</summary>
+    /// <summary>
+    /// The most characters a message keeps. A message can quote a value of any length the presenter chose, such
+    /// as an element identifier or a map key. The message ends up in a result and in logs.
+    /// </summary>
+    internal const int MaxLength = 1000;
+
+    /// <summary>
+    /// <paramref name="message"/> with every character that could break the line replaced, cut to
+    /// <see cref="MaxLength"/> with an ellipsis where it was longer.
+    /// </summary>
     public static string OneLine(string message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        if (!message.Any(BreaksLine)) return message;
+        var kept = message.Length <= MaxLength ? message : Cut(message);
+        if (!kept.Any(BreaksLine)) return kept;
 
-        var line = new StringBuilder(message.Length);
-        foreach (var c in message)
+        var line = new StringBuilder(kept.Length);
+        foreach (var c in kept)
         {
             line.Append(BreaksLine(c) ? Replacement : c);
         }
 
         return line.ToString();
+    }
+
+    // MaxLength in all with the ellipsis included. Never half of a surrogate pair.
+    private static string Cut(string message)
+    {
+        var end = MaxLength - 1;
+        if (char.IsHighSurrogate(message[end - 1])) end--;
+        return message[..end] + "…";
     }
 
     private static bool BreaksLine(char c) => char.IsControl(c) || c is LineSeparator or ParagraphSeparator;
