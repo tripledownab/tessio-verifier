@@ -4,9 +4,9 @@
     "net10.0": {
       "QRCoder": {
         "type": "Direct",
-        "requested": "[1.8.1, )",
-        "resolved": "1.8.1",
-        "contentHash": "aGfRFpU/IPexAtEOEXCNxC3fMCAqgn6kqALRvXt6LxVAW0VolSDGHiyrY+o2CJgTITOsMpsrsDi7svMJaJ9Vfg==",
+        "requested": "[1.9.0, )",
+        "resolved": "1.9.0",
+        "contentHash": "5hLj/PNkFnIcSk9VOJzhBgspByhSkBtF0tAJpWyLOXqZ0c2WE2H8YTWEEOArLkjwXZh5LHfpoqjDwomrJq0mGA==",
         "dependencies": {
           "System.Drawing.Common": "6.0.0"
         }
@@ -68,22 +68,22 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Trust": "[0.30.2, )"
+          "Tessio.Verifier.Trust": "[0.30.3, )"
         }
       },
       "tessio.verifier.core.mdoc": {
         "type": "Project",
         "dependencies": {
           "System.Security.Cryptography.Cose": "[10.0.15, )",
-          "Tessio.Verifier.Core": "[0.30.2, )"
+          "Tessio.Verifier.Core": "[0.30.3, )"
         }
       },
       "tessio.verifier.openid4vp": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Core": "[0.30.2, )",
-          "Tessio.Verifier.Trust": "[0.30.2, )"
+          "Tessio.Verifier.Core": "[0.30.3, )",
+          "Tessio.Verifier.Trust": "[0.30.3, )"
         }
       },
       "tessio.verifier.trust": {
@@ -93,9 +93,9 @@
     "net8.0": {
       "QRCoder": {
         "type": "Direct",
-        "requested": "[1.8.1, )",
-        "resolved": "1.8.1",
-        "contentHash": "aGfRFpU/IPexAtEOEXCNxC3fMCAqgn6kqALRvXt6LxVAW0VolSDGHiyrY+o2CJgTITOsMpsrsDi7svMJaJ9Vfg==",
+        "requested": "[1.9.0, )",
+        "resolved": "1.9.0",
+        "contentHash": "5hLj/PNkFnIcSk9VOJzhBgspByhSkBtF0tAJpWyLOXqZ0c2WE2H8YTWEEOArLkjwXZh5LHfpoqjDwomrJq0mGA==",
         "dependencies": {
           "System.Drawing.Common": "6.0.0"
         }
@@ -174,7 +174,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Trust": "[0.30.2, )"
+          "Tessio.Verifier.Trust": "[0.30.3, )"
         }
       },
       "tessio.verifier.core.mdoc": {
@@ -182,15 +182,15 @@
         "dependencies": {
           "System.Formats.Cbor": "[10.0.15, )",
           "System.Security.Cryptography.Cose": "[10.0.15, )",
-          "Tessio.Verifier.Core": "[0.30.2, )"
+          "Tessio.Verifier.Core": "[0.30.3, )"
         }
       },
       "tessio.verifier.openid4vp": {
         "type": "Project",
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
-          "Tessio.Verifier.Core": "[0.30.2, )",
-          "Tessio.Verifier.Trust": "[0.30.2, )"
+          "Tessio.Verifier.Core": "[0.30.3, )",
+          "Tessio.Verifier.Trust": "[0.30.3, )"
         }
       },
       "tessio.verifier.trust": {
