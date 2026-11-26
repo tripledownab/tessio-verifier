@@ -6,9 +6,8 @@ namespace Tessio.Verifier.Core.Mdoc;
 
 /// <summary>
 /// Decodes the base64url CBOR <c>DeviceResponse</c> from an OpenID4VP <c>vp_token</c> entry and the
-/// Mobile Security Object from an <c>issuerAuth</c> COSE_Sign1. Reads leniently
-/// (<see cref="CborConformanceMode.Lax"/>): wallets are not required to emit canonical CBOR, and
-/// digests are computed over transported bytes, so re-encoding never happens.
+/// Mobile Security Object from an <c>issuerAuth</c> COSE_Sign1. Every reader comes from
+/// <see cref="MdocCbor.Reader"/>, which reads leniently but refuses a map that gives a key twice.
 /// </summary>
 internal static class DeviceResponseParser
 {
@@ -26,7 +25,7 @@ internal static class DeviceResponseParser
 
         try
         {
-            var reader = new CborReader(cbor, CborConformanceMode.Lax);
+            var reader = MdocCbor.Reader(cbor);
             return ReadDeviceResponse(reader);
         }
         catch (Exception e) when (CborFailure.IsMalformed(e))
@@ -50,14 +49,14 @@ internal static class DeviceResponseParser
         try
         {
             // SPEC: ISO 18013-5 §9.1.2.4 — payload is MobileSecurityObjectBytes = #6.24(bstr .cbor MSO).
-            var outer = new CborReader(payload, CborConformanceMode.Lax);
+            var outer = MdocCbor.Reader(payload);
             if (outer.PeekState() == CborReaderState.Tag)
             {
                 outer.ReadTag();
             }
 
             var msoBytes = outer.ReadByteString();
-            return ReadMso(new CborReader(msoBytes, CborConformanceMode.Lax));
+            return ReadMso(MdocCbor.Reader(msoBytes));
         }
         catch (Exception e) when (CborFailure.IsMalformed(e))
         {
@@ -158,10 +157,7 @@ internal static class DeviceResponseParser
                     (nameSpaces, issuerAuth) = ReadIssuerSigned(reader);
                     break;
                 case "deviceSigned":
-                    // Once, like the deviceAuth members it holds: two would mean two device authentications, and
-                    // only one of them could be checked.
-                    deviceSigned = OnlyOnce(
-                        deviceSigned, "A document carries deviceSigned twice.", () => ReadDeviceSigned(reader));
+                    deviceSigned = ReadDeviceSigned(reader);
                     break;
                 default:
                     reader.SkipValue();
@@ -202,10 +198,21 @@ internal static class DeviceResponseParser
                     {
                         var ns = reader.ReadTextString();
                         List<ParsedIssuerSignedItem> items = [];
+                        HashSet<string> identifiers = new(StringComparer.Ordinal);
                         reader.ReadStartArray();
                         while (reader.PeekState() != CborReaderState.EndArray)
                         {
-                            items.Add(ReadIssuerSignedItem(reader));
+                            var item = ReadIssuerSignedItem(reader);
+                            // Each item has its own digest, so an issuer can have signed two values for one element.
+                            // Which of them the result reports must not depend on the order a wallet sends them in,
+                            // so the second is refused, as the zero knowledge path does.
+                            if (!identifiers.Add(item.ElementIdentifier))
+                            {
+                                throw new MdocProcessingException(MdocErrorCodes.StructureInvalid,
+                                    $"The namespace '{ns}' discloses '{item.ElementIdentifier}' more than once.");
+                            }
+
+                            items.Add(item);
                         }
 
                         reader.ReadEndArray();
@@ -239,13 +246,13 @@ internal static class DeviceResponseParser
         // digest input, so capture it before decoding the content.
         var encoded = reader.ReadEncodedValue().ToArray();
 
-        var tagged = new CborReader(encoded, CborConformanceMode.Lax);
+        var tagged = MdocCbor.Reader(encoded);
         if (tagged.PeekState() == CborReaderState.Tag)
         {
             tagged.ReadTag();
         }
 
-        var inner = new CborReader(tagged.ReadByteString(), CborConformanceMode.Lax);
+        var inner = MdocCbor.Reader(tagged.ReadByteString());
 
         long? digestId = null;
         string? elementIdentifier = null;
@@ -287,10 +294,6 @@ internal static class DeviceResponseParser
         };
     }
 
-    /// <summary>Reads a map entry that may appear once, and refuses a second copy rather than choosing between them.</summary>
-    private static T OnlyOnce<T>(T? already, string refusal, Func<T> read) where T : class =>
-        already is null ? read() : throw new MdocProcessingException(MdocErrorCodes.StructureInvalid, refusal);
-
     private static ParsedDeviceSigned ReadDeviceSigned(CborReader reader)
     {
         byte[]? nameSpacesBytes = null;
@@ -312,12 +315,10 @@ internal static class DeviceResponseParser
                         switch (reader.ReadTextString())
                         {
                             case "deviceSignature":
-                                deviceSignature = OnlyOnce(deviceSignature, "deviceAuth carries deviceSignature twice.",
-                                    () => reader.ReadEncodedValue().ToArray());
+                                deviceSignature = reader.ReadEncodedValue().ToArray();
                                 break;
                             case "deviceMac":
-                                deviceMac = OnlyOnce(deviceMac, "deviceAuth carries deviceMac twice.",
-                                    () => reader.ReadEncodedValue().ToArray());
+                                deviceMac = reader.ReadEncodedValue().ToArray();
                                 break;
                             default:
                                 reader.SkipValue();
@@ -329,8 +330,8 @@ internal static class DeviceResponseParser
 
                     // SPEC: ISO/IEC 18013-5, DeviceAuth = { "deviceSignature" : DeviceSignature // "deviceMac" :
                     // DeviceMac }: one or the other. With both, whichever were checked, the other would be accepted
-                    // unchecked, so the document is refused rather than read. A member given twice is refused by
-                    // OnlyOnce for the same reason.
+                    // unchecked, so the document is refused rather than read. A member given twice never gets here:
+                    // MdocCbor refuses a map that repeats a key.
                     if (deviceSignature is not null && deviceMac is not null)
                     {
                         throw new MdocProcessingException(MdocErrorCodes.StructureInvalid,

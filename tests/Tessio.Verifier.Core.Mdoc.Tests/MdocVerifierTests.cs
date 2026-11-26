@@ -291,6 +291,64 @@ public sealed class MdocVerifierTests : IDisposable
         Assert.Contains("is not one CBOR data item", error.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task AnElementTheIssuerSignedTwice_IsRefused_InEitherOrder(bool first, bool second)
+    {
+        // Each item has a digest of its own, so both verify against the MSO. Without the refusal the result reported
+        // whichever came last, so the wallet's ordering chose the answer.
+        _builder.Claims["age_over_18"] = first;
+        _builder.AlsoIssued.Add(("age_over_18", second));
+
+        var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), Context());
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
+        Assert.Contains("discloses 'age_over_18' more than once", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ARefusalQuotingAHugeElementName_IsBounded()
+    {
+        // The refusal quotes the element identifier, which the presenter chooses before any digest is checked.
+        var name = new string('q', 100_000);
+        _builder.Claims[name] = true;
+        _builder.AlsoIssued.Add((name, true));
+
+        var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), Context());
+
+        // The cut falls inside the name, so only the message's start and its length are asserted.
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
+        Assert.StartsWith("The namespace", error.Message, StringComparison.Ordinal);
+        Assert.True(error.Message.Length < 2_000, $"The message is {error.Message.Length} characters long.");
+    }
+
+    [Fact]
+    public async Task AClaimValueWhoseKeysBecomeOne_IsRefused()
+    {
+        // {"4": "Stockholm", 4: "Paris"}: two keys in CBOR, issuer signed, but one once the result names its keys as
+        // text. Without the refusal the result reported only "Paris".
+        _builder.Claims["place_of_birth"] = (Action<System.Formats.Cbor.CborWriter>)(w =>
+        {
+            w.WriteStartMap(2);
+            w.WriteTextString("4");
+            w.WriteTextString("Stockholm");
+            w.WriteInt32(4);
+            w.WriteTextString("Paris");
+            w.WriteEndMap();
+        });
+
+        var result = await VerifierFor(_builder).VerifyAsync(Credential(_builder), Context());
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
+        Assert.Contains("gives the key '4' twice", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task SpoofedDocumentSigner_IsUntrusted()
     {

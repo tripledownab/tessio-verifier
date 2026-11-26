@@ -45,7 +45,7 @@ internal static class ZkDocumentParser
     {
         try
         {
-            return Read(new CborReader(encoded, CborConformanceMode.Lax));
+            return Read(MdocCbor.Reader(encoded));
         }
         catch (Exception e) when (CborFailure.IsMalformed(e))
         {
@@ -85,7 +85,7 @@ internal static class ZkDocumentParser
             throw Invalid("A zkDocuments entry lacks its proof or documentData.");
         }
 
-        return ReadDocumentData(new CborReader(documentData, CborConformanceMode.Lax), proof);
+        return ReadDocumentData(MdocCbor.Reader(documentData), proof);
     }
 
     private static ParsedZkDocument ReadDocumentData(CborReader reader, byte[] proof)
@@ -219,7 +219,7 @@ internal static class ZkDocumentParser
             ? throw Invalid("A zero knowledge disclosed item lacks elementIdentifier or elementValue.")
             // Strict, so text that is not valid UTF-8 is refused. The library sees the raw bytes while the result
             // reports their decoding, and the two must not differ.
-            : new ZkDisclosedItem(identifier, CborValueConverter.Read(new CborReader(value, CborConformanceMode.Strict)), value);
+            : new ZkDisclosedItem(identifier, CborValueConverter.Read(MdocCbor.Reader(value, CborConformanceMode.Strict)), value);
     }
 
     // SPEC: as for issuerAuth's x5chain (RFC 9360 §2), one certificate is a bstr and several are an array.

@@ -301,7 +301,8 @@ public sealed partial class MsoRevocationTests : IDisposable
         _builder.MsoStatus = w.Encode();
         _http.Serve(ListUri, _list.StatusList(ListUri, bits: 1, 0, 1));
 
-        AssertRefused(await VerifyAsync(), ErrorCodes.StatusInvalid);
+        // The status element sits in the MSO, so the repeated key is refused as the MSO is read, before any list.
+        AssertRefused(await VerifyAsync(), MdocErrorCodes.MsoInvalid);
         Assert.Empty(_http.Requested);
     }
 

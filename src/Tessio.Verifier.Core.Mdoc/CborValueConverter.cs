@@ -70,11 +70,16 @@ internal static class CborValueConverter
                 reader.ReadStartMap();
                 while (reader.PeekState() != CborReaderState.EndMap)
                 {
-                    // Non-text keys are legal CBOR; stringify so the claim survives into the result.
+                    // Non-text keys are legal CBOR; stringify so the claim survives into the result. Stringifying makes
+                    // the text "4" and the integer 4 one key. Two keys distinct in CBOR that become one here are
+                    // refused, not resolved by the last: RFC 8949 section 5.6.1 leaves that check to the application.
                     var key = reader.PeekState() == CborReaderState.TextString
                         ? reader.ReadTextString()
                         : reader.ReadInt64().ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    map[key] = Read(reader, depth + 1);
+                    if (!map.TryAdd(key, Read(reader, depth + 1)))
+                    {
+                        throw new InvalidOperationException($"A claim value's map gives the key '{key}' twice.");
+                    }
                 }
 
                 reader.ReadEndMap();

@@ -160,9 +160,10 @@ public sealed class DeviceMacTests
     [InlineData("8446a20105029fffa0f65820", "crit")]                // crit: an empty indefinite-length array
     [InlineData("8445a201050201a0f65820", "crit")]                  // crit: not an array
     [InlineData("8445a201050105a0f65820", "malformed")]             // protected header repeats alg
+    [InlineData("8446a20105180105a0f65820", "malformed")]           // ... with the second alg label in a longer form
+    [InlineData("8447a201056261ff00a0f65820", "malformed")]         // a text label that is not UTF-8
     [InlineData("8444a1010500a0f65820", "malformed")]               // a byte after the protected map
     [InlineData("8444a1016135a0f65820", "alg")]                     // alg as the text "5"
-    [InlineData("8443a10105a2044004" + "40f65820", "malformed")]    // unprotected header repeats label 4
     [InlineData("8443a10105a10106f65820", "both")]                  // alg in both buckets, 5 and 6
     public async Task FullPipeline_AHeaderRfc9052Refuses_IsRefused(string to, string reason)
     {
@@ -207,6 +208,37 @@ public sealed class DeviceMacTests
     }
 
     [Fact]
+    public async Task FullPipeline_ADeviceAuthGivingTheMacTwiceInTwoEncodings_IsRefused()
+    {
+        // As above, with the real deviceMac's key written as an indefinite-length text (7f ... ff). Strict CBOR compares
+        // encodings and would take the two keys as different; the parser decodes both to "deviceMac".
+        using var source = MdocMacKeySource.FromPrivateKey(Iso18013AnnexDVectors.ReaderKey);
+
+        var result = await VerifyAsync(
+            Edit("a1696465766963654d6163", "a2696465766963654d6163f6" + "7f696465766963654d6163ff"), source);
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
+        Assert.Contains("'deviceMac' twice", error.Message, StringComparison.Ordinal);
+        Assert.Null(result.DeviceAuthentication);
+    }
+
+    [Fact]
+    public async Task FullPipeline_AnUnprotectedHeaderRepeatingALabel_IsRefused()
+    {
+        // The unprotected header is a map inside the DeviceResponse, so the response is refused when it is read, before
+        // device authentication: a structure error, not a device authentication one.
+        var result = await VerifyEditedAsync(DeviceMacStart, "8443a10105a2044004" + "40f65820");
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
+        Assert.Contains("the key 4 twice", error.Message, StringComparison.Ordinal);
+        Assert.Null(result.DeviceAuthentication);
+    }
+
+    [Fact]
     public async Task FullPipeline_ADocumentGivingDeviceSignedTwice_IsRefused()
     {
         // The document map grows from three entries to four (a3 to a4, before "docType"), and a decoy deviceSigned
@@ -223,7 +255,7 @@ public sealed class DeviceMacTests
         Assert.False(result.IsValid);
         var error = Assert.Single(result.Errors);
         Assert.Equal(MdocErrorCodes.StructureInvalid, error.Code);
-        Assert.Contains("deviceSigned twice", error.Message, StringComparison.Ordinal);
+        Assert.Contains("'deviceSigned' twice", error.Message, StringComparison.Ordinal);
         Assert.Null(result.DeviceAuthentication);
     }
 
