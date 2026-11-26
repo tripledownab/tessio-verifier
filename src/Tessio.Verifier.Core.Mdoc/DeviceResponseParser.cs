@@ -257,6 +257,7 @@ internal static class DeviceResponseParser
         long? digestId = null;
         string? elementIdentifier = null;
         object? elementValue = null;
+        var hasElementValue = false;
 
         inner.ReadStartMap();
         while (inner.PeekState() != CborReaderState.EndMap)
@@ -271,6 +272,7 @@ internal static class DeviceResponseParser
                     break;
                 case "elementValue":
                     elementValue = CborValueConverter.Read(inner);
+                    hasElementValue = true;
                     break;
                 default:
                     inner.SkipValue();
@@ -280,9 +282,10 @@ internal static class DeviceResponseParser
 
         inner.ReadEndMap();
 
-        if (digestId is null || elementIdentifier is null)
+        // An item without elementValue would otherwise be reported as if the issuer had signed null.
+        if (digestId is null || elementIdentifier is null || !hasElementValue)
         {
-            throw new MdocProcessingException(MdocErrorCodes.StructureInvalid, "An IssuerSignedItem lacks digestID or elementIdentifier.");
+            throw new MdocProcessingException(MdocErrorCodes.StructureInvalid, "An IssuerSignedItem lacks digestID, elementIdentifier or elementValue.");
         }
 
         return new ParsedIssuerSignedItem

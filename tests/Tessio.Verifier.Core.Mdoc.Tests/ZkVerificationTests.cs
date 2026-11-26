@@ -307,6 +307,20 @@ public sealed class ZkVerificationTests : IDisposable
         Assert.Equal(MdocErrorCodes.StructureInvalid, Assert.Single(result.Errors).Code);
     }
 
+    [Theory]
+    [InlineData("61FF")]   // "\xFF": text that is not UTF-8
+    [InlineData("F7")]     // undefined, which the result cannot hold
+    public async Task A_disclosed_value_the_result_would_misreport_is_refused_before_the_proof(string hex)
+    {
+        var zk = new StandInProofVerifier();
+
+        var result = await Verify(
+            AvZkResponses.Build(new() { Value = w => w.WriteEncodedValue(Convert.FromHexString(hex)) }), zk);
+
+        Assert.Equal(MdocErrorCodes.StructureInvalid, Assert.Single(result.Errors).Code);
+        Assert.Empty(zk.Requests);
+    }
+
     [Fact]
     public async Task A_value_nested_to_the_limit_is_read()
     {

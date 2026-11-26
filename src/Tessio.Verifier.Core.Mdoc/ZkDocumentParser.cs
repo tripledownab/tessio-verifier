@@ -217,9 +217,9 @@ internal static class ZkDocumentParser
         reader.ReadEndMap();
         return identifier is null || value is null
             ? throw Invalid("A zero knowledge disclosed item lacks elementIdentifier or elementValue.")
-            // Strict, so text that is not valid UTF-8 is refused. The library sees the raw bytes while the result
-            // reports their decoding, and the two must not differ.
-            : new ZkDisclosedItem(identifier, CborValueConverter.Read(MdocCbor.Reader(value, CborConformanceMode.Strict)), value);
+            // The library sees the raw bytes while the result reports their decoding. The two must not differ, so
+            // CborValueConverter refuses text that is not UTF-8 and any value it cannot represent.
+            : new ZkDisclosedItem(identifier, CborValueConverter.Read(MdocCbor.Reader(value)), value);
     }
 
     // SPEC: as for issuerAuth's x5chain (RFC 9360 §2), one certificate is a bstr and several are an array.
